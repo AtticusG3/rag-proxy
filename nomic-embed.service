@@ -1,0 +1,30 @@
+[Unit]
+Description=Nomic Embed v1.5 — Always-on CPU embedding server
+After=network.target
+# Start before llama-swap so it's ready when llama-swap preloads
+Before=llama-swap.service
+
+[Service]
+Type=simple
+User=kevyn
+Restart=always
+RestartSec=3
+
+ExecStart=/home/kevyn/llama-cpp-mainline/build/bin/llama-server \
+    -m /home/kevyn/models/nomic-embed/nomic-embed-text-v1.5.Q8_0.gguf \
+    --embedding \
+    --pooling mean \
+    -ngl 0 \
+    -c 2048 \
+    -b 2048 \
+    -ub 2048 \
+    --host 127.0.0.1 \
+    --port 8089 \
+    --log-disable
+
+# Zero VRAM — runs entirely on CPU
+# -b/-ub must match for --embedding (default -ub 512 rejects long inputs)
+# ~300MB RAM only
+
+[Install]
+WantedBy=multi-user.target

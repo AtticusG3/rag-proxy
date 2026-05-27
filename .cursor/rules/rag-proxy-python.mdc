@@ -1,0 +1,32 @@
+---
+description: rag_proxy Python conventions — single module, passthrough, fail-open RAG
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# rag_proxy Python
+
+## Architecture (read before changing)
+
+- Single module: `rag_proxy.py` — FastAPI catch-all proxy to llama-swap.
+- RAG only on `POST` to `v1/chat/completions` or `api/chat`.
+- Auth-transparent: forward headers; no API key logic here.
+- Fail-open: embedding/Qdrant/injection errors must never break the upstream request.
+
+## Conventions
+
+- Config via `os.getenv` at module top; document new vars in module docstring and `.env.example`.
+- Use `httpx.AsyncClient` per request for upstream; keep streaming client alive via `relay_upstream`.
+- Log with module logger `log`; ASCII-only messages (Windows console).
+- Helpers are plain functions (`extract_query_text`, `inject_context`, etc.) — no new classes unless unavoidable.
+- Qdrant payload field order: `text`, `content`, `chunk`, `document`, `page_content` — extend the tuple, don't fork lookup logic.
+
+## Conflicts to avoid
+
+- Do not add auth, rate limiting, or response rewriting unless explicitly requested.
+- Do not cache embeddings in-process without a stated requirement and tests.
+- Prefer extending `CHAT_PATHS` or payload keys over a second injection path.
+
+## Verification
+
+After Python changes: `pytest tests/ -q` from repo root with venv active.

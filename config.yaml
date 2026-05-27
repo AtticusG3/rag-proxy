@@ -1,0 +1,174 @@
+healthCheckTimeout: 120
+
+apiKeys:
+  - "${env.LLAMA_SWAP_API_KEY_1}"
+  - "${env.LLAMA_SWAP_API_KEY_2}"
+  - "${env.LLAMA_SWAP_API_KEY_3}"
+  - "${env.LLAMA_SWAP_API_KEY_4}"
+
+# llama-swap picks ports starting here for cmd models
+startPort: 8090
+
+hooks:
+  on_startup:
+    preload:
+      - "qwen3.5-9b"
+      - "nomic-embed"   # warms up the proxy connection on startup
+
+models:
+  "qwen3.5-9b":
+    name: "Qwen 3.5 9B Abliterated"
+    cmd: >
+      /home/kevyn/llama-cpp-mainline/build/bin/llama-server
+      -m /home/kevyn/models/qwen3.5/Qwen3.5-9B-SOMPOA-heresy-MTP.i1-Q5_K_M.gguf
+      --mmproj /home/kevyn/models/qwen3.5/mmproj-f16.gguf
+      --cache-type-k q8_0
+      --cache-type-v q4_0
+      -c 4915
+      -ngl 99
+      -fa on
+      --temperature 1.0
+      --top-p 0.95
+      --top-k 20
+      --min-p 0.0
+      --repeat-penalty 1.0
+      --presence-penalty 0.5
+      --webui-mcp-proxy
+      --port ${PORT}
+      --chat-template-file /home/kevyn/models/qwen3.5/chat_template.jinja
+      --jinja
+    ttl: 300
+
+  "qwen3.5-9b-turbo":
+    name: "Qwen 3.5 9B Abliterated TurboQuant"
+    cmd: >
+      /home/kevyn/llama-cpp-turboquant/build/bin/llama-server
+      -m /home/kevyn/models/qwen3.5/Qwen3.5-9B-Abliterated-Claude-4.6-Opus-Reasoning-Distilled-v2.Q4_K_M.gguf
+      --cache-type-k turbo3
+      --cache-type-v turbo4
+      -c 65536
+      -ngl 99
+      -fa on
+      --temperature 1.0
+      --top-p 0.95
+      --top-k 20
+      --min-p 0.0
+      --repeat-penalty 1.0
+      --presence-penalty 0.5
+      --host 127.0.0.1
+      --port ${PORT}
+      --jinja
+    ttl: 0
+
+  "gemma4-e4b":
+    name: "SuperGemma4"
+    cmd: >
+      /home/kevyn/llama-cpp-turboquant/build/bin/llama-server
+      -m /home/kevyn/models/gemma4/supergemma4-Q4_K_M.gguf
+      --mmproj /home/kevyn/models/gemma4/mmproj-F16.gguf
+      --cache-type-k turbo3
+      --cache-type-v turbo4
+      -c 65536
+      -ngl 99
+      -fa on
+      --temperature 0.8
+      --top-p 0.9
+      --top-k 64
+      --repeat-penalty 1.05
+      --host 127.0.0.1
+      --port ${PORT}
+      --jinja
+    ttl: 0
+
+  "bonsai-8b":
+    name: "Bonsai 8B"
+    ttl: 0
+    cmd: >
+      /home/kevyn/llama-cpp-bonsai/build/bin/llama-server
+      -m /home/kevyn/models/prism-ml/Bonsai-8B.gguf
+      -c 16384
+      -ngl 99
+      -fa on
+      --temperature 0.6
+      --top-p 0.9
+      --top-k 32
+      --repeat-penalty 1.1
+      --host 127.0.0.1
+      --port ${PORT}
+
+  "llama3.3-8b":
+    name: "Llama 3.3 8B — All-Round"
+    ttl: 0
+    cmd: >
+      /home/kevyn/llama-cpp-turboquant/build/bin/llama-server
+      -m /home/kevyn/models/llama3.3-8b/allura-forge_Llama-3.3-8B-Instruct-Q4_K_M.gguf
+      --cache-type-k turbo3
+      --cache-type-v turbo4
+      -c 32768
+      -ngl 99
+      -fa on
+      --temperature 0.7
+      --top-p 0.9
+      --top-k 40
+      --repeat-penalty 1.1
+      --host 127.0.0.1
+      --port ${PORT}
+
+  "mistral-7b":
+    name: "Mistral 7B v0.3 — Fast"
+    ttl: 0
+    cmd: >
+      /home/kevyn/llama-cpp-mainline/build/bin/llama-server
+      -m /home/kevyn/models/mistral-7b/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf
+      --cache-type-k q8_0
+      --cache-type-v q4_0
+      -c 32768
+      -ngl 99
+      --temperature 0.7
+      --top-p 0.95
+      --top-k 40
+      --repeat-penalty 1.1
+      --host 127.0.0.1
+      --port ${PORT}
+
+  "phi4-mini":
+    name: "Phi-4 Mini 3.8B — Lightweight"
+    ttl: 0
+    cmd: >
+      /home/kevyn/llama-cpp-mainline/build/bin/llama-server
+      -m /home/kevyn/models/phi4-mini/phi-4-mini-instruct-abliterated-Q8_0.gguf
+      --cache-type-k q8_0
+      --cache-type-v q4_0
+      -c 16384
+      -ngl 99
+      --temperature 0.65
+      --top-p 0.9
+      --top-k 40
+      --repeat-penalty 1.15
+      --host 127.0.0.1
+      --port ${PORT}
+
+  # Proxy model — points to the always-on standalone CPU server (nomic-embed.service)
+  # llama-swap never spawns or kills this; it's managed independently
+  # Zero VRAM impact, always available regardless of which chat model is loaded
+  "nomic-embed":
+    name: "Nomic Embed v1.5 — Embeddings"
+    proxy: "http://127.0.0.1:8089"
+
+  "lfm2-8b-a1b":
+    name: "LFM2 - Conversations"
+    ttl: 0
+    cmd: >
+      /home/kevyn/llama-cpp-turboquant/build/bin/llama-server
+      -m /home/kevyn/models/liquidai/LFM2-8B-A1B-SpeedDemon-GLM-4.7-Flash-Thinking-Instruct-Hybrid.i1-Q2_K_S.gguf
+      --cache-type-k turbo3
+      --cache-type-v turbo4
+      -c 32768
+      -ngl 99
+      --temperature 0.3
+      --min-p 0.15
+      --repeat-penalty 1.05
+      --top-p 0.9
+      --top-k 40
+      --host 127.0.0.1
+      --port ${PORT}
