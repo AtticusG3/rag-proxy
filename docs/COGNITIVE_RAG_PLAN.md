@@ -93,7 +93,7 @@ curl -s -X POST "http://127.0.0.1:8088/v1/chat/completions" \
 
 With `ENABLE_REQUEST_TRACE=true` (default), each cognitive request emits one summary line at INFO:
 
-```
+```text
 trace=a1b2c3d4e5f6 tier=tier2_retrieval intent=infra retrieval=full chunks=3 latency_ms={'tier0': 1.2, 'retrieve': 89.4, ...} stages=tier0,intent,gating,retrieve,context
 ```
 
@@ -111,7 +111,7 @@ Set `ENABLE_JSON_LOGS=true` for machine-readable JSON (includes `gating_would_sk
 
 Legacy mode (`ENABLE_COGNITIVE_PIPELINE=false`) uses simpler lines:
 
-```
+```text
 RAG: injected 3 chunk(s) (scores: [0.82, 0.71, 0.68]) | query: 'how do I restart rag-proxy'
 ```
 
