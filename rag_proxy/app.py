@@ -55,16 +55,24 @@ async def proxy(request: Request, path: str):
     headers = {k: v for k, v in request.headers.items() if k.lower() not in skip_headers}
 
     if request.method == "POST" and path.rstrip("/") in CHAT_PATHS and body:
+        original_body = body
         try:
             data = json.loads(body)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             log.warning(f"Invalid JSON body (passing through unmodified): {e}")
         else:
-            data = await augment_chat_payload(data, headers)
-            try:
-                body = json.dumps(data, ensure_ascii=False).encode()
-            except (TypeError, ValueError) as e:
-                log.warning(f"Failed to serialize augmented body (passing through): {e}")
+            if not isinstance(data, dict):
+                log.warning("Chat JSON body is not an object (passing through unmodified)")
+            else:
+                try:
+                    data = await augment_chat_payload(data, headers)
+                    body = json.dumps(data, ensure_ascii=False).encode()
+                except (TypeError, ValueError) as e:
+                    log.warning(f"Failed to serialize augmented body (passing through): {e}")
+                    body = original_body
+                except Exception as e:
+                    log.warning(f"RAG augmentation error (passing through unmodified): {e}")
+                    body = original_body
 
     client = httpx.AsyncClient(timeout=600)
     upstream: httpx.Response | None = None

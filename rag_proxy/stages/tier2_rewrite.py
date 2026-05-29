@@ -43,10 +43,7 @@ def _is_safe_rewrite(original: str, candidate: str) -> bool:
         return False
     if _token_overlap(original, candidate) < 0.3:
         return False
-    for lit in _extract_literals(original):
-        if lit not in candidate:
-            return False
-    return True
+    return all(lit in candidate for lit in _extract_literals(original))
 
 
 def rewrite_query_deterministic(query: str) -> str:

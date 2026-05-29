@@ -132,6 +132,10 @@ async def hybrid_search(
         _dense_chunks(query, limit, score_threshold, no_cache),
         return_exceptions=True,
     )
+    if isinstance(sparse_result, asyncio.CancelledError):
+        raise sparse_result
+    if isinstance(dense_result, asyncio.CancelledError):
+        raise dense_result
     if isinstance(sparse_result, BaseException):
         log.warning(f"Sparse search failed: {sparse_result}")
         sparse_raw: list[dict] = []
