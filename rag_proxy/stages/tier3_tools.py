@@ -59,9 +59,13 @@ async def run_tools(ctx: RequestContext) -> None:
                     )
                     label = f"tool:file:{candidate.name}"
                     ctx.hits.append(
-                        ChunkHit(id=label, text=snippet, score=0.85, source="tool")
+                        ChunkHit(
+                            id=label,
+                            text=f"[{candidate}]\n{snippet}",
+                            score=0.85,
+                            source="tool",
+                        )
                     )
-                    ctx.chunk_texts.append(f"[{candidate}]\n{snippet}")
                     added += 1
                     ctx.stage_trace.append(label)
                 except Exception as e:

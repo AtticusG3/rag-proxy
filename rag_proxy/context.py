@@ -65,7 +65,6 @@ class RequestContext:
     retrieval_query: str | None = None
     selected_model: str | None = None
     hits: list[ChunkHit] = field(default_factory=list)
-    chunk_texts: list[str] = field(default_factory=list)
     injected_tokens_est: int = 0
     stage_trace: list[str] = field(default_factory=list)
     latency_ms: dict[str, float] = field(default_factory=dict)
@@ -77,6 +76,11 @@ class RequestContext:
 
     def effective_query(self) -> str | None:
         return self.retrieval_query or self.query_text
+
+    @property
+    def chunk_texts(self) -> list[str]:
+        """Derived from hits; read-only for logging and injection."""
+        return [h.text for h in self.hits if h.text]
 
     def top_k_for_retrieval(self, settings_top_k: int, light_top_k: int = 3) -> int:
         if self.retrieval == RetrievalDecision.LIGHT:
