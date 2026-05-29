@@ -8,14 +8,14 @@ alwaysApply: false
 
 ## Architecture (read before changing)
 
-- Single module: `rag_proxy.py` — FastAPI catch-all proxy to llama-swap.
+- Package: `rag_proxy/` (app, orchestrator, stages); shim `rag_proxy.py` for entrypoint.
 - RAG only on `POST` to `v1/chat/completions` or `api/chat`.
 - Auth-transparent: forward headers; no API key logic here.
 - Fail-open: embedding/Qdrant/injection errors must never break the upstream request.
 
 ## Conventions
 
-- Config via `os.getenv` at module top; document new vars in module docstring and `.env.example`.
+- Config via `rag_proxy/config.py` Settings; document new vars in `.env.example`.
 - Use `httpx.AsyncClient` per request for upstream; keep streaming client alive via `relay_upstream`.
 - Log with module logger `log`; ASCII-only messages (Windows console).
 - Helpers are plain functions (`extract_query_text`, `inject_context`, etc.) — no new classes unless unavoidable.

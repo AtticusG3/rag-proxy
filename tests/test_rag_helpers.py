@@ -1,18 +1,6 @@
 """Unit tests for RAG message handling (no network)."""
 
-import importlib.util
-import sys
-from pathlib import Path
-
-_ROOT = Path(__file__).resolve().parents[1]
-_spec = importlib.util.spec_from_file_location("rag_proxy", _ROOT / "rag_proxy.py")
-_mod = importlib.util.module_from_spec(_spec)
-sys.modules["rag_proxy"] = _mod
-assert _spec.loader is not None
-_spec.loader.exec_module(_mod)
-
-extract_query_text = _mod.extract_query_text
-inject_context = _mod.inject_context
+from rag_proxy.legacy_rag import extract_query_text, inject_context
 
 
 def test_extract_query_text_uses_last_user_message():

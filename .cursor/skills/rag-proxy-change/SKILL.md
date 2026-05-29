@@ -11,7 +11,7 @@ description: >-
 
 ## Before editing
 
-1. Read `rag_proxy.py` sections: Configuration, RAG helpers, `proxy()` route.
+1. Read `rag_proxy/app.py`, `rag_proxy/orchestrator.py`, `rag_proxy/legacy_rag.py`, `rag_proxy/config.py`.
 2. Read `tests/test_rag_helpers.py` and `README.md` RAG behavior section.
 3. State assumptions (e.g. which chat paths, payload schema, streaming vs buffered).
 
