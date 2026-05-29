@@ -38,6 +38,17 @@ def _token_overlap(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
+def _is_safe_rewrite(original: str, candidate: str) -> bool:
+    if len(candidate) > len(original) * 1.5:
+        return False
+    if _token_overlap(original, candidate) < 0.3:
+        return False
+    for lit in _extract_literals(original):
+        if lit not in candidate:
+            return False
+    return True
+
+
 def rewrite_query_deterministic(query: str) -> str:
     literals = _extract_literals(query)
     out = query.strip()
@@ -60,9 +71,14 @@ def _parse_rewrite_json(raw: str) -> str | None:
         if start < 0 or end <= start:
             return None
         data = json.loads(raw[start:end])
-        q = data.get("query", "").strip()
+        if not isinstance(data, dict):
+            return None
+        q = data.get("query")
+        if not isinstance(q, str):
+            return None
+        q = q.strip()
         return q or None
-    except (json.JSONDecodeError, ValueError, KeyError):
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError):
         return None
 
 
@@ -83,7 +99,7 @@ async def run_rewrite(ctx: RequestContext) -> None:
         )
         if raw:
             llm_q = _parse_rewrite_json(raw)
-            if llm_q:
+            if llm_q and _is_safe_rewrite(ctx.query_text, llm_q):
                 rewritten = llm_q
                 ctx.stage_trace.append("rewrite:llm")
 

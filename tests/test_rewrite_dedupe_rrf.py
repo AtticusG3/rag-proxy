@@ -1,11 +1,18 @@
 """Unit tests for rewrite, RRF merge, and dedupe."""
 
+import asyncio
+
 import pytest
 
-from rag_proxy.clients.qdrant import _apply_recency_boost, rrf_merge
+from rag_proxy.clients.qdrant import _apply_recency_boost, hybrid_search, rrf_merge
+from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit, RequestContext
 from rag_proxy.stages.tier2_context import apply_context_budget, dedupe_chunks
-from rag_proxy.stages.tier2_rewrite import rewrite_query_deterministic
+from rag_proxy.stages.tier2_rewrite import (
+    _parse_rewrite_json,
+    rewrite_query_deterministic,
+    run_rewrite,
+)
 
 
 def test_rewrite_preserves_ip_and_path():
@@ -73,6 +80,53 @@ def test_budget_keeps_constraint_lines():
 def test_recency_boost_noop_without_timestamp():
     score = _apply_recency_boost(0.5, {})
     assert score == 0.5
+
+
+def test_parse_rewrite_json_rejects_non_string_query():
+    assert _parse_rewrite_json('{"query": null}') is None
+    assert _parse_rewrite_json('{"query": 42}') is None
+
+
+def test_llm_rewrite_rejects_dropped_literal(monkeypatch):
+    monkeypatch.setattr(settings, "enable_query_rewrite", True)
+    monkeypatch.setattr(settings, "enable_query_rewrite_llm", True)
+    monkeypatch.setattr(settings, "intent_model", "test-model")
+
+    async def fake_llm(_model, _query, _timeout):
+        return '{"query": "kubernetes pod scheduling"}'
+
+    monkeypatch.setattr(
+        "rag_proxy.stages.tier2_rewrite.rewrite_query_via_model",
+        fake_llm,
+    )
+    ctx = RequestContext(query_text="k8s pod on 192.168.1.36")
+    asyncio.run(run_rewrite(ctx))
+    assert "192.168.1.36" in ctx.retrieval_query
+    assert "rewrite:llm" not in ctx.stage_trace
+
+
+def test_hybrid_rrf_includes_sparse_only_doc(monkeypatch):
+    monkeypatch.setattr(settings, "enable_hybrid_retrieval", True)
+    monkeypatch.setattr(settings, "sparse_index_url", "http://sparse.test")
+    monkeypatch.setattr(settings, "hybrid_dense_weight", 0.95)
+
+    dense = [
+        ChunkHit(id=f"d{i}", text=f"dense {i}", score=0.9 - i * 0.01)
+        for i in range(5)
+    ]
+
+    async def fake_dense(*_a, **_k):
+        return dense
+
+    async def fake_sparse(_query, _limit):
+        return [{"id": "sparse-only", "score": 0.99, "payload": {"text": "sparse hit"}}]
+
+    monkeypatch.setattr("rag_proxy.clients.qdrant._dense_chunks", fake_dense)
+    monkeypatch.setattr("rag_proxy.clients.qdrant.sparse_search", fake_sparse)
+
+    hits = asyncio.run(hybrid_search("test query", limit=5))
+    ids = [h.id for h in hits]
+    assert "sparse-only" in ids
 
 
 def test_chunk_texts_property_matches_hits():

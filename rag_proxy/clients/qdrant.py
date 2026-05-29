@@ -147,6 +147,34 @@ async def hybrid_search(
             list_weights=[dense_w, sparse_w],
         )
     ]
+    dense_ids = {c.id for c in dense_chunks}
+    sparse_only_ids = [
+        doc_id for doc_id, _ in sparse_ranked if doc_id not in dense_ids
+    ]
+    if sparse_only_ids:
+        reserve = min(len(sparse_only_ids), max(1, limit // 4))
+        main_slots = max(0, limit - reserve)
+        merged_ids: list[str] = []
+        seen: set[str] = set()
+        for doc_id in fused_ids:
+            if len(merged_ids) >= main_slots:
+                break
+            if doc_id not in seen:
+                merged_ids.append(doc_id)
+                seen.add(doc_id)
+        for doc_id in sparse_only_ids:
+            if doc_id not in seen:
+                merged_ids.append(doc_id)
+                seen.add(doc_id)
+            if len(merged_ids) >= limit:
+                break
+        for doc_id in fused_ids:
+            if len(merged_ids) >= limit:
+                break
+            if doc_id not in seen:
+                merged_ids.append(doc_id)
+                seen.add(doc_id)
+        fused_ids = merged_ids[:limit]
 
     by_id = {c.id: c for c in dense_chunks}
     for h in sparse_raw:
