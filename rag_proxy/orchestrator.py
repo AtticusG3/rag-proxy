@@ -9,7 +9,7 @@ from rag_proxy.clients.bundle import ClientBundle
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext, RetrievalDecision
 from rag_proxy.legacy_rag import extract_query_text, legacy_augment_messages
-from rag_proxy.observability import log_pipeline_summary, new_trace_id
+from rag_proxy.observability import log_pipeline_summary, new_trace_id, record_rag_outcome
 from rag_proxy.pipeline_stages import build_pipeline_stages
 
 log = logging.getLogger("rag-proxy")
@@ -55,19 +55,20 @@ async def run_cognitive_pipeline(ctx: RequestContext) -> None:
     ctx.cognitive_start_ms = time.perf_counter()
 
     stages = build_pipeline_stages()
-    for stage in stages:
-        if not stage.enabled():
-            continue
-        if not stage.should_run(ctx):
-            continue
-        if _budget_remaining(ctx) < stage.min_budget_ms:
-            continue
-        t0 = time.perf_counter()
-        await stage.run(ctx, _clients)
-        ctx.latency_ms[stage.name] = _elapsed_ms(t0)
-
-    ctx.latency_ms["total_cognitive"] = _elapsed_ms(ctx.cognitive_start_ms)
-    log_pipeline_summary(ctx)
+    try:
+        for stage in stages:
+            if not stage.enabled():
+                continue
+            if not stage.should_run(ctx):
+                continue
+            if _budget_remaining(ctx) < stage.min_budget_ms:
+                continue
+            t0 = time.perf_counter()
+            await stage.run(ctx, _clients)
+            ctx.latency_ms[stage.name] = _elapsed_ms(t0)
+    finally:
+        ctx.latency_ms["total_cognitive"] = _elapsed_ms(ctx.cognitive_start_ms)
+        log_pipeline_summary(ctx)
 
 
 async def augment_chat_payload(
@@ -80,11 +81,13 @@ async def augment_chat_payload(
         new_messages, meta = await legacy_augment_messages(messages)
         if meta.get("chunks"):
             data = {**data, "messages": new_messages}
+            record_rag_outcome(int(meta["chunks"]))
             log.info(
                 f"RAG: injected {meta['chunks']} chunk(s) "
                 f"(scores: {meta['scores']}) | query: {str(meta.get('query', ''))[:80]!r}"
             )
         elif meta.get("query"):
+            record_rag_outcome(0)
             log.debug(f"RAG: no chunks above threshold={settings.similarity_threshold}")
         return data
 

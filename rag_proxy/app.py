@@ -9,9 +9,10 @@ from typing import AsyncGenerator
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 
 from rag_proxy.config import CHAT_PATHS, settings
+from rag_proxy.observability import metrics_enabled, render_metrics_text
 from rag_proxy.orchestrator import augment_chat_payload
 
 logging.basicConfig(
@@ -22,6 +23,16 @@ logging.basicConfig(
 log = logging.getLogger("rag-proxy")
 
 app = FastAPI(title="RAG Proxy", docs_url=None, redoc_url=None)
+
+
+@app.get("/metrics")
+async def prometheus_metrics() -> PlainTextResponse:
+    if not metrics_enabled():
+        return PlainTextResponse("metrics disabled\n", status_code=404)
+    return PlainTextResponse(
+        render_metrics_text(),
+        media_type="text/plain; charset=utf-8",
+    )
 
 
 async def relay_upstream(
@@ -44,12 +55,24 @@ async def proxy(request: Request, path: str):
     headers = {k: v for k, v in request.headers.items() if k.lower() not in skip_headers}
 
     if request.method == "POST" and path.rstrip("/") in CHAT_PATHS and body:
+        original_body = body
         try:
             data = json.loads(body)
-            data = await augment_chat_payload(data, headers)
-            body = json.dumps(data, ensure_ascii=False).encode()
-        except Exception as e:
-            log.warning(f"RAG augmentation error (passing through unmodified): {e}")
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            log.warning(f"Invalid JSON body (passing through unmodified): {e}")
+        else:
+            if not isinstance(data, dict):
+                log.warning("Chat JSON body is not an object (passing through unmodified)")
+            else:
+                try:
+                    data = await augment_chat_payload(data, headers)
+                    body = json.dumps(data, ensure_ascii=False).encode()
+                except (TypeError, ValueError) as e:
+                    log.warning(f"Failed to serialize augmented body (passing through): {e}")
+                    body = original_body
+                except Exception as e:
+                    log.warning(f"RAG augmentation error (passing through unmodified): {e}")
+                    body = original_body
 
     client = httpx.AsyncClient(timeout=600)
     upstream: httpx.Response | None = None
@@ -105,5 +128,10 @@ def main() -> None:
 
     if "CHANGE_ME" in settings.qdrant_url:
         log.warning("QDRANT_URL still has placeholder -- set it to your omv IP before use")
+
+    if metrics_enabled():
+        log.info(
+            f"  -> metrics     : http://{settings.proxy_host}:{settings.proxy_port}/metrics"
+        )
 
     uvicorn.run(app, host=settings.proxy_host, port=settings.proxy_port, log_level="warning")
