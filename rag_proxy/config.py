@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
+
+log = logging.getLogger("rag-proxy")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -13,7 +16,14 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 
 def _env_int(name: str, default: int) -> int:
-    return int(os.getenv(name, str(default)))
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        log.warning("Invalid integer for %s=%r; using default %s", name, raw, default)
+        return default
 
 
 def _env_float(name: str, default: float) -> float:
@@ -89,6 +99,18 @@ class Settings:
     cognitive_latency_budget_ms: int = field(
         default_factory=lambda: _env_int("COGNITIVE_LATENCY_BUDGET_MS", 800)
     )
+    stage_budget_routing_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_BUDGET_ROUTING_MS", 0)
+    )
+    stage_budget_rewrite_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_BUDGET_REWRITE_MS", 20)
+    )
+    stage_budget_retrieve_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_BUDGET_RETRIEVE_MS", 50)
+    )
+    stage_budget_graph_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_BUDGET_GRAPH_MS", 100)
+    )
     retrieval_candidate_k: int = field(default_factory=lambda: _env_int("RETRIEVAL_CANDIDATE_K", 20))
     context_budget_ratio: float = field(
         default_factory=lambda: _env_float("CONTEXT_BUDGET_RATIO", 0.25)
@@ -152,6 +174,10 @@ class Settings:
     )
 
     # Observability
+    enable_metrics: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_METRICS", False)
+        or _env_int("METRICS_PORT", 0) > 0
+    )
     metrics_port: int = field(default_factory=lambda: _env_int("METRICS_PORT", 0))
 
     # Tier 0 tuning

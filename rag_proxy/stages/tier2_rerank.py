@@ -32,7 +32,6 @@ async def run_rerank(ctx: RequestContext) -> None:
             if order:
                 reordered = [ctx.hits[i] for i in order if 0 <= i < len(ctx.hits)]
                 ctx.hits = reordered[: settings.rerank_top_k]
-                ctx.chunk_texts = [h.text for h in ctx.hits if h.text]
                 ctx.stage_trace.append("rerank:ok")
                 return
     except Exception as e:

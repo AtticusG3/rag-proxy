@@ -24,16 +24,27 @@ def dedupe_chunks(hits: list[ChunkHit], enable_semantic: bool) -> list[ChunkHit]
         key = _norm_hash(h.text)
         if key in seen:
             continue
-        if any(h.text != o.text and h.text in o.text for o in out):
-            continue
-        if any(o.text != h.text and o.text in h.text for o in out):
-            continue
+        if enable_semantic:
+            if any(h.text != o.text and h.text in o.text for o in out):
+                continue
+            if any(o.text != h.text and o.text in h.text for o in out):
+                continue
         seen.add(key)
         out.append(h)
     return out
 
 
 def estimate_message_chars(messages: list[dict]) -> int:
+    if settings.enable_tokenizer_estimate:
+        total = 0
+        for m in messages:
+            content = m.get("content", "")
+            if isinstance(content, str):
+                estimated = len(content.split()) * 4
+                total += max(len(content), estimated)
+            else:
+                total += len(user_message_text(m))
+        return total
     total = 0
     for m in messages:
         total += len(user_message_text(m))
@@ -82,19 +93,16 @@ def resolve_inject_budget_chars(ctx: RequestContext, clients: ClientBundle) -> i
 
 
 async def run_context_assembly(ctx: RequestContext, clients: ClientBundle) -> None:
-    if not ctx.chunk_texts and not ctx.hits:
+    if not ctx.hits:
         return
 
-    hits = ctx.hits if ctx.hits else [
-        ChunkHit(id=str(i), text=t, score=1.0) for i, t in enumerate(ctx.chunk_texts)
-    ]
-    hits = dedupe_chunks(hits, settings.enable_semantic_dedupe)
+    hits = dedupe_chunks(list(ctx.hits), settings.enable_semantic_dedupe)
     budget = resolve_inject_budget_chars(ctx, clients)
     hits = apply_context_budget(hits, budget)
     ctx.hits = hits
-    ctx.chunk_texts = [h.text for h in hits if h.text]
 
-    if ctx.chunk_texts:
-        ctx.messages = inject_context(ctx.messages, ctx.chunk_texts)
-        ctx.injected_tokens_est = sum(len(c) for c in ctx.chunk_texts) // 4
-        ctx.stage_trace.append(f"inject:{len(ctx.chunk_texts)}")
+    texts = ctx.chunk_texts
+    if texts:
+        ctx.messages = inject_context(ctx.messages, texts)
+        ctx.injected_tokens_est = sum(len(c) for c in texts) // 4
+        ctx.stage_trace.append(f"inject:{len(texts)}")

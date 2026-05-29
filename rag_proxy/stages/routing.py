@@ -22,9 +22,8 @@ async def run_routing(ctx: RequestContext, clients: ClientBundle) -> None:
     if not settings.enable_model_routing:
         return
 
-    await clients.model_registry.refresh()
     routes = settings.model_routes()
-    target = routes.get(ctx.intent.value) or _INTENT_DEFAULT_ROUTES.get(ctx.intent.value)
+    target = routes.get(ctx.intent.value) or _INTENT_DEFAULT_ROUTES.get(ctx.intent)
     if not target:
         return
     if not clients.model_registry.model_exists(target):

@@ -28,5 +28,4 @@ async def run_retrieval(ctx: RequestContext, clients: ClientBundle) -> None:
         no_cache=ctx.no_cache,
     )
     ctx.hits = hits
-    ctx.chunk_texts = [h.text for h in hits if h.text]
-    ctx.stage_trace.append(f"retrieve:{len(ctx.chunk_texts)}")
+    ctx.stage_trace.append(f"retrieve:{len(ctx.hits)}")
