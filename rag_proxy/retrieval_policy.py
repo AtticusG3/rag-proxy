@@ -30,14 +30,12 @@ def should_bypass_heuristics(ctx: RequestContext) -> bool:
     if ctx.rag_mode_header == "off":
         return True
 
-    query = ctx.query_text
-    if not query:
+    q = (ctx.query_text or "").strip()
+    if not q:
         return True
 
-    if INFRA_SIGNAL.search(query):
+    if INFRA_SIGNAL.search(q):
         return False
-
-    q = query.strip()
     if len(q) <= settings.tier0_max_chars and _GREETING.match(q):
         return True
     if len(q) <= settings.tier0_max_chars and _SIMPLE_FAQ.match(q):
@@ -104,6 +102,11 @@ def apply_early_policy(ctx: RequestContext) -> list[str]:
 
 def apply_late_policy(ctx: RequestContext) -> list[str]:
     """Intent-based gating. Returns stage_trace fragments."""
+    if ctx.rag_mode_header == "force":
+        ctx.retrieval = RetrievalDecision.FULL
+        ctx.gating_would_skip = False
+        return ["gating:forced_full"]
+
     if not settings.enable_retrieval_gating:
         return []
 

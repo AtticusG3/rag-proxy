@@ -40,7 +40,8 @@ def estimate_message_chars(messages: list[dict]) -> int:
         for m in messages:
             content = m.get("content", "")
             if isinstance(content, str):
-                total += len(content.split()) * 4
+                estimated = len(content.split()) * 4
+                total += max(len(content), estimated)
             else:
                 total += len(user_message_text(m))
         return total

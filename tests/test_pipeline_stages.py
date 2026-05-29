@@ -1,6 +1,6 @@
 """Tests for declarative pipeline stage gating."""
 
-from rag_proxy.config import settings
+from rag_proxy.config import Settings
 from rag_proxy.context import RequestContext, RetrievalDecision
 from rag_proxy.pipeline_stages import build_pipeline_stages
 
@@ -21,10 +21,14 @@ def test_rerank_stage_requires_hits():
     assert not rerank.should_run(ctx_empty)
 
 
-def test_stage_budget_defaults_match_legacy():
-    assert settings.stage_budget_rewrite_ms == 20
-    assert settings.stage_budget_retrieve_ms == 50
-    assert settings.stage_budget_graph_ms == 100
+def test_stage_budget_defaults_match_legacy(monkeypatch):
+    monkeypatch.delenv("STAGE_BUDGET_REWRITE_MS", raising=False)
+    monkeypatch.delenv("STAGE_BUDGET_RETRIEVE_MS", raising=False)
+    monkeypatch.delenv("STAGE_BUDGET_GRAPH_MS", raising=False)
+    s = Settings()
+    assert s.stage_budget_rewrite_ms == 20
+    assert s.stage_budget_retrieve_ms == 50
+    assert s.stage_budget_graph_ms == 100
 
 
 def test_rewrite_stage_disabled_when_flag_off(monkeypatch):
