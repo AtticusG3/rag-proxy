@@ -41,6 +41,8 @@ def rrf_merge(
     else:
         weights = [1.0] * len(ranked_lists)
     for weight, ranked in zip(weights, ranked_lists):
+        if weight <= 0:
+            continue
         for rank, (doc_id, _score) in enumerate(ranked):
             scores[doc_id] += weight * (1.0 / (k + rank + 1))
     merged = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -125,10 +127,21 @@ async def hybrid_search(
     if not settings.enable_hybrid_retrieval or not settings.sparse_index_url:
         return await _dense_chunks(query, limit, score_threshold, no_cache)
 
-    sparse_raw, dense_chunks = await asyncio.gather(
+    sparse_result, dense_result = await asyncio.gather(
         sparse_search(query, limit),
         _dense_chunks(query, limit, score_threshold, no_cache),
+        return_exceptions=True,
     )
+    if isinstance(sparse_result, BaseException):
+        log.warning(f"Sparse search failed: {sparse_result}")
+        sparse_raw: list[dict] = []
+    else:
+        sparse_raw = sparse_result
+    if isinstance(dense_result, BaseException):
+        log.warning(f"Dense search failed: {dense_result}")
+        dense_chunks: list[ChunkHit] = []
+    else:
+        dense_chunks = dense_result
     if not sparse_raw:
         return dense_chunks
 

@@ -55,19 +55,20 @@ async def run_cognitive_pipeline(ctx: RequestContext) -> None:
     ctx.cognitive_start_ms = time.perf_counter()
 
     stages = build_pipeline_stages()
-    for stage in stages:
-        if not stage.enabled():
-            continue
-        if not stage.should_run(ctx):
-            continue
-        if _budget_remaining(ctx) < stage.min_budget_ms:
-            continue
-        t0 = time.perf_counter()
-        await stage.run(ctx, _clients)
-        ctx.latency_ms[stage.name] = _elapsed_ms(t0)
-
-    ctx.latency_ms["total_cognitive"] = _elapsed_ms(ctx.cognitive_start_ms)
-    log_pipeline_summary(ctx)
+    try:
+        for stage in stages:
+            if not stage.enabled():
+                continue
+            if not stage.should_run(ctx):
+                continue
+            if _budget_remaining(ctx) < stage.min_budget_ms:
+                continue
+            t0 = time.perf_counter()
+            await stage.run(ctx, _clients)
+            ctx.latency_ms[stage.name] = _elapsed_ms(t0)
+    finally:
+        ctx.latency_ms["total_cognitive"] = _elapsed_ms(ctx.cognitive_start_ms)
+        log_pipeline_summary(ctx)
 
 
 async def augment_chat_payload(
@@ -86,6 +87,7 @@ async def augment_chat_payload(
                 f"(scores: {meta['scores']}) | query: {str(meta.get('query', ''))[:80]!r}"
             )
         elif meta.get("query"):
+            record_rag_outcome(0)
             log.debug(f"RAG: no chunks above threshold={settings.similarity_threshold}")
         return data
 

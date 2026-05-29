@@ -57,7 +57,7 @@ async def proxy(request: Request, path: str):
     if request.method == "POST" and path.rstrip("/") in CHAT_PATHS and body:
         try:
             data = json.loads(body)
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
             log.warning(f"Invalid JSON body (passing through unmodified): {e}")
         else:
             data = await augment_chat_payload(data, headers)

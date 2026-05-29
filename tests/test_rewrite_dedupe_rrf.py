@@ -105,6 +105,24 @@ def test_llm_rewrite_rejects_dropped_literal(monkeypatch):
     assert "rewrite:llm" not in ctx.stage_trace
 
 
+def test_hybrid_search_dense_failure_returns_sparse(monkeypatch):
+    monkeypatch.setattr(settings, "enable_hybrid_retrieval", True)
+    monkeypatch.setattr(settings, "sparse_index_url", "http://sparse.test")
+
+    async def fake_dense(*_a, **_k):
+        raise RuntimeError("dense down")
+
+    async def fake_sparse(_query, _limit):
+        return [{"id": "sparse-only", "score": 0.9, "payload": {"text": "sparse hit"}}]
+
+    monkeypatch.setattr("rag_proxy.clients.qdrant._dense_chunks", fake_dense)
+    monkeypatch.setattr("rag_proxy.clients.qdrant.sparse_search", fake_sparse)
+
+    hits = asyncio.run(hybrid_search("test query", limit=3))
+    assert len(hits) == 1
+    assert hits[0].id == "sparse-only"
+
+
 def test_hybrid_rrf_includes_sparse_only_doc(monkeypatch):
     monkeypatch.setattr(settings, "enable_hybrid_retrieval", True)
     monkeypatch.setattr(settings, "sparse_index_url", "http://sparse.test")
