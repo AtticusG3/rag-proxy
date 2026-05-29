@@ -1,9 +1,10 @@
-"""Structured logging and optional metrics."""
+"""Structured logging and optional metrics counters."""
 
 from __future__ import annotations
 
 import json
 import logging
+import threading
 import uuid
 
 from rag_proxy.config import settings
@@ -11,12 +12,41 @@ from rag_proxy.context import RequestContext
 
 log = logging.getLogger("rag-proxy")
 
+_metrics_lock = threading.Lock()
+_requests_total = 0
+_chunks_injected_total = 0
+
 
 def new_trace_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
+def metrics_enabled() -> bool:
+    """ENABLE_METRICS or legacy METRICS_PORT > 0 enables GET /metrics on the proxy app."""
+    return settings.enable_metrics
+
+
+def record_rag_outcome(chunks_injected: int) -> None:
+    global _requests_total, _chunks_injected_total
+    with _metrics_lock:
+        _requests_total += 1
+        if chunks_injected > 0:
+            _chunks_injected_total += chunks_injected
+
+
+def render_metrics_text() -> str:
+    with _metrics_lock:
+        reqs = _requests_total
+        chunks = _chunks_injected_total
+    return (
+        f"rag_requests_total {reqs}\n"
+        f"rag_chunks_injected_total {chunks}\n"
+    )
+
+
 def log_pipeline_summary(ctx: RequestContext) -> None:
+    record_rag_outcome(len(ctx.chunk_texts))
+
     if not settings.enable_request_trace:
         return
     summary = {

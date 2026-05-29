@@ -9,7 +9,7 @@ from rag_proxy.clients.bundle import ClientBundle
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext, RetrievalDecision
 from rag_proxy.legacy_rag import extract_query_text, legacy_augment_messages
-from rag_proxy.observability import log_pipeline_summary, new_trace_id
+from rag_proxy.observability import log_pipeline_summary, new_trace_id, record_rag_outcome
 from rag_proxy.pipeline_stages import build_pipeline_stages
 
 log = logging.getLogger("rag-proxy")
@@ -80,6 +80,7 @@ async def augment_chat_payload(
         new_messages, meta = await legacy_augment_messages(messages)
         if meta.get("chunks"):
             data = {**data, "messages": new_messages}
+            record_rag_outcome(int(meta["chunks"]))
             log.info(
                 f"RAG: injected {meta['chunks']} chunk(s) "
                 f"(scores: {meta['scores']}) | query: {str(meta.get('query', ''))[:80]!r}"
