@@ -95,7 +95,8 @@ class ModelRegistry:
             caps = self.get(model_id)
             if caps.context_length:
                 return caps.context_length
-        return settings.context_fallback_chars * 4 // 4  # char budget fallback as pseudo tokens
+        # Char budget fallback when model context length is unknown (not token count).
+        return settings.context_fallback_chars
 
     def model_exists(self, model_id: str) -> bool:
         if not self._ids:

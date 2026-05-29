@@ -1,7 +1,9 @@
 """Unit tests for rewrite, RRF merge, and dedupe."""
 
-from rag_proxy.clients.qdrant import rrf_merge
-from rag_proxy.context import ChunkHit
+import pytest
+
+from rag_proxy.clients.qdrant import _apply_recency_boost, rrf_merge
+from rag_proxy.context import ChunkHit, RequestContext
 from rag_proxy.stages.tier2_context import apply_context_budget, dedupe_chunks
 from rag_proxy.stages.tier2_rewrite import rewrite_query_deterministic
 
@@ -28,14 +30,35 @@ def test_rrf_merge_orders_shared_docs_higher():
     assert ids[0] == "b"
 
 
-def test_dedupe_drops_subset_chunk():
+def test_rrf_list_weights_scale_contribution():
+    lists = [[("a", 1.0)], [("b", 1.0)]]
+    assert rrf_merge(lists, limit=2, list_weights=[0.9, 0.1])[0][0] == "a"
+    assert rrf_merge(lists, limit=2, list_weights=[0.1, 0.9])[0][0] == "b"
+
+
+def test_rrf_list_weights_length_must_match_ranked_lists():
+    with pytest.raises(ValueError, match="list_weights length"):
+        rrf_merge([[("a", 1.0)]], list_weights=[0.5, 0.5])
+
+
+def test_dedupe_drops_subset_chunk_when_semantic_enabled():
+    hits = [
+        ChunkHit(id="1", text="short", score=0.5),
+        ChunkHit(id="2", text="short and much longer detail", score=0.9),
+    ]
+    out = dedupe_chunks(hits, True)
+    texts = [h.text for h in out]
+    assert "short and much longer detail" in texts
+    assert "short" not in texts
+
+
+def test_dedupe_hash_only_keeps_distinct_when_semantic_disabled():
     hits = [
         ChunkHit(id="1", text="short", score=0.5),
         ChunkHit(id="2", text="short and much longer detail", score=0.9),
     ]
     out = dedupe_chunks(hits, False)
-    texts = [h.text for h in out]
-    assert "short and much longer detail" in texts
+    assert len(out) == 2
 
 
 def test_budget_keeps_constraint_lines():
@@ -45,3 +68,19 @@ def test_budget_keeps_constraint_lines():
     ]
     kept = apply_context_budget(hits, budget_chars=120)
     assert any("ERROR" in h.text for h in kept)
+
+
+def test_recency_boost_noop_without_timestamp():
+    score = _apply_recency_boost(0.5, {})
+    assert score == 0.5
+
+
+def test_chunk_texts_property_matches_hits():
+    ctx = RequestContext(
+        hits=[
+            ChunkHit(id="a", text="one", score=0.9),
+            ChunkHit(id="b", text="", score=0.1),
+            ChunkHit(id="c", text="two", score=0.8),
+        ]
+    )
+    assert ctx.chunk_texts == ["one", "two"]
