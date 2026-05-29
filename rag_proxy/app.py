@@ -60,8 +60,6 @@ async def proxy(request: Request, path: str):
             data = json.loads(body)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             log.warning(f"Invalid JSON body (passing through unmodified): {e}")
-        elif not isinstance(data, dict):
-            log.warning("Chat JSON body is not an object (passing through unmodified)")
         else:
             if not isinstance(data, dict):
                 log.warning("Chat JSON body is not an object (passing through unmodified)")

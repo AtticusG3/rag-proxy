@@ -91,9 +91,11 @@ Client -> rag_proxy :8088
            |
      tier0 -> intent -> gating -> routing
            |
-     rewrite -> retrieve -> rerank -> context (inject)
+     rewrite -> retrieve -> rerank
            |
      graph -> tools -> memory  (tier 3; off by default)
+           |
+     context (inject)
            |
            -> llama-swap :8080
 ```
