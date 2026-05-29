@@ -1,9 +1,11 @@
-"""Deterministic query rewrite for retrieval."""
+"""Deterministic and optional LLM query rewrite for retrieval."""
 
 from __future__ import annotations
 
+import json
 import re
 
+from rag_proxy.clients.llama_swap import rewrite_query_via_model
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext, RetrievalDecision
 
@@ -36,6 +38,17 @@ def _token_overlap(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
+def _is_safe_rewrite(original: str, candidate: str) -> bool:
+    if len(candidate) > len(original) * 1.5:
+        return False
+    if _token_overlap(original, candidate) < 0.3:
+        return False
+    for lit in _extract_literals(original):
+        if lit not in candidate:
+            return False
+    return True
+
+
 def rewrite_query_deterministic(query: str) -> str:
     literals = _extract_literals(query)
     out = query.strip()
@@ -51,6 +64,24 @@ def rewrite_query_deterministic(query: str) -> str:
     return out
 
 
+def _parse_rewrite_json(raw: str) -> str | None:
+    try:
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start < 0 or end <= start:
+            return None
+        data = json.loads(raw[start:end])
+        if not isinstance(data, dict):
+            return None
+        q = data.get("query")
+        if not isinstance(q, str):
+            return None
+        q = q.strip()
+        return q or None
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError):
+        return None
+
+
 async def run_rewrite(ctx: RequestContext) -> None:
     if not settings.enable_query_rewrite or not ctx.query_text:
         return
@@ -58,5 +89,18 @@ async def run_rewrite(ctx: RequestContext) -> None:
         return
 
     rewritten = rewrite_query_deterministic(ctx.query_text)
-    ctx.retrieval_query = rewritten
     ctx.stage_trace.append("rewrite:deterministic")
+
+    if settings.enable_query_rewrite_llm and settings.intent_model:
+        raw = await rewrite_query_via_model(
+            settings.intent_model,
+            ctx.query_text,
+            settings.intent_timeout_ms,
+        )
+        if raw:
+            llm_q = _parse_rewrite_json(raw)
+            if llm_q and _is_safe_rewrite(ctx.query_text, llm_q):
+                rewritten = llm_q
+                ctx.stage_trace.append("rewrite:llm")
+
+    ctx.retrieval_query = rewritten
