@@ -90,7 +90,8 @@ async def augment_chat_payload(
 
     ctx = build_request_context_from_http(data, headers)
     try:
-        await _clients.model_registry.refresh()
+        if settings.enable_model_routing:
+            await _clients.model_registry.refresh()
         await run_cognitive_pipeline(ctx)
         data = {**data, "messages": ctx.messages}
         if ctx.selected_model and settings.model_routing_mode == "force":

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass, field
+
+log = logging.getLogger("rag-proxy")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -19,6 +22,7 @@ def _env_int(name: str, default: int) -> int:
     try:
         return int(raw)
     except (TypeError, ValueError):
+        log.warning("Invalid integer for %s=%r; using default %s", name, raw, default)
         return default
 
 
