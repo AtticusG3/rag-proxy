@@ -6,8 +6,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from rag_proxy.clients.bundle import ClientBundle
+from rag_proxy.clients.qdrant import hybrid_search
 from rag_proxy.config import settings
-from rag_proxy.context import PipelineTier, RequestContext, RetrievalDecision
+from rag_proxy.context import IntentLabel, PipelineTier, RequestContext, RetrievalDecision
+from rag_proxy.legacy_rag import inject_context
 from rag_proxy.stages import routing as routing_stage
 from rag_proxy.stages import tier0_heuristics, tier1_gating, tier1_intent
 from rag_proxy.stages import tier2_context, tier2_rerank, tier2_retrieval, tier2_rewrite
@@ -27,6 +29,27 @@ def _retrieval_active(ctx: RequestContext) -> bool:
     return ctx.retrieval != RetrievalDecision.SKIP
 
 
+_GRAPH_INTENTS = frozenset(
+    {
+        IntentLabel.INFRA_DEBUG,
+        IntentLabel.TROUBLESHOOTING,
+        IntentLabel.LOG_ANALYSIS,
+    }
+)
+
+
+def _graph_should_run(ctx: RequestContext) -> bool:
+    return bool(ctx.query_text) and ctx.intent in _GRAPH_INTENTS
+
+
+def _tools_should_run(ctx: RequestContext) -> bool:
+    return _retrieval_active(ctx)
+
+
+def _memory_should_run(ctx: RequestContext) -> bool:
+    return bool(ctx.conversation_id)
+
+
 async def _run_tier0(ctx: RequestContext, clients: ClientBundle) -> None:
     await tier0_heuristics.run_tier0(ctx)
     if ctx.retrieval != RetrievalDecision.SKIP:
@@ -43,6 +66,47 @@ async def _run_graph(ctx: RequestContext, clients: ClientBundle) -> None:
     await tier3_graph.run_graph(ctx)
 
 
+async def _run_legacy_retrieve(ctx: RequestContext, clients: ClientBundle) -> None:
+    query = ctx.query_text
+    if not query:
+        return
+    ctx.hits = await hybrid_search(
+        query,
+        limit=settings.top_k,
+        no_cache=ctx.no_cache,
+    )
+    ctx.stage_trace.append(f"retrieve:{len(ctx.hits)}")
+
+
+async def _run_legacy_context(ctx: RequestContext, clients: ClientBundle) -> None:
+    texts = ctx.chunk_texts
+    if not texts:
+        return
+    ctx.messages = inject_context(ctx.messages, texts)
+    ctx.injected_tokens_est = sum(len(c) for c in texts) // 4
+    ctx.stage_trace.append(f"inject:{len(texts)}")
+
+
+def build_legacy_pipeline_stages() -> list[PipelineStage]:
+    """Minimal retrieve-and-inject path when ENABLE_COGNITIVE_PIPELINE=false."""
+    return [
+        PipelineStage(
+            name="retrieve",
+            min_budget_ms=0,
+            enabled=lambda: True,
+            should_run=lambda ctx: bool(ctx.query_text),
+            run=_run_legacy_retrieve,
+        ),
+        PipelineStage(
+            name="context",
+            min_budget_ms=0,
+            enabled=lambda: True,
+            should_run=lambda ctx: bool(ctx.hits),
+            run=_run_legacy_context,
+        ),
+    ]
+
+
 def build_pipeline_stages() -> list[PipelineStage]:
     return [
         PipelineStage(
@@ -55,14 +119,14 @@ def build_pipeline_stages() -> list[PipelineStage]:
         PipelineStage(
             name="intent",
             min_budget_ms=0,
-            enabled=lambda: True,
+            enabled=lambda: settings.enable_intent_router,
             should_run=lambda _ctx: True,
             run=lambda ctx, clients: tier1_intent.run_intent(ctx, clients),
         ),
         PipelineStage(
             name="gating",
             min_budget_ms=0,
-            enabled=lambda: True,
+            enabled=lambda: settings.enable_retrieval_gating,
             should_run=lambda _ctx: True,
             run=lambda ctx, _clients: tier1_gating.run_gating(ctx),
         ),
@@ -98,21 +162,21 @@ def build_pipeline_stages() -> list[PipelineStage]:
             name="graph",
             min_budget_ms=float(settings.stage_budget_graph_ms),
             enabled=lambda: settings.enable_graph_lookup,
-            should_run=lambda _ctx: True,
+            should_run=_graph_should_run,
             run=_run_graph,
         ),
         PipelineStage(
             name="tools",
             min_budget_ms=float(settings.tool_budget_ms),
             enabled=lambda: settings.enable_tools,
-            should_run=lambda _ctx: True,
+            should_run=_tools_should_run,
             run=lambda ctx, _clients: tier3_tools.run_tools(ctx),
         ),
         PipelineStage(
             name="memory",
             min_budget_ms=0,
             enabled=lambda: settings.enable_rolling_memory,
-            should_run=lambda _ctx: True,
+            should_run=_memory_should_run,
             run=lambda ctx, _clients: tier3_memory.run_memory(ctx),
         ),
         PipelineStage(

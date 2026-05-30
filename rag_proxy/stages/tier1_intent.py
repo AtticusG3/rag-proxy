@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import re
 
 from rag_proxy.clients.bundle import ClientBundle
-from rag_proxy.clients.llama_swap import classify_intent_via_model
+from rag_proxy.clients.llama_swap import classify_intent_via_model, parse_json_object
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, RequestContext
 
@@ -46,24 +45,22 @@ def _rules_intent(query: str) -> tuple[IntentLabel, float]:
 
 
 def _parse_model_intent(raw: str) -> tuple[IntentLabel, float]:
+    data = parse_json_object(raw)
+    if not data:
+        return IntentLabel.UNKNOWN, 0.0
+    label = data.get("intent", "unknown")
     try:
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start < 0 or end <= start:
-            return IntentLabel.UNKNOWN, 0.0
-        data = json.loads(raw[start:end])
-        label = data.get("intent", "unknown")
         conf = float(data.get("confidence", 0.0))
-        try:
-            return IntentLabel(label), conf
-        except ValueError:
-            return IntentLabel.UNKNOWN, 0.0
-    except (json.JSONDecodeError, ValueError, KeyError):
+    except (TypeError, ValueError):
+        return IntentLabel.UNKNOWN, 0.0
+    try:
+        return IntentLabel(label), conf
+    except ValueError:
         return IntentLabel.UNKNOWN, 0.0
 
 
 async def run_intent(ctx: RequestContext, clients: ClientBundle) -> None:
-    if not settings.enable_intent_router or not ctx.query_text:
+    if not ctx.query_text:
         return
 
     label, conf = _rules_intent(ctx.query_text)

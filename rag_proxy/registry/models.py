@@ -90,13 +90,13 @@ class ModelRegistry:
     def list_ids(self) -> list[str]:
         return list(self._ids)
 
-    def resolve_context_limit(self, model_id: str | None) -> int:
-        if model_id:
-            caps = self.get(model_id)
-            if caps.context_length:
-                return caps.context_length
-        # Char budget fallback when model context length is unknown (not token count).
-        return settings.context_fallback_chars
+    def resolve_context_tokens(self, model_id: str | None) -> int | None:
+        if not model_id:
+            return None
+        caps = self.get(model_id)
+        if caps.context_length:
+            return caps.context_length
+        return None
 
     def model_exists(self, model_id: str) -> bool:
         if not self._ids:

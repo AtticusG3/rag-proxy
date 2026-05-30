@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import re
 
-from rag_proxy.clients.llama_swap import rewrite_query_via_model
+from rag_proxy.clients.llama_swap import parse_json_object, rewrite_query_via_model
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext, RetrievalDecision
 
@@ -62,25 +61,18 @@ def rewrite_query_deterministic(query: str) -> str:
 
 
 def _parse_rewrite_json(raw: str) -> str | None:
-    try:
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start < 0 or end <= start:
-            return None
-        data = json.loads(raw[start:end])
-        if not isinstance(data, dict):
-            return None
-        q = data.get("query")
-        if not isinstance(q, str):
-            return None
-        q = q.strip()
-        return q or None
-    except (json.JSONDecodeError, ValueError, KeyError, TypeError):
+    data = parse_json_object(raw)
+    if not data:
         return None
+    q = data.get("query")
+    if not isinstance(q, str):
+        return None
+    q = q.strip()
+    return q or None
 
 
 async def run_rewrite(ctx: RequestContext) -> None:
-    if not settings.enable_query_rewrite or not ctx.query_text:
+    if not ctx.query_text:
         return
     if ctx.retrieval == RetrievalDecision.SKIP:
         return

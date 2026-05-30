@@ -33,9 +33,7 @@ async def run_routing(ctx: RequestContext, clients: ClientBundle) -> None:
     ctx.selected_model = target
     ctx.stage_trace.append(f"route:{target}:{settings.model_routing_mode}")
 
-    if settings.model_routing_mode == "force" and ctx.data is not None:
-        ctx.data["model"] = target
-    elif settings.model_routing_mode == "suggest":
+    if settings.model_routing_mode == "suggest":
         log.info(
             f"trace={ctx.trace_id} suggested_model={target} for intent={ctx.intent.value}"
         )

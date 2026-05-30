@@ -48,8 +48,6 @@ def estimate_message_chars(messages: list[dict]) -> int:
     total = 0
     for m in messages:
         total += len(user_message_text(m))
-        if isinstance(m.get("content"), str):
-            total += len(m["content"])
     return total
 
 
@@ -79,10 +77,10 @@ def apply_context_budget(hits: list[ChunkHit], budget_chars: int) -> list[ChunkH
 
 
 def resolve_inject_budget_chars(ctx: RequestContext, clients: ClientBundle) -> int:
-    model_id = ctx.requested_model or ""
-    ctx_limit = clients.model_registry.resolve_context_limit(model_id)
-    if ctx_limit and ctx_limit < 100000:
-        token_budget = int(ctx_limit * settings.context_budget_ratio)
+    model_id = ctx.requested_model or None
+    context_tokens = clients.model_registry.resolve_context_tokens(model_id)
+    if context_tokens is not None:
+        token_budget = int(context_tokens * settings.context_budget_ratio)
         char_budget = token_budget * 4
     else:
         char_budget = settings.context_fallback_chars

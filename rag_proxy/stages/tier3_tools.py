@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from rag_proxy.config import settings
-from rag_proxy.context import ChunkHit, RequestContext, RetrievalDecision
+from rag_proxy.context import ChunkHit, RequestContext
 
 log = logging.getLogger("rag-proxy")
 
@@ -36,9 +36,6 @@ async def _read_file_limited(path: Path, max_chars: int) -> str:
 
 
 async def run_tools(ctx: RequestContext) -> None:
-    if not settings.enable_tools or ctx.retrieval == RetrievalDecision.SKIP:
-        return
-
     roots = settings.tool_roots()
     if not roots:
         ctx.errors.append("tools:no_roots")

@@ -8,7 +8,7 @@ import sqlite3
 from pathlib import Path
 
 from rag_proxy.config import settings
-from rag_proxy.context import ChunkHit, IntentLabel, RequestContext
+from rag_proxy.context import ChunkHit, RequestContext
 
 log = logging.getLogger("rag-proxy")
 
@@ -100,13 +100,7 @@ def _query_graph(db_path: Path, seeds: list[str], max_depth: int) -> list[str]:
 
 
 async def run_graph(ctx: RequestContext) -> None:
-    if not settings.enable_graph_lookup or not ctx.query_text:
-        return
-    if ctx.intent not in (
-        IntentLabel.INFRA_DEBUG,
-        IntentLabel.TROUBLESHOOTING,
-        IntentLabel.LOG_ANALYSIS,
-    ):
+    if not ctx.query_text:
         return
 
     seeds = list({m.group(0).lower() for m in _ENTITY.finditer(ctx.query_text)})
