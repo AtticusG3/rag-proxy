@@ -32,7 +32,7 @@ python -m pytest tests/ -q
 source "$(dirname "$0")/dev-log-cap.sh"
 rotate_dev_log_for_restart
 
-fuser -k 8087/tcp 2>/dev/null || true
+fuser -k "${PROXY_PORT}/tcp" 2>/dev/null || true
 sleep 2
 nohup python rag_proxy.py > /tmp/rag_proxy_test.log 2>&1 &
 sleep 3
