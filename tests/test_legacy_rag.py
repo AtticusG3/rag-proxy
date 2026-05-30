@@ -99,3 +99,21 @@ def test_extract_chunk_text_prefers_text_over_content():
 def test_extract_chunk_text_falls_back_to_content():
     hit = {"payload": {"content": "only content field"}}
     assert extract_chunk_text(hit) == "only content field"
+
+
+@pytest.mark.parametrize(
+    "payload,expected",
+    [
+        ({"chunk": "from chunk"}, "from chunk"),
+        ({"document": "from document"}, "from document"),
+        ({"page_content": "from page_content"}, "from page_content"),
+        ({"text": "", "content": "fallback content"}, "fallback content"),
+    ],
+)
+def test_extract_chunk_text_payload_key_precedence(payload, expected):
+    """Guard canonical Qdrant payload field order (PAYLOAD_TEXT_KEYS)."""
+    assert extract_chunk_text({"payload": payload}) == expected
+
+
+def test_extract_chunk_text_null_payload():
+    assert extract_chunk_text({"payload": None}) == ""

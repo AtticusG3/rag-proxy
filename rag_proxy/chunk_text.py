@@ -10,7 +10,7 @@ PAYLOAD_TEXT_KEYS = ("text", "content", "chunk", "document", "page_content")
 
 def extract_chunk_text(hit: dict[str, Any]) -> str:
     """Pull text from a Qdrant hit or sparse sidecar result row."""
-    payload = hit.get("payload", {})
+    payload = hit.get("payload") or {}
     for key in PAYLOAD_TEXT_KEYS:
         value = payload.get(key)
         if value:
