@@ -1,0 +1,41 @@
+# Copy to docker/config.yaml and set model paths under /models (host MODELS_DIR).
+# llama-swap legacy CUDA image: config at /app/config.yaml, llama-server at /app/llama-server.
+
+healthCheckTimeout: 120
+
+hooks:
+  on_startup:
+    preload:
+      - "nomic-embed"
+
+models:
+  # Example chat model — replace with your GGUF under MODELS_DIR.
+  "chat-demo":
+    name: "Chat demo (edit docker/config.yaml)"
+    cmd: >
+      /app/llama-server
+      -m /models/your-chat-model.gguf
+      -c 8192
+      -ngl 99
+      -fa on
+      --host 127.0.0.1
+      --port ${PORT}
+      --jinja
+    ttl: 300
+
+  # Proxy entry for clients that call embeddings via llama-swap; rag_proxy uses EMBED_URL directly.
+  "nomic-embed":
+    name: "Nomic Embed v1.5"
+    proxy: "http://nomic-embed:8089"
+
+  # Optional intent classifier (enable ENABLE_INTENT_ROUTER + INTENT_MODEL in docker/.env).
+  # "intent-mini":
+  #   name: "Intent classifier"
+  #   cmd: >
+  #     /app/llama-server
+  #     -m /models/intent/phi-4-mini-instruct.Q4_K_M.gguf
+  #     -c 2048
+  #     -ngl 0
+  #     --host 127.0.0.1
+  #     --port ${PORT}
+  #   ttl: 600
