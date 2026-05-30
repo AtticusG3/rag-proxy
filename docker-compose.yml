@@ -1,0 +1,188 @@
+# RAG proxy in front of llama-swap (CUDA). Clients use rag-proxy :8088, not llama-swap :8080.
+#
+# Legacy RAG (minimal):
+#   cp docker/.env.example docker/.env
+#   cp docker/config.yaml.example docker/config.yaml
+#   docker compose up -d --build
+#
+# Full homelab (Qdrant + cognitive sidecars):
+#   cp docker/.env.example docker/.env
+#   cp docker/.env.homelab.example docker/.env.homelab
+#   cp docker/config.yaml.example docker/config.yaml
+#   # Merge homelab flags (see docker/README.md) or copy fields into docker/.env
+#   docker compose --profile qdrant --profile cognitive up -d --build
+#
+# OpenAI base URL: http://<host>:8088/v1
+
+name: rag-proxy-stack
+
+services:
+  llama-swap:
+    image: ${LLAMA_SWAP_IMAGE:-ghcr.io/mostlygeek/llama-swap:cuda}
+    restart: unless-stopped
+    ports:
+      - "${LLAMA_SWAP_HOST_PORT:-8080}:8080"
+    volumes:
+      - ${MODELS_DIR:?set MODELS_DIR in docker/.env}:/models:ro
+      - ./docker/config.yaml:/app/config.yaml:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/health | grep -q OK || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - rag_stack
+
+  # CPU-only embed sidecar; rag_proxy calls EMBED_URL directly (not via llama-swap).
+  nomic-embed:
+    image: ${NOMIC_EMBED_IMAGE:-ghcr.io/mostlygeek/llama-swap:cpu}
+    restart: unless-stopped
+    entrypoint: ["/app/llama-server"]
+    command:
+      - "-m"
+      - "${NOMIC_EMBED_MODEL:-/models/nomic-embed/nomic-embed-text-v1.5.Q8_0.gguf}"
+      - "--embedding"
+      - "--pooling"
+      - "mean"
+      - "-ngl"
+      - "0"
+      - "-c"
+      - "2048"
+      - "-b"
+      - "2048"
+      - "-ub"
+      - "2048"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8089"
+      - "--log-disable"
+    volumes:
+      - ${MODELS_DIR}:/models:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8089/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - rag_stack
+
+  # CPU cross-encoder rerank (profile: cognitive). First start downloads ~400MB model weights.
+  reranker:
+    profiles: [cognitive]
+    build:
+      context: ./sidecars/rerank
+      dockerfile: Dockerfile
+    image: ${RERANKER_IMAGE:-rag-reranker:local}
+    restart: unless-stopped
+    ports:
+      - "${RERANKER_HOST_PORT:-8095}:8095"
+    environment:
+      RERANK_MODEL: ${RERANK_MODEL:-BAAI/bge-reranker-base}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+    networks:
+      - rag_stack
+
+  # BM25 sparse index synced from Qdrant (profile: cognitive).
+  sparse-index:
+    profiles: [cognitive]
+    build:
+      context: .
+      dockerfile: sidecars/sparse/Dockerfile
+    image: ${SPARSE_INDEX_IMAGE:-rag-sparse-index:local}
+    restart: unless-stopped
+    ports:
+      - "${SPARSE_INDEX_HOST_PORT:-8096}:8096"
+    environment:
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-nomad_knowledge_base}
+      SPARSE_REFRESH_SEC: ${SPARSE_REFRESH_SEC:-3600}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      qdrant:
+        condition: service_started
+        required: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+    networks:
+      - rag_stack
+
+  rag-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${RAG_PROXY_IMAGE:-rag-proxy:local}
+    restart: unless-stopped
+    ports:
+      - "${RAG_PROXY_HOST_PORT:-8088}:8088"
+    env_file:
+      - path: docker/.env
+        required: true
+    environment:
+      LLAMA_SWAP_URL: http://llama-swap:8080
+      EMBED_URL: http://nomic-embed:8089
+      RERANKER_URL: http://reranker:8095
+      SPARSE_INDEX_URL: http://sparse-index:8096
+      PROXY_HOST: 0.0.0.0
+      PROXY_PORT: "8088"
+    volumes:
+      - rag_proxy_state:/var/lib/rag_proxy
+    depends_on:
+      llama-swap:
+        condition: service_healthy
+      nomic-embed:
+        condition: service_healthy
+      reranker:
+        condition: service_healthy
+        required: false
+      sparse-index:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/v1/models', timeout=4)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - rag_stack
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.2
+    profiles: [qdrant]
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_HOST_PORT:-6333}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - rag_stack
+
+networks:
+  rag_stack:
+    driver: bridge
+
+volumes:
+  rag_proxy_state:
+  qdrant_data:
