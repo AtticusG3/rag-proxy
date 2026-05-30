@@ -149,8 +149,17 @@ def test_relay_upstream_throttles_stream_registry_touch():
 
         reg_key = id(upstream)
         # register, last_touch init, per-chunk now checks, touch_stream update on 3rd chunk
-        times = [0.0, 0.0, 0.1, 0.2, 1.5, 1.5]
-        with patch.object(uc.time, "monotonic", side_effect=times):
+        times = iter([0.0, 0.0, 0.1, 0.2, 1.5, 1.5])
+        last = [1.5]
+
+        def fake_monotonic() -> float:
+            try:
+                last[0] = next(times)
+            except StopIteration:
+                pass
+            return last[0]
+
+        with patch.object(uc.time, "monotonic", side_effect=fake_monotonic):
             out = []
             async for part in uc.relay_upstream(request, upstream):
                 out.append(part)

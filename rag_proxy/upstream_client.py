@@ -117,11 +117,13 @@ async def _upstream_connection_janitor() -> None:
     while True:
         try:
             await asyncio.sleep(settings.upstream_idle_sweep_sec)
+            if _upstream_client is None:
+                continue
+            await reap_abandoned_streams()
         except asyncio.CancelledError:
             raise
-        if _upstream_client is None:
-            continue
-        await reap_abandoned_streams()
+        except Exception:
+            log.warning("janitor sweep failed", exc_info=True)
 
 
 async def register_stream(response: httpx.Response) -> int:

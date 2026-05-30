@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
@@ -31,7 +32,7 @@ log = logging.getLogger("rag-proxy")
 
 
 @asynccontextmanager
-async def _app_lifespan(_app: FastAPI):
+async def _app_lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await startup_upstream_client()
     try:
         yield
