@@ -25,10 +25,10 @@
 {"from": "repo:rag-proxy", "to": "module:rag-proxy-registry-init-py", "type": "CONTAINS", "source": "rag_proxy/registry/__init__.py", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
 {"from": "repo:rag-proxy", "to": "module:rag-proxy-stages-init-py", "type": "CONTAINS", "source": "rag_proxy/stages/__init__.py", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
 {"from": "repo:rag-proxy", "to": "module:sidecars-rerank-app-py", "type": "CONTAINS", "source": "sidecars/rerank/app.py", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
-{"from": "module:sidecars-rerank-app-py", "to": "route:health", "type": "EXPOSES", "source": "app.py:49", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
+{"from": "module:sidecars-rerank-app-py", "to": "route:sidecars-rerank-health", "type": "EXPOSES", "source": "app.py:53", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
 {"from": "module:sidecars-rerank-app-py", "to": "route:rerank", "type": "EXPOSES", "source": "app.py:54", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
 {"from": "repo:rag-proxy", "to": "module:sidecars-sparse-app-py", "type": "CONTAINS", "source": "sidecars/sparse/app.py", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
-{"from": "module:sidecars-sparse-app-py", "to": "route:health", "type": "EXPOSES", "source": "app.py:108", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
+{"from": "module:sidecars-sparse-app-py", "to": "route:sidecars-sparse-health", "type": "EXPOSES", "source": "app.py:113", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
 {"from": "module:sidecars-sparse-app-py", "to": "route:search", "type": "EXPOSES", "source": "app.py:119", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
 {"from": "module:sidecars-sparse-app-py", "to": "route:reindex", "type": "EXPOSES", "source": "app.py:125", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
 {"from": "module:sidecars-sparse-app-py", "to": "route:result", "type": "EXPOSES", "source": "app.py:50", "confidence": 1.0, "extracted_at": "2026-05-30T13:19:45Z"}
