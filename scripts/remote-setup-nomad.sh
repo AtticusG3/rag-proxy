@@ -28,13 +28,17 @@ set -a
 set +a
 python -m pytest tests/ -q
 
-pkill -f 'rag_proxy_test_20260530.*rag_proxy.py' 2>/dev/null || true
-sleep 1
-nohup env $(grep -v '^#' .env | xargs) python rag_proxy.py > /tmp/rag_proxy_test.log 2>&1 &
+# shellcheck source=dev-log-cap.sh
+source "$(dirname "$0")/dev-log-cap.sh"
+rotate_dev_log_for_restart
+
+fuser -k "${PROXY_PORT}/tcp" 2>/dev/null || true
+sleep 2
+nohup python rag_proxy.py > /tmp/rag_proxy_test.log 2>&1 &
 sleep 3
 
 echo "[metrics]"
-curl -s http://127.0.0.1:8087/metrics | head -5
+curl -s "http://127.0.0.1:${PROXY_PORT}/metrics" | head -5
 
 echo "[embed]"
 curl -s -m 10 -X POST http://127.0.0.1:8089/v1/embeddings \
