@@ -22,6 +22,7 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag_proxy/upstream_client.py` | Shared upstream httpx pool, `relay_upstream`, stream janitor |
 | `rag_proxy/stages/` | Tier 0–3 stage implementations |
 | `tests/` | Offline pytest |
+| `rag_proxy/chunk_text.py` | Shared Qdrant payload text extraction (dense + sparse) |
 | `.env.example` | Env template |
 | `docs/COGNITIVE_RAG_PLAN.md` | Operator architecture reference |
 

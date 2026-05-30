@@ -7,6 +7,7 @@ import logging
 
 import httpx
 
+from rag_proxy.chunk_text import extract_chunk_text
 from rag_proxy.config import settings
 
 log = logging.getLogger("rag-proxy")
@@ -106,15 +107,6 @@ async def search_qdrant_dense(
     except Exception as e:
         log.warning(f"Qdrant search failed: {e}")
         return []
-
-
-def extract_chunk_text(hit: dict) -> str:
-    """Pull text out of a Qdrant hit payload. NOMAD may use different field names."""
-    payload = hit.get("payload", {})
-    for key in ("text", "content", "chunk", "document", "page_content"):
-        if payload.get(key):
-            return payload[key]
-    return str(payload) if payload else ""
 
 
 def user_message_text(msg: dict) -> str:
