@@ -16,7 +16,7 @@ Transparent RAG middleware in front of [llama-swap](https://github.com/mostlygee
 ### Minimum `.env` checklist
 
 | Variable | You must set | Typical value |
-|----------|--------------|---------------|
+| --- | --- | --- |
 | `QDRANT_URL` | Yes | `http://192.168.1.36:6333` |
 | `QDRANT_COLLECTION` | If not `nomad_knowledge_base` | your collection name |
 | `LLAMA_SWAP_URL` | If llama-swap is not local | `http://127.0.0.1:8080` |
@@ -29,7 +29,7 @@ Leave `ENABLE_COGNITIVE_PIPELINE=false` until you have verified legacy RAG works
 Use the **same paths and API key** as llama-swap; only the base URL changes.
 
 | Client | Setting | Value |
-|--------|---------|-------|
+| --- | --- | --- |
 | Open WebUI | Settings → Connections → OpenAI API → URL | `http://<host>:8088/v1` |
 | Continue / Cursor | OpenAI base URL override | `http://<host>:8088/v1` |
 | `curl` / scripts | `-H "Authorization: Bearer …"` unchanged | POST to `http://<host>:8088/v1/chat/completions` |
@@ -73,7 +73,7 @@ For cognitive mode, look for `trace=… tier=… retrieval=… chunks=…` lines
 
 `ENABLE_COGNITIVE_PIPELINE=false` (default): same as before — always embed, dense Qdrant search, inject.
 
-```
+```text
 Client
   -> rag_proxy :8088
         | embed last user message (nomic-embed :8089)
@@ -86,7 +86,7 @@ Client
 
 `ENABLE_COGNITIVE_PIPELINE=true` runs tiered stages; each subsystem has its own `ENABLE_*` flag (see [.env.example](.env.example)).
 
-```
+```text
 Client -> rag_proxy :8088
            |
      tier0 -> intent -> gating -> routing
@@ -103,7 +103,7 @@ Client -> rag_proxy :8088
 Stages are registered in `pipeline_stages.py`; the orchestrator skips disabled stages or those below per-stage budget (`STAGE_BUDGET_*`). Retrieval policy (`retrieval_policy.py`) drives tier0 bypass and gating skip/light/full.
 
 | Tier | Typical added latency | Default |
-|------|----------------------|---------|
+| --- | --- | --- |
 | 0 Heuristics | 1-15 ms | `ENABLE_TIER0_HEURISTICS` |
 | 1 Intent + gating | 20-100 ms | off |
 | 2 Retrieval | 100-500 ms | dense path when not skipped |
@@ -116,7 +116,7 @@ Stages are registered in `pipeline_stages.py`; the orchestrator skips disabled s
 ### Client headers (cognitive mode)
 
 | Header | Values | Effect |
-|--------|--------|--------|
+| --- | --- | --- |
 | `X-RAG-Mode` | `off`, `auto`, `force` | Skip RAG, default pipeline, or force retrieval |
 | `X-No-Cache` | `true` | Bypass embed/retrieval caches |
 | `X-Conversation-Id` | string | Rolling memory session key |
@@ -124,7 +124,7 @@ Stages are registered in `pipeline_stages.py`; the orchestrator skips disabled s
 ## Prerequisites
 
 | Service | Role | Default |
-|---------|------|---------|
+| --- | --- | --- |
 | llama-swap | Model router | `http://127.0.0.1:8080` |
 | nomic-embed (llama-server `--embedding`, nomic model only) | Query vectors; localhost only | `http://127.0.0.1:8089` |
 | Qdrant | Vector store | set `QDRANT_URL` |
@@ -156,7 +156,7 @@ On Windows (local dev only): use `\.venv\Scripts\activate` and the same `pip` / 
 See [.env.example](.env.example) and `rag_proxy/config.py`. Core variables:
 
 | Variable | Purpose |
-|----------|---------|
+| --- | --- |
 | `QDRANT_URL` | Qdrant HTTP API base |
 | `ENABLE_COGNITIVE_PIPELINE` | Use tiered pipeline vs legacy always-retrieve |
 | `ENABLE_TIER0_HEURISTICS` | Fast-path bypass for simple queries |
@@ -179,7 +179,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now nomic-embed rag-proxy
 ```
 
-3. **Check status and logs**:
+1. **Check status and logs**:
 
 ```bash
 sudo systemctl status rag-proxy nomic-embed
@@ -189,10 +189,10 @@ journalctl -u rag-proxy --since today | grep -E 'RAG:|trace='
 
 `rag-proxy.service` loads `/home/kevyn/rag_proxy/.env` via `EnvironmentFile`. After changing `.env`, run `sudo systemctl restart rag-proxy`.
 
-**Common startup failures**
+### Common startup failures
 
 | Symptom | Fix |
-|---------|-----|
+| --- | --- |
 | `status=203/EXEC` | `.venv` missing or wrong path in `ExecStart` — recreate venv at `WorkingDirectory` |
 | Proxy up, never injects | `QDRANT_URL` wrong or embed down — run [Verify the stack](#verify-the-stack) |
 | `Address already in use` | Another process on `PROXY_PORT` (8088) |
@@ -223,7 +223,7 @@ Do not enable cognitive flags until legacy RAG injects chunks reliably (see [Ver
 ## Troubleshooting
 
 | Problem | What to check |
-|---------|----------------|
+| --- | --- |
 | Chat works but no KB context | `LOG_LEVEL=DEBUG`; look for `no chunks above threshold` — lower `SIMILARITY_THRESHOLD` (e.g. `0.55`) or confirm Qdrant has vectors for that topic |
 | Never injects | `curl` Qdrant collection; confirm `QDRANT_URL` has no placeholder; confirm embed server responds |
 | Only some messages get RAG | Open WebUI "follow-up" / `### Task:` prompts are skipped by design — use a normal user question |

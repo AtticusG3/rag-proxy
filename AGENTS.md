@@ -9,7 +9,7 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 ## Repository map
 
 | Path | Purpose |
-|------|---------|
+| --- | --- |
 | `rag_proxy.py` | Shim entrypoint + backward-compat exports |
 | `rag_proxy/app.py` | FastAPI proxy route |
 | `rag_proxy/orchestrator.py` | Pipeline runner (budget-aware stage loop) |
@@ -28,7 +28,7 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 ## Skills (project)
 
 | Skill | Use when |
-|-------|----------|
+| --- | --- |
 | `rag-proxy-change` | RAG logic, paths, injection, env config |
 | `rag-proxy-test` | Tests |
 | `rag-proxy-debug` | Missing/wrong RAG context |
