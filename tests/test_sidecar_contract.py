@@ -42,6 +42,10 @@ def test_rank_indices_empty():
     assert rerank_core.rank_indices([], top_k=5) == []
 
 
+def test_rank_indices_non_positive_top_k_returns_empty():
+    assert rerank_core.rank_indices([0.1, 0.9], top_k=0) == []
+
+
 def test_sparse_search_ranks_relevant_doc_first():
     filler = "lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor"
     registry = sparse_core.IndexRegistry()

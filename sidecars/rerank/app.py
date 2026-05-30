@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from typing import Any
 
 import uvicorn
@@ -20,16 +21,19 @@ HOST = os.getenv("RERANK_HOST", "0.0.0.0")
 PORT = int(os.getenv("RERANK_PORT", "8095"))
 
 _encoder: Any = None
+_encoder_lock = threading.Lock()
 
 
 def get_encoder() -> Any:
     global _encoder
     if _encoder is None:
-        from sentence_transformers import CrossEncoder
+        with _encoder_lock:
+            if _encoder is None:
+                from sentence_transformers import CrossEncoder
 
-        log.info("Loading rerank model %s", MODEL_NAME)
-        _encoder = CrossEncoder(MODEL_NAME)
-        log.info("Rerank model ready")
+                log.info("Loading rerank model %s", MODEL_NAME)
+                _encoder = CrossEncoder(MODEL_NAME)
+                log.info("Rerank model ready")
     return _encoder
 
 

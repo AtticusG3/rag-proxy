@@ -51,7 +51,7 @@ async def fetch_qdrant_points(collection: str) -> list[dict[str, Any]]:
             batch = result.get("points", [])
             points.extend(batch)
             offset = result.get("next_page_offset")
-            if not offset:
+            if offset is None:
                 break
     return points
 

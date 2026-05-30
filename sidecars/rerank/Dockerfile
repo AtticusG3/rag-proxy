@@ -11,7 +11,7 @@ RUN apt-get update \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY core.py app.py .
+COPY core.py app.py ./
 
 ENV RERANK_HOST=0.0.0.0 \
     RERANK_PORT=8095 \
