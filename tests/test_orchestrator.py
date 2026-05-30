@@ -14,6 +14,50 @@ from rag_proxy.orchestrator import (
 from rag_proxy.pipeline_stages import PipelineStage
 
 
+async def _slow_stage(ctx: RequestContext, _clients: ClientBundle) -> None:
+    await asyncio.sleep(0.05)
+    ctx.stage_trace.append("slow:ok")
+
+
+async def _expensive_stage(ctx: RequestContext, _clients: ClientBundle) -> None:
+    ctx.stage_trace.append("expensive:ran")
+
+
+def test_orchestrator_skips_stage_when_budget_exhausted(monkeypatch):
+    """Stages above remaining COGNITIVE_LATENCY_BUDGET_MS must not run."""
+
+    monkeypatch.setattr(settings, "cognitive_latency_budget_ms", 10)
+    monkeypatch.setattr(
+        "rag_proxy.orchestrator._pipeline_stages_for_mode",
+        lambda: [
+            PipelineStage(
+                name="slow",
+                min_budget_ms=0,
+                enabled=lambda: True,
+                should_run=lambda _ctx: True,
+                run=_slow_stage,
+            ),
+            PipelineStage(
+                name="expensive",
+                min_budget_ms=100,
+                enabled=lambda: True,
+                should_run=lambda _ctx: True,
+                run=_expensive_stage,
+            ),
+        ],
+    )
+    monkeypatch.setattr("rag_proxy.orchestrator.log_pipeline_summary", lambda _ctx: None)
+
+    ctx = RequestContext(query_text="test")
+    asyncio.run(run_cognitive_pipeline(ctx))
+
+    assert "slow:ok" in ctx.stage_trace
+    assert "expensive:ran" not in ctx.stage_trace
+    assert "slow" in ctx.latency_ms
+    assert "expensive" not in ctx.latency_ms
+    assert ctx.latency_ms["slow"] >= 40
+
+
 def test_pipeline_summary_on_stage_error(monkeypatch):
     summary_calls: list[str] = []
 
