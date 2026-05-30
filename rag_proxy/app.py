@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import AsyncGenerator
+from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, Request
@@ -14,6 +14,13 @@ from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from rag_proxy.config import CHAT_PATHS, settings
 from rag_proxy.observability import metrics_enabled, render_metrics_text
 from rag_proxy.orchestrator import augment_chat_payload
+from rag_proxy.upstream_client import (
+    close_upstream_response,
+    ensure_upstream_client,
+    relay_upstream,
+    shutdown_upstream_client,
+    startup_upstream_client,
+)
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -22,7 +29,17 @@ logging.basicConfig(
 )
 log = logging.getLogger("rag-proxy")
 
-app = FastAPI(title="RAG Proxy", docs_url=None, redoc_url=None)
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    await startup_upstream_client()
+    try:
+        yield
+    finally:
+        await shutdown_upstream_client()
+
+
+app = FastAPI(title="RAG Proxy", docs_url=None, redoc_url=None, lifespan=_app_lifespan)
 
 
 @app.get("/metrics")
@@ -33,18 +50,6 @@ async def prometheus_metrics() -> PlainTextResponse:
         render_metrics_text(),
         media_type="text/plain; charset=utf-8",
     )
-
-
-async def relay_upstream(
-    client: httpx.AsyncClient,
-    upstream: httpx.Response,
-) -> AsyncGenerator[bytes, None]:
-    try:
-        async for chunk in upstream.aiter_bytes():
-            yield chunk
-    finally:
-        await upstream.aclose()
-        await client.aclose()
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
@@ -75,7 +80,7 @@ async def proxy(request: Request, path: str):
                     log.warning(f"RAG augmentation error (passing through unmodified): {e}")
                     body = original_body
 
-    client = httpx.AsyncClient(timeout=600)
+    client = await ensure_upstream_client()
     upstream: httpx.Response | None = None
     try:
         upstream_req = client.build_request(
@@ -95,25 +100,24 @@ async def proxy(request: Request, path: str):
 
         if "text/event-stream" in content_type:
             return StreamingResponse(
-                relay_upstream(client, upstream),
+                relay_upstream(request, upstream),
                 status_code=upstream.status_code,
                 headers=resp_headers,
                 media_type="text/event-stream",
             )
 
         content = await upstream.aread()
-        await upstream.aclose()
-        await client.aclose()
+        status_code = upstream.status_code
+        await close_upstream_response(upstream)
+        upstream = None
         return Response(
             content=content,
-            status_code=upstream.status_code,
+            status_code=status_code,
             headers=resp_headers,
             media_type=content_type or "application/json",
         )
     except Exception:
-        if upstream is not None:
-            await upstream.aclose()
-        await client.aclose()
+        await close_upstream_response(upstream)
         raise
 
 

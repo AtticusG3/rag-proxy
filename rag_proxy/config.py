@@ -45,6 +45,24 @@ class Settings:
     )
     proxy_host: str = field(default_factory=lambda: os.getenv("PROXY_HOST", "0.0.0.0"))
     proxy_port: int = field(default_factory=lambda: _env_int("PROXY_PORT", 8088))
+    upstream_timeout_sec: float = field(
+        default_factory=lambda: _env_float("UPSTREAM_TIMEOUT_SEC", 600.0)
+    )
+    upstream_max_connections: int = field(
+        default_factory=lambda: _env_int("UPSTREAM_MAX_CONNECTIONS", 50)
+    )
+    upstream_max_keepalive: int = field(
+        default_factory=lambda: _env_int("UPSTREAM_MAX_KEEPALIVE", 0)
+    )
+    upstream_keepalive_expiry_sec: float = field(
+        default_factory=lambda: _env_float("UPSTREAM_KEEPALIVE_EXPIRY_SEC", 15.0)
+    )
+    upstream_idle_sweep_sec: float = field(
+        default_factory=lambda: _env_float("UPSTREAM_IDLE_SWEEP_SEC", 30.0)
+    )
+    upstream_stream_abandon_sec: float = field(
+        default_factory=lambda: _env_float("UPSTREAM_STREAM_ABANDON_SEC", 120.0)
+    )
     embed_max_chars: int = field(default_factory=lambda: _env_int("EMBED_MAX_CHARS", 2000))
     embed_retries: int = field(default_factory=lambda: _env_int("EMBED_RETRIES", 2))
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))

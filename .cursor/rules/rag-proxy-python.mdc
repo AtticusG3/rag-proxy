@@ -16,7 +16,9 @@ alwaysApply: false
 ## Conventions
 
 - Config via `rag_proxy/config.py` Settings; document new vars in `.env.example`.
-- Use `httpx.AsyncClient` per request for upstream; keep streaming client alive via `relay_upstream`.
+- Upstream: one shared `httpx.AsyncClient` pool via app lifespan (`startup_upstream_client` / `shutdown_upstream_client` in `rag_proxy/upstream_client.py`). Use `ensure_upstream_client()` for requests — do not create per-request clients.
+- `close_upstream_response` closes the `httpx.Response` only; the pool stays open.
+- Streaming: `relay_upstream` registers the response, yields chunks, and closes the response in `finally`. A background janitor (`reap_abandoned_streams`) closes streams with no relay activity for `UPSTREAM_STREAM_ABANDON_SEC` — do not add private httpcore sweeps.
 - Log with module logger `log`; ASCII-only messages (Windows console).
 - Helpers are plain functions (`extract_query_text`, `inject_context`, etc.) — no new classes unless unavoidable.
 - Qdrant payload field order: `text`, `content`, `chunk`, `document`, `page_content` — extend the tuple, don't fork lookup logic.

@@ -11,7 +11,7 @@ description: >-
 
 ## Before editing
 
-1. Read `rag_proxy/app.py`, `rag_proxy/orchestrator.py`, `rag_proxy/legacy_rag.py`, `rag_proxy/config.py`.
+1. Read `rag_proxy/app.py`, `rag_proxy/upstream_client.py`, `rag_proxy/orchestrator.py`, `rag_proxy/legacy_rag.py`, `rag_proxy/config.py`.
 2. Read `tests/test_rag_helpers.py` and `README.md` RAG behavior section.
 3. State assumptions (e.g. which chat paths, payload schema, streaming vs buffered).
 
@@ -32,7 +32,8 @@ Copy and fill before coding:
 - [ ] No new abstractions unless used in 2+ places (Rule 2).
 - [ ] Match existing: `log.warning` for recoverable failures, `log.info` for successful injection.
 - [ ] RAG block stays inside `proxy()` try/except — never raise to client on RAG failure.
-- [ ] Streaming: if touching upstream forward, preserve `relay_upstream` client lifetime.
+- [ ] Upstream: use the lifespan-started shared pool (`ensure_upstream_client`); never instantiate `httpx.AsyncClient` per request.
+- [ ] Streaming: use `relay_upstream`; `close_upstream_response` closes the Response only (pool stays open). Do not close the shared client mid-request.
 
 ## Common edit points
 
@@ -44,6 +45,7 @@ Copy and fill before coding:
 | Context format | `inject_context` |
 | Retrieval params | `TOP_K`, `SIMILARITY_THRESHOLD`, `search_qdrant` |
 | Embed robustness | `get_embedding`, `EMBED_*` env |
+| Upstream pool / streaming | `rag_proxy/upstream_client.py`, `UPSTREAM_*` env |
 
 ## After editing
 
