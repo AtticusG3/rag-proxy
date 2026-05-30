@@ -79,6 +79,28 @@ def test_sparse_search_unknown_collection_returns_empty():
     assert registry.search("other", "hello", 5) == []
 
 
+def test_sparse_search_returns_match_in_single_doc_collection():
+    """BM25 scores can be non-positive in tiny corpora; rank by overlap, not score sign."""
+    registry = sparse_core.IndexRegistry()
+    registry.rebuild("tiny", [{"id": "only", "payload": {"text": "kubernetes homelab guide"}}])
+    results = registry.search("tiny", "kubernetes", 1)
+    assert len(results) == 1
+    assert results[0]["id"] == "only"
+
+
+def test_sparse_search_skips_docs_without_query_token_overlap():
+    registry = sparse_core.IndexRegistry()
+    registry.rebuild(
+        "demo",
+        [
+            {"id": "a", "payload": {"text": "alpha beta gamma"}},
+            {"id": "b", "payload": {"text": "delta epsilon zeta"}},
+        ],
+    )
+    results = registry.search("demo", "alpha", 5)
+    assert [hit["id"] for hit in results] == ["a"]
+
+
 def test_extract_chunk_text_matches_rag_proxy_field_order():
     payload = {"content": "from content field", "text": "from text field"}
     assert extract_chunk_text({"payload": payload}) == "from text field"

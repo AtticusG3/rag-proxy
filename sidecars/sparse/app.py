@@ -75,14 +75,17 @@ class ReindexRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    initial_sync_failed = False
     try:
         await sync_collection(DEFAULT_COLLECTION)
     except Exception as exc:
+        initial_sync_failed = True
         log.warning("Initial sparse sync failed (will retry): %s", exc)
 
     refresh_task: asyncio.Task | None = None
     if REFRESH_SEC > 0:
-        refresh_task = asyncio.create_task(_refresh_loop())
+        initial_delay = 5.0 if initial_sync_failed else REFRESH_SEC
+        refresh_task = asyncio.create_task(_refresh_loop(initial_delay))
 
     yield
 
@@ -95,9 +98,11 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="RAG Sparse Index Sidecar", docs_url=None, redoc_url=None, lifespan=lifespan)
 
 
-async def _refresh_loop() -> None:
+async def _refresh_loop(initial_delay: float) -> None:
+    delay = initial_delay
     while True:
-        await asyncio.sleep(REFRESH_SEC)
+        await asyncio.sleep(delay)
+        delay = REFRESH_SEC
         collection = registry.loaded_collection() or DEFAULT_COLLECTION
         try:
             await sync_collection(collection)

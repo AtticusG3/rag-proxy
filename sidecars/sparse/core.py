@@ -49,16 +49,18 @@ class SparseIndex:
                 return []
             scores = self._bm25.get_scores(query_tokens)
             ranked = sorted(range(len(scores)), key=lambda i: float(scores[i]), reverse=True)
+            query_token_set = set(query_tokens)
             results: list[dict[str, Any]] = []
-            for index in ranked[:limit]:
-                score = float(scores[index])
-                if score <= 0:
-                    continue
+            for index in ranked:
+                if len(results) >= limit:
+                    break
                 doc = self._docs[index]
+                if not query_token_set.intersection(doc.tokens):
+                    continue
                 results.append(
                     {
                         "id": doc.doc_id,
-                        "score": score,
+                        "score": float(scores[index]),
                         "payload": doc.payload,
                     }
                 )
