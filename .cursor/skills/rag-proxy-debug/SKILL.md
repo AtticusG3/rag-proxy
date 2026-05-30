@@ -61,7 +61,7 @@ curl -s "%PROXY_HOST%:%PROXY_PORT%/v1/models"
 | Sometimes injects | `SIMILARITY_THRESHOLD` too high for your vectors |
 | Always passthrough | Wrong path (not in `CHAT_PATHS`), not POST |
 | Empty chunks | Payload keys don't match `extract_chunk_text` order |
-| Stream hangs | upstream client closed early — check `relay_upstream` |
+| Stream hangs | client disconnect or abandoned stream — check `relay_upstream`; janitor log `closed N idle upstream stream(s)` means `UPSTREAM_STREAM_ABANDON_SEC` elapsed with no bytes relayed |
 
 ## Rules
 

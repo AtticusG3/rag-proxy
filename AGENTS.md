@@ -19,6 +19,7 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag_proxy/observability.py` | Trace IDs, pipeline summaries, `GET /metrics` |
 | `rag_proxy/legacy_rag.py` | Embed, Qdrant, extract, inject |
 | `rag_proxy/config.py` | Settings / feature flags |
+| `rag_proxy/upstream_client.py` | Shared upstream httpx pool, `relay_upstream`, stream janitor |
 | `rag_proxy/stages/` | Tier 0–3 stage implementations |
 | `tests/` | Offline pytest |
 | `.env.example` | Env template |
@@ -32,6 +33,17 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag-proxy-test` | Tests |
 | `rag-proxy-debug` | Missing/wrong RAG context |
 | `rag-proxy-deploy` | systemd, `.env`, homelab |
+
+## Upstream pool (`UPSTREAM_*`)
+
+Shared `httpx.AsyncClient` started in app lifespan (`startup_upstream_client` / `shutdown_upstream_client`). Tune via `.env.example`:
+
+- `UPSTREAM_MAX_CONNECTIONS` — pool size cap
+- `UPSTREAM_MAX_KEEPALIVE` / `UPSTREAM_KEEPALIVE_EXPIRY_SEC` — keepalive sockets (0 = close after one-shot polls)
+- `UPSTREAM_IDLE_SWEEP_SEC` — janitor interval for abandoned streams
+- `UPSTREAM_STREAM_ABANDON_SEC` — close upstream SSE when no bytes relayed for this long (not total stream age)
+
+`close_upstream_response` closes the Response only; `relay_upstream` handles streaming relay and registration for the janitor.
 
 ## Default success criteria
 
