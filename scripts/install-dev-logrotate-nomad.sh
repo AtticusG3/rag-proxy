@@ -25,7 +25,8 @@ if [ -z "${LOGROTATE}" ]; then
   exit 1
 fi
 
-CRON_LINE="${CRON_MINUTE} * * * * ${LOGROTATE} -s ${STATE} ${CONF_DST} >>${CRON_LOG} 2>&1"
+cron_log_dir="$(dirname "${CRON_LOG}")"
+CRON_LINE="${CRON_MINUTE} * * * * mkdir -p \"${cron_log_dir}\" && \"${LOGROTATE}\" -s \"${STATE}\" \"${CONF_DST}\" >>\"${CRON_LOG}\" 2>&1"
 TMP="$(mktemp)"
 (crontab -l 2>/dev/null | grep -v "${CRON_MARK}" || true) >"${TMP}"
 echo "${CRON_MARK}" >>"${TMP}"

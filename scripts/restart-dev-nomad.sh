@@ -65,8 +65,10 @@ echo "[pid]"
 ss -tlnp 2>/dev/null | grep -E ":${dev_port}([^0-9]|$)" || true
 
 echo "[health]"
-curl -s -m 5 -o /dev/null -w "${dev_port} metrics: HTTP %{http_code}\n" \
-  "http://127.0.0.1:${dev_port}/metrics"
+if ! curl -s -m 5 -o /dev/null -w "${dev_port} metrics: HTTP %{http_code}\n" \
+  "http://127.0.0.1:${dev_port}/metrics"; then
+  echo "[!] metrics probe failed on port ${dev_port}" >&2
+fi
 
 echo "[log]"
 tail -15 "${LOG}"
