@@ -1,5 +1,5 @@
 [Unit]
-Description=Nomic Embed v1.5 — Always-on CPU embedding server
+Description=Nomic Embed v1.5 — llama-server --embedding (nomic-embed hot-loaded, localhost only)
 After=network.target
 # Start before llama-swap so it's ready when llama-swap preloads
 Before=llama-swap.service

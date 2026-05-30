@@ -126,12 +126,14 @@ Stages are registered in `pipeline_stages.py`; the orchestrator skips disabled s
 | Service | Role | Default |
 |---------|------|---------|
 | llama-swap | Model router | `http://127.0.0.1:8080` |
-| nomic-embed (llama-server `--embedding`) | Query vectors | `http://127.0.0.1:8089` |
+| nomic-embed (llama-server `--embedding`, nomic model only) | Query vectors; localhost only | `http://127.0.0.1:8089` |
 | Qdrant | Vector store | set `QDRANT_URL` |
 | Sparse index (optional) | BM25 sidecar | `SPARSE_INDEX_URL` |
 | Reranker (optional) | Cross-encoder HTTP | `RERANKER_URL` |
 
 `config.yaml` is an example llama-swap config (paths are host-specific).
+
+On **nomad**: production `rag-proxy.service` listens on **8088**; run a second checkout with `PROXY_PORT=8087` for dev without stopping prod. Embedding is not served on the proxy port — rag_proxy calls `EMBED_URL` (8089) directly.
 
 ## Quick start (Linux)
 

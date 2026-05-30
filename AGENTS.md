@@ -58,13 +58,18 @@ Cognitive rollout, headers, and trace log reading: **docs/COGNITIVE_RAG_PLAN.md*
 ## Learned User Preferences
 
 - Windows PowerShell: chain shell commands with `;`, not `&&` (bash-style chaining fails).
+- Prefer commits in vertical slices and PRs in small logical batches for review.
 
 ## Learned Workspace Facts
 
 - Git remotes: `origin` (Gitea primary) `https://git.kevynwatkins.com/kevyn/rag-proxy.git`; `github` (secondary) `https://github.com/AtticusG3/rag-proxy.git`
 - `gh` CLI works for GitHub (`AtticusG3/rag-proxy`); Gitea `origin` pull requests use the Gitea web UI, not `gh`
-- Production host `nomad`; ports: proxy `8088`, llama-swap `8080`, nomic-embed `8089`
+- `nomad` is the inference/RAG deploy and test host; `clanker` is studio/frontend only—not part of the rag_proxy stack
+- Inference host `nomad`: prod rag-proxy `8088` (systemd), dev checkout `8087`, llama-swap `8080`; `EMBED_URL` is llama.cpp `llama-server` with nomic-embed only on `127.0.0.1:8089` (not proxied on 8088/8087)
 - Production install path on nomad: `/home/kevyn/rag_proxy` (`rag-proxy.service` uses `.venv/bin/python rag_proxy.py`; missing venv causes systemd 203/EXEC)
+- On nomad shell sessions, `.env` is not auto-loaded; source explicitly (`set -a; . ./.env; set +a`) before smoke scripts
 - Qdrant: `http://192.168.1.36:6333`, collection `nomad_knowledge_base`
 - Qdrant collection `nomad_knowledge_base` is owned by project-nomad; rag_proxy cannot change upstream collection schema or indexing
 - Production tuning: `SIMILARITY_THRESHOLD=0.65`, `TOP_K=5`, `EMBED_MAX_CHARS=2000`
+- No admin UI or JSON settings API; config via `.env`/systemd restart; per-request `x-rag-mode` / `x-no-cache` / `x-conversation-id` headers; `GET /metrics` is Prometheus counters only
+- Run offline tests from repo root with `.\scripts\run-tests.ps1` (uses `.venv\Scripts\python.exe` when present)
