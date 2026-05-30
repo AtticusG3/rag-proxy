@@ -25,8 +25,15 @@ def _load_module(name: str, rel_path: str):
 
 def _load_sidecar_app(app_name: str, sidecar_dir: str):
     core = _load_module(f"{sidecar_dir}_core", f"sidecars/{sidecar_dir}/core.py")
+    prior_core = sys.modules.get("core")
     sys.modules["core"] = core
-    return _load_module(app_name, f"sidecars/{sidecar_dir}/app.py")
+    try:
+        return _load_module(app_name, f"sidecars/{sidecar_dir}/app.py")
+    finally:
+        if prior_core is None:
+            sys.modules.pop("core", None)
+        else:
+            sys.modules["core"] = prior_core
 
 
 rerank_core = _load_module("rerank_core", "sidecars/rerank/core.py")
