@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -153,10 +154,8 @@ def test_relay_upstream_throttles_stream_registry_touch():
         last = [1.5]
 
         def fake_monotonic() -> float:
-            try:
+            with contextlib.suppress(StopIteration):
                 last[0] = next(times)
-            except StopIteration:
-                pass
             return last[0]
 
         with patch.object(uc.time, "monotonic", side_effect=fake_monotonic):
