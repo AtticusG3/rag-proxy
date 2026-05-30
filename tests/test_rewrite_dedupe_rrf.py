@@ -4,7 +4,12 @@ import asyncio
 
 import pytest
 
-from rag_proxy.clients.qdrant import _apply_recency_boost, hybrid_search, rrf_merge
+from rag_proxy.clients.qdrant import (
+    _apply_recency_boost,
+    hybrid_search,
+    merge_fused_with_sparse_reserve,
+    rrf_merge,
+)
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit, RequestContext
 from rag_proxy.stages.tier2_context import apply_context_budget, dedupe_chunks
@@ -75,6 +80,14 @@ def test_budget_keeps_constraint_lines():
     ]
     kept = apply_context_budget(hits, budget_chars=120)
     assert any("ERROR" in h.text for h in kept)
+
+
+def test_merge_fused_with_sparse_reserve_keeps_sparse_slot():
+    fused = ["d0", "d1", "d2", "d3", "d4"]
+    sparse_only = ["sparse-only"]
+    merged = merge_fused_with_sparse_reserve(fused, sparse_only, limit=5)
+    assert "sparse-only" in merged
+    assert len(merged) == 5
 
 
 def test_recency_boost_noop_without_timestamp():
