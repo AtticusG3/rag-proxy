@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Literal
 
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, PipelineTier, RequestContext, RetrievalDecision
@@ -22,6 +23,8 @@ _SIMPLE_FAQ = re.compile(
     r"^what is [a-z][a-z0-9 -]{0,40}\??$",
     re.I,
 )
+
+PolicyPhase = Literal["tier0", "gating"]
 
 
 def should_bypass_heuristics(ctx: RequestContext) -> bool:
@@ -78,30 +81,24 @@ def gating_decision(ctx: RequestContext) -> RetrievalDecision:
     return RetrievalDecision.FULL
 
 
-def apply_early_policy(ctx: RequestContext) -> list[str]:
-    """Headers and tier0 heuristics. Returns stage_trace fragments."""
-    trace: list[str] = []
+def apply_retrieval_policy(ctx: RequestContext, phase: PolicyPhase) -> list[str]:
+    """Ordered retrieval policy for tier0 headers/heuristics or intent gating."""
+    if phase == "tier0":
+        if ctx.rag_mode_header == "force":
+            return ["tier0:force_retrieve"]
 
-    if ctx.rag_mode_header == "force":
-        trace.append("tier0:force_retrieve")
-        return trace
+        if ctx.rag_mode_header == "off":
+            ctx.tier = PipelineTier.TIER0_BYPASS
+            ctx.retrieval = RetrievalDecision.SKIP
+            return ["tier0:header_off"]
 
-    if ctx.rag_mode_header == "off":
-        ctx.tier = PipelineTier.TIER0_BYPASS
-        ctx.retrieval = RetrievalDecision.SKIP
-        trace.append("tier0:header_off")
-        return trace
+        if settings.enable_tier0_heuristics and should_bypass_heuristics(ctx):
+            ctx.tier = PipelineTier.TIER0_BYPASS
+            ctx.retrieval = RetrievalDecision.SKIP
+            return ["tier0:bypass"]
 
-    if settings.enable_tier0_heuristics and should_bypass_heuristics(ctx):
-        ctx.tier = PipelineTier.TIER0_BYPASS
-        ctx.retrieval = RetrievalDecision.SKIP
-        trace.append("tier0:bypass")
+        return []
 
-    return trace
-
-
-def apply_late_policy(ctx: RequestContext) -> list[str]:
-    """Intent-based gating. Returns stage_trace fragments."""
     if ctx.rag_mode_header == "force":
         ctx.retrieval = RetrievalDecision.FULL
         ctx.gating_would_skip = False
