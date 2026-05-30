@@ -58,7 +58,7 @@ async def fetch_qdrant_points(collection: str) -> list[dict[str, Any]]:
 
 async def sync_collection(collection: str) -> int:
     points = await fetch_qdrant_points(collection)
-    count = registry.rebuild(collection, points)
+    count = await asyncio.to_thread(registry.rebuild, collection, points)
     log.info("Sparse index synced collection=%s docs=%d", collection, count)
     return count
 
