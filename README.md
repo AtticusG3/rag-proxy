@@ -135,6 +135,20 @@ Stages are registered in `pipeline_stages.py`; the orchestrator skips disabled s
 
 On **nomad**: production `rag-proxy.service` listens on **8088**; run a second checkout with `PROXY_PORT=8087` for dev without stopping prod. Embedding is not served on the proxy port — rag_proxy calls `EMBED_URL` (8089) directly.
 
+## Docker (llama-swap:cuda stack)
+
+Run rag-proxy with **llama-swap:cuda** and a CPU **nomic-embed** sidecar. For a full homelab (bundled Qdrant + rerank + sparse BM25):
+
+```bash
+cp docker/.env.example docker/.env
+cp docker/.env.homelab.example docker/.env.homelab
+cp docker/config.yaml.example docker/config.yaml
+# Copy homelab flags from docker/.env.homelab.example into docker/.env
+docker compose --profile qdrant --profile cognitive up -d --build
+```
+
+Legacy-only: `docker compose up -d --build`. Service map, sidecar APIs, and rollout: [docker/README.md](docker/README.md).
+
 ## Quick start (Linux)
 
 ```bash
