@@ -71,6 +71,7 @@ async def proxy(request: Request, path: str):
                     log.warning(f"Failed to serialize augmented body (passing through): {e}")
                     body = original_body
                 except Exception as e:
+                    # Single fail-open boundary for RAG augmentation errors.
                     log.warning(f"RAG augmentation error (passing through unmodified): {e}")
                     body = original_body
 

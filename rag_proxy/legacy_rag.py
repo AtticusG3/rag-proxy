@@ -171,7 +171,10 @@ def inject_context(messages: list[dict], chunks: list[str]) -> list[dict]:
 
 
 async def legacy_augment_messages(messages: list[dict]) -> tuple[list[dict], dict]:
-    """Original always-retrieve path. Returns (messages, meta) for logging."""
+    """Backward-compatible retrieve-and-inject helper for tests and exports.
+
+    Prefer augment_chat_payload / run_cognitive_pipeline for request handling.
+    """
     meta: dict = {"chunks": 0, "scores": [], "query": None}
     query = extract_query_text(messages)
     if not query:

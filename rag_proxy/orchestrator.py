@@ -7,10 +7,14 @@ import time
 
 from rag_proxy.clients.bundle import ClientBundle
 from rag_proxy.config import settings
-from rag_proxy.context import RequestContext, RetrievalDecision
-from rag_proxy.legacy_rag import extract_query_text, legacy_augment_messages
-from rag_proxy.observability import log_pipeline_summary, new_trace_id, record_rag_outcome
-from rag_proxy.pipeline_stages import build_pipeline_stages
+from rag_proxy.context import RequestContext
+from rag_proxy.legacy_rag import extract_query_text
+from rag_proxy.observability import log_pipeline_summary, log_rag_request, new_trace_id
+from rag_proxy.pipeline_stages import (
+    PipelineStage,
+    build_legacy_pipeline_stages,
+    build_pipeline_stages,
+)
 
 log = logging.getLogger("rag-proxy")
 
@@ -50,11 +54,21 @@ def build_request_context_from_http(
     )
 
 
+def _pipeline_stages_for_mode() -> list[PipelineStage]:
+    if settings.enable_cognitive_pipeline:
+        return build_pipeline_stages()
+    return build_legacy_pipeline_stages()
+
+
+def _needs_model_registry_refresh() -> bool:
+    return settings.enable_model_routing or settings.enable_cognitive_pipeline
+
+
 async def run_cognitive_pipeline(ctx: RequestContext) -> None:
     ctx.trace_id = ctx.trace_id or new_trace_id()
     ctx.cognitive_start_ms = time.perf_counter()
 
-    stages = build_pipeline_stages()
+    stages = _pipeline_stages_for_mode()
     try:
         for stage in stages:
             if not stage.enabled():
@@ -71,45 +85,23 @@ async def run_cognitive_pipeline(ctx: RequestContext) -> None:
         log_pipeline_summary(ctx)
 
 
+def apply_context_to_payload(data: dict, ctx: RequestContext) -> dict:
+    """Single boundary: copy pipeline context back into the chat payload."""
+    data = {**data, "messages": ctx.messages}
+    if ctx.selected_model and settings.model_routing_mode == "force":
+        data["model"] = ctx.selected_model
+    return data
+
+
 async def augment_chat_payload(
     data: dict,
     headers: dict[str, str] | None = None,
 ) -> dict:
-    """Augment messages in chat payload; fail-open."""
-    messages = data.get("messages", [])
-    if not settings.enable_cognitive_pipeline:
-        new_messages, meta = await legacy_augment_messages(messages)
-        if meta.get("chunks"):
-            data = {**data, "messages": new_messages}
-            record_rag_outcome(int(meta["chunks"]))
-            log.info(
-                f"RAG: injected {meta['chunks']} chunk(s) "
-                f"(scores: {meta['scores']}) | query: {str(meta.get('query', ''))[:80]!r}"
-            )
-        elif meta.get("query"):
-            record_rag_outcome(0)
-            log.debug(f"RAG: no chunks above threshold={settings.similarity_threshold}")
-        return data
-
+    """Augment messages in chat payload; fail-open at HTTP boundary."""
     ctx = build_request_context_from_http(data, headers)
-    try:
-        if settings.enable_model_routing:
-            await _clients.model_registry.refresh()
-        await run_cognitive_pipeline(ctx)
-        data = {**data, "messages": ctx.messages}
-        if ctx.selected_model and settings.model_routing_mode == "force":
-            data["model"] = ctx.selected_model
-        if ctx.hits:
-            log.info(
-                f"RAG: injected {len(ctx.chunk_texts)} chunk(s) "
-                f"(scores: {[round(h.score, 3) for h in ctx.hits]}) "
-                f"| trace={ctx.trace_id} | query: {(ctx.effective_query() or '')[:80]!r}"
-            )
-        elif ctx.query_text and ctx.retrieval != RetrievalDecision.SKIP:
-            log.debug(f"RAG: no chunks (retrieval={ctx.retrieval.value})")
-        elif ctx.retrieval == RetrievalDecision.SKIP:
-            log.debug(f"RAG: skipped retrieval (tier={ctx.tier.value})")
-    except Exception as e:
-        log.warning(f"RAG augmentation error (passing through unmodified): {e}")
-
+    if _needs_model_registry_refresh():
+        await _clients.model_registry.refresh()
+    await run_cognitive_pipeline(ctx)
+    data = apply_context_to_payload(data, ctx)
+    log_rag_request(ctx)
     return data

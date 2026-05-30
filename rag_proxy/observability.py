@@ -8,7 +8,7 @@ import threading
 import uuid
 
 from rag_proxy.config import settings
-from rag_proxy.context import RequestContext
+from rag_proxy.context import RequestContext, RetrievalDecision
 
 log = logging.getLogger("rag-proxy")
 
@@ -74,3 +74,20 @@ def log_pipeline_summary(ctx: RequestContext) -> None:
             f"retrieval={ctx.retrieval.value} chunks={len(ctx.chunk_texts)} "
             f"latency_ms={summary['latency_ms']} stages={','.join(ctx.stage_trace)}"
         )
+
+
+def log_rag_request(ctx: RequestContext) -> None:
+    """Human-readable RAG outcome log shared by legacy and cognitive paths."""
+    if ctx.chunk_texts:
+        log.info(
+            f"RAG: injected {len(ctx.chunk_texts)} chunk(s) "
+            f"(scores: {[round(h.score, 3) for h in ctx.hits]}) "
+            f"| trace={ctx.trace_id} | query: {(ctx.effective_query() or ctx.query_text or '')[:80]!r}"
+        )
+    elif ctx.query_text and ctx.retrieval != RetrievalDecision.SKIP:
+        log.debug(
+            f"RAG: no chunks (retrieval={ctx.retrieval.value}) "
+            f"| threshold={settings.similarity_threshold}"
+        )
+    elif ctx.retrieval == RetrievalDecision.SKIP:
+        log.debug(f"RAG: skipped retrieval (tier={ctx.tier.value})")
