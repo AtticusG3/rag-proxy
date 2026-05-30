@@ -102,7 +102,7 @@ def test_extract_chunk_text_falls_back_to_content():
 
 
 @pytest.mark.parametrize(
-    "payload,expected",
+    ("payload", "expected"),
     [
         ({"chunk": "from chunk"}, "from chunk"),
         ({"document": "from document"}, "from document"),
