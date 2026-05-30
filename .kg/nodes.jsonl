@@ -1,0 +1,40 @@
+{"id": "doc:readme", "type": "Document", "source": "README.md", "extracted_at": "2026-05-30T13:19:45Z", "name": "README", "path": "README.md"}
+{"id": "repo:rag-proxy", "type": "Repository", "source": "repo-root", "extracted_at": "2026-05-30T13:19:45Z", "name": "rag_proxy", "kind": "python-app", "purpose": "Transparent RAG middleware in front of [llama-swap](https://github.com/mostlygeek/llama-swap). Clients point at this proxy instead of llama-swap directly; chat requests can be augmented with Qdrant co"}
+{"id": "config:docker-compose-yml", "type": "Config", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "docker-compose.yml", "path": "docker-compose.yml"}
+{"id": "service:llama-swap", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "llama-swap"}
+{"id": "service:nomic-embed", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "nomic-embed"}
+{"id": "service:reranker", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "reranker"}
+{"id": "service:sparse-index", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "sparse-index"}
+{"id": "service:rag-proxy", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "rag-proxy"}
+{"id": "service:qdrant", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "qdrant"}
+{"id": "config:dockerfile", "type": "Config", "source": "Dockerfile", "extracted_at": "2026-05-30T13:19:45Z", "name": "Dockerfile", "path": "Dockerfile"}
+{"id": "config:sidecars-rerank-dockerfile", "type": "Config", "source": "sidecars/rerank/Dockerfile", "extracted_at": "2026-05-30T13:19:45Z", "name": "Dockerfile", "path": "sidecars\\rerank\\Dockerfile"}
+{"id": "config:sidecars-sparse-dockerfile", "type": "Config", "source": "sidecars/sparse/Dockerfile", "extracted_at": "2026-05-30T13:19:45Z", "name": "Dockerfile", "path": "sidecars\\sparse\\Dockerfile"}
+{"id": "script:dev-log-cap", "type": "Script", "source": "scripts/dev-log-cap.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "dev-log-cap", "path": "scripts\\dev-log-cap.sh"}
+{"id": "script:install-dev-logrotate-nomad", "type": "Script", "source": "scripts/install-dev-logrotate-nomad.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "install-dev-logrotate-nomad", "path": "scripts\\install-dev-logrotate-nomad.sh"}
+{"id": "script:remote-setup-clanker", "type": "Script", "source": "scripts/remote-setup-clanker.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "remote-setup-clanker", "path": "scripts\\remote-setup-clanker.sh"}
+{"id": "script:remote-setup-nomad", "type": "Script", "source": "scripts/remote-setup-nomad.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "remote-setup-nomad", "path": "scripts\\remote-setup-nomad.sh"}
+{"id": "script:remote-smoke-chat", "type": "Script", "source": "scripts/remote-smoke-chat.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "remote-smoke-chat", "path": "scripts\\remote-smoke-chat.sh"}
+{"id": "script:restart-dev-nomad", "type": "Script", "source": "scripts/restart-dev-nomad.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "restart-dev-nomad", "path": "scripts\\restart-dev-nomad.sh"}
+{"id": "script:run-tests", "type": "Script", "source": "scripts/run-tests.ps1", "extracted_at": "2026-05-30T13:19:45Z", "name": "run-tests", "path": "scripts\\run-tests.ps1"}
+{"id": "doc:docs-cognitive-rag-plan-md", "type": "Document", "source": "docs/COGNITIVE_RAG_PLAN.md", "extracted_at": "2026-05-30T13:19:45Z", "name": "COGNITIVE RAG PLAN", "path": "docs\\COGNITIVE_RAG_PLAN.md"}
+{"id": "module:rag-proxy-init-py", "type": "Module", "source": "rag_proxy/__init__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__init__", "path": "rag_proxy\\__init__.py"}
+{"id": "module:rag-proxy-main-py", "type": "Module", "source": "rag_proxy/__main__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__main__", "path": "rag_proxy\\__main__.py"}
+{"id": "module:rag-proxy-app-py", "type": "Module", "source": "rag_proxy/app.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "app", "path": "rag_proxy\\app.py"}
+{"id": "route:metrics", "type": "Route", "source": "rag_proxy/app.py:46", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/metrics"}
+{"id": "route:content-type", "type": "Route", "source": "rag_proxy/app.py:100", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "content-type"}
+{"id": "module:rag-proxy-clients-init-py", "type": "Module", "source": "rag_proxy/clients/__init__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__init__", "path": "rag_proxy\\clients\\__init__.py"}
+{"id": "module:rag-proxy-registry-init-py", "type": "Module", "source": "rag_proxy/registry/__init__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__init__", "path": "rag_proxy\\registry\\__init__.py"}
+{"id": "module:rag-proxy-stages-init-py", "type": "Module", "source": "rag_proxy/stages/__init__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__init__", "path": "rag_proxy\\stages\\__init__.py"}
+{"id": "module:sidecars-rerank-app-py", "type": "Module", "source": "sidecars/rerank/app.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "app", "path": "sidecars\\rerank\\app.py"}
+{"id": "route:health", "type": "Route", "source": "sidecars/rerank/app.py:49", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/health"}
+{"id": "route:rerank", "type": "Route", "source": "sidecars/rerank/app.py:54", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/rerank"}
+{"id": "module:sidecars-sparse-app-py", "type": "Module", "source": "sidecars/sparse/app.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "app", "path": "sidecars\\sparse\\app.py"}
+{"id": "route:search", "type": "Route", "source": "sidecars/sparse/app.py:119", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/search"}
+{"id": "route:reindex", "type": "Route", "source": "sidecars/sparse/app.py:125", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/reindex"}
+{"id": "route:result", "type": "Route", "source": "sidecars/sparse/app.py:50", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "result"}
+{"id": "route:points", "type": "Route", "source": "sidecars/sparse/app.py:51", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "points"}
+{"id": "route:next-page-offset", "type": "Route", "source": "sidecars/sparse/app.py:53", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "next_page_offset"}
+{"id": "dependency:fastapi", "type": "Dependency", "source": "requirements.txt", "extracted_at": "2026-05-30T13:19:45Z", "name": "fastapi"}
+{"id": "dependency:httpx", "type": "Dependency", "source": "requirements.txt", "extracted_at": "2026-05-30T13:19:45Z", "name": "httpx"}
+{"id": "dependency:uvicorn-standard", "type": "Dependency", "source": "requirements.txt", "extracted_at": "2026-05-30T13:19:45Z", "name": "uvicorn[standard]"}

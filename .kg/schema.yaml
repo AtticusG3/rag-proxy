@@ -1,0 +1,67 @@
+version: 1
+
+graph:
+  name: rag-proxy-architecture
+  description: Focused knowledge graph for rag_proxy (python-app)
+
+entities:
+  - type: Config
+    id_prefix: config
+    properties:
+      - name: name
+        required: false
+  - type: Dependency
+    id_prefix: dependency
+    properties:
+      - name: name
+        required: false
+  - type: Document
+    id_prefix: document
+    properties:
+      - name: name
+        required: false
+  - type: Module
+    id_prefix: module
+    properties:
+      - name: name
+        required: false
+  - type: Repository
+    id_prefix: repository
+    properties:
+      - name: name
+        required: false
+  - type: Route
+    id_prefix: route
+    properties:
+      - name: name
+        required: false
+  - type: Script
+    id_prefix: script
+    properties:
+      - name: name
+        required: false
+  - type: Service
+    id_prefix: service
+    properties:
+      - name: name
+        required: false
+
+relations:
+  - type: CONTAINS
+    cardinality: many_to_many
+  - type: DEFINES
+    cardinality: many_to_many
+  - type: DEPENDS_ON
+    cardinality: many_to_many
+  - type: EXPOSES
+    cardinality: many_to_many
+  - type: HAS_CONFIG
+    cardinality: many_to_many
+
+provenance:
+  required_fields: [source, extracted_at]
+
+constraints:
+  - rule: unique_node_id
+  - rule: edge_endpoints_exist
+  - rule: predicate_in_schema

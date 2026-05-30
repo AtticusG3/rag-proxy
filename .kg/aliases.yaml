@@ -1,0 +1,10 @@
+# Alternate strings -> canonical node IDs
+COGNITIVE RAG PLAN: doc:docs-cognitive-rag-plan-md
+Dockerfile: config:sidecars-sparse-dockerfile
+README: doc:readme
+__init__: module:rag-proxy-stages-init-py
+__main__: module:rag-proxy-main-py
+app: module:sidecars-sparse-app-py
+docker-compose.yml: config:docker-compose-yml
+rag_proxy: repo:rag-proxy
+uvicorn[standard]: dependency:uvicorn-standard
