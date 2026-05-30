@@ -55,9 +55,14 @@ Cognitive rollout, headers, and trace log reading: **docs/COGNITIVE_RAG_PLAN.md*
 - Reranker: HTTP sidecar at `RERANKER_URL`, not in-process.
 - Observability: `ENABLE_REQUEST_TRACE`, `ENABLE_JSON_LOGS`, `ENABLE_METRICS` (`GET /metrics` on proxy port, not a separate listener).
 
-## Learned workspace facts
+## Learned User Preferences
 
-- Git remote: `https://git.kevynwatkins.com/kevyn/rag-proxy.git`
+- Windows PowerShell: chain shell commands with `;`, not `&&` (bash-style chaining fails).
+
+## Learned Workspace Facts
+
+- Git remotes: `origin` (Gitea primary) `https://git.kevynwatkins.com/kevyn/rag-proxy.git`; `github` (secondary) `https://github.com/AtticusG3/rag-proxy.git`
+- `gh` CLI works for GitHub (`AtticusG3/rag-proxy`); Gitea `origin` pull requests use the Gitea web UI, not `gh`
 - Production host `nomad`; ports: proxy `8088`, llama-swap `8080`, nomic-embed `8089`
 - Production install path on nomad: `/home/kevyn/rag_proxy` (`rag-proxy.service` uses `.venv/bin/python rag_proxy.py`; missing venv causes systemd 203/EXEC)
 - Qdrant: `http://192.168.1.36:6333`, collection `nomad_knowledge_base`

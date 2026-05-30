@@ -12,3 +12,8 @@ venv/
 .ruff_cache/
 *.log
 .cursor/hooks/state/
+
+# Local PR review exports (gh api dumps; do not commit)
+/pr[0-9]*-*.json
+/pr-comments*.txt
+/pr-new-only.txt
