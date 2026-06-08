@@ -14,6 +14,7 @@ _LOG_LINE = re.compile(r"^\d{4}-\d{2}-\d{2}|ERROR|WARN|FATAL|traceback", re.I | 
 
 
 def _rules_intent(query: str) -> tuple[IntentLabel, float]:
+    """Classify intent via keyword and pattern rules."""
     q = query.lower()
     if _LOG_LINE.search(query) or "log" in q and ("analyze" in q or "parse" in q):
         return IntentLabel.LOG_ANALYSIS, 0.85
@@ -45,6 +46,7 @@ def _rules_intent(query: str) -> tuple[IntentLabel, float]:
 
 
 def _intent_from_dict(data: dict) -> tuple[IntentLabel, float]:
+    """Parse intent label and confidence from model JSON."""
     label = data.get("intent", "unknown")
     try:
         conf = float(data.get("confidence", 0.0))
@@ -57,6 +59,7 @@ def _intent_from_dict(data: dict) -> tuple[IntentLabel, float]:
 
 
 async def run_intent(ctx: RequestContext, clients: ClientBundle) -> None:
+    """Classify query intent into ctx.intent."""
     if not ctx.query_text:
         return
 

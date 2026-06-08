@@ -51,6 +51,7 @@ def rrf_merge(
 
 
 def _parse_recency_epoch(payload: dict) -> float | None:
+    """Extract a Unix epoch from payload recency fields."""
     for key in _RECENCY_KEYS:
         raw = payload.get(key)
         if raw is None:
@@ -69,6 +70,7 @@ def _parse_recency_epoch(payload: dict) -> float | None:
 
 
 def _apply_recency_boost(score: float, payload: dict) -> float:
+    """Boost score for recently updated chunks."""
     if settings.recency_weight <= 0:
         return score
     epoch = _parse_recency_epoch(payload)
@@ -97,6 +99,7 @@ async def sparse_search(query: str, limit: int) -> list[dict]:
 
 
 def _hit_to_chunk(hit: dict, source: str) -> ChunkHit:
+    """Convert a Qdrant hit dict to ChunkHit."""
     text = extract_chunk_text(hit)
     hit_id = str(hit.get("id", hit.get("point_id", "")))
     payload = hit.get("payload", {})
@@ -110,6 +113,7 @@ async def _dense_chunks(
     score_threshold: float | None,
     no_cache: bool,
 ) -> list[ChunkHit]:
+    """Embed query and return dense ChunkHit list."""
     vector = await embed_text(query, no_cache=no_cache)
     if vector is None:
         return []
@@ -159,6 +163,7 @@ async def hybrid_search(
     score_threshold: float | None = None,
     no_cache: bool = False,
 ) -> list[ChunkHit]:
+    """Dense-only or RRF hybrid dense+sparse retrieval."""
     if not settings.enable_hybrid_retrieval or not settings.sparse_index_url:
         return await _dense_chunks(query, limit, score_threshold, no_cache)
 

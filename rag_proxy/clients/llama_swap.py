@@ -13,6 +13,7 @@ log = logging.getLogger("rag-proxy")
 
 
 async def fetch_models() -> list[dict]:
+    """Fetch /v1/models from llama-swap; fail-open to []."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.get(f"{settings.llama_swap_url.rstrip('/')}/v1/models")
@@ -44,6 +45,7 @@ async def chat_completion_content(
     *,
     max_tokens: int | None = None,
 ) -> str | None:
+    """Post chat completion and return assistant content."""
     payload: dict = {
         "model": model,
         "messages": messages,
@@ -74,6 +76,7 @@ async def chat_json_completion(
     *,
     max_tokens: int,
 ) -> dict | None:
+    """Chat completion returning the first parsed JSON object."""
     raw = await chat_completion_content(
         model,
         [

@@ -23,6 +23,7 @@ _GLOSSARY = {
 
 
 def _extract_literals(text: str) -> list[str]:
+    """Find IPs, paths, versions, and UUIDs in text."""
     found: list[str] = []
     for pat in _LITERAL_PATTERNS:
         found.extend(pat.findall(text))
@@ -30,6 +31,7 @@ def _extract_literals(text: str) -> list[str]:
 
 
 def _token_overlap(a: str, b: str) -> float:
+    """Jaccard overlap of whitespace token sets."""
     ta = set(a.lower().split())
     tb = set(b.lower().split())
     if not ta or not tb:
@@ -38,6 +40,7 @@ def _token_overlap(a: str, b: str) -> float:
 
 
 def _is_safe_rewrite(original: str, candidate: str) -> bool:
+    """True when rewrite preserves literals and length bounds."""
     if len(candidate) > len(original) * 1.5:
         return False
     if _token_overlap(original, candidate) < 0.3:
@@ -46,6 +49,7 @@ def _is_safe_rewrite(original: str, candidate: str) -> bool:
 
 
 def rewrite_query_deterministic(query: str) -> str:
+    """Expand glossary abbreviations without dropping literals."""
     literals = _extract_literals(query)
     out = query.strip()
     for abbr, full in _GLOSSARY.items():
@@ -61,6 +65,7 @@ def rewrite_query_deterministic(query: str) -> str:
 
 
 def _rewrite_query_from_dict(data: dict) -> str | None:
+    """Parse query string from rewrite model JSON."""
     q = data.get("query")
     if not isinstance(q, str):
         return None
@@ -69,6 +74,7 @@ def _rewrite_query_from_dict(data: dict) -> str | None:
 
 
 async def run_rewrite(ctx: RequestContext) -> None:
+    """Set ctx.retrieval_query via rules and optional LLM."""
     if not ctx.query_text:
         return
     if ctx.retrieval == RetrievalDecision.SKIP:

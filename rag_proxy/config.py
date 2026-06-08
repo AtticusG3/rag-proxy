@@ -11,11 +11,13 @@ log = logging.getLogger("rag-proxy")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
+    """Parse a boolean environment variable."""
     val = os.getenv(name, str(default).lower())
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _env_int(name: str, default: int) -> int:
+    """Parse an integer env var; fall back on invalid values."""
     raw = os.getenv(name)
     if raw is None:
         return default
@@ -27,6 +29,7 @@ def _env_int(name: str, default: int) -> int:
 
 
 def _env_float(name: str, default: float) -> float:
+    """Parse a float env var; fall back on invalid values."""
     raw = os.getenv(name)
     if raw is None:
         return default
@@ -39,6 +42,7 @@ def _env_float(name: str, default: float) -> float:
 
 @dataclass
 class Settings:
+    """Runtime configuration loaded from environment variables."""
     # Upstream / data plane
     llama_swap_url: str = field(default_factory=lambda: os.getenv("LLAMA_SWAP_URL", "http://127.0.0.1:8080"))
     embed_url: str = field(default_factory=lambda: os.getenv("EMBED_URL", "http://127.0.0.1:8089"))
@@ -209,6 +213,7 @@ class Settings:
     tier0_max_chars: int = field(default_factory=lambda: _env_int("TIER0_MAX_CHARS", 80))
 
     def model_routes(self) -> dict[str, str]:
+        """Parse MODEL_ROUTES_JSON into a route map."""
         raw = self.model_routes_json.strip()
         if not raw:
             return {}
@@ -218,6 +223,7 @@ class Settings:
             return {}
 
     def model_capabilities_overrides(self) -> dict:
+        """Parse MODEL_CAPABILITIES_JSON overrides."""
         raw = self.model_capabilities_json.strip()
         if not raw:
             return {}
@@ -227,6 +233,7 @@ class Settings:
             return {}
 
     def tool_roots(self) -> list[str]:
+        """Split TOOL_ALLOWED_ROOTS into a path list."""
         raw = self.tool_allowed_roots.strip()
         if not raw:
             return []
