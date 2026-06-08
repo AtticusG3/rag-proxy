@@ -9,7 +9,6 @@ from rag_proxy.clients.bundle import ClientBundle
 from rag_proxy.clients.qdrant import hybrid_search
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, PipelineTier, RequestContext, RetrievalDecision
-from rag_proxy.legacy_rag import inject_context
 from rag_proxy.stages import routing as routing_stage
 from rag_proxy.stages import tier0_heuristics, tier1_gating, tier1_intent
 from rag_proxy.stages import tier2_context, tier2_rerank, tier2_retrieval, tier2_rewrite
@@ -79,12 +78,7 @@ async def _run_legacy_retrieve(ctx: RequestContext, clients: ClientBundle) -> No
 
 
 async def _run_legacy_context(ctx: RequestContext, clients: ClientBundle) -> None:
-    texts = ctx.chunk_texts
-    if not texts:
-        return
-    ctx.messages = inject_context(ctx.messages, texts)
-    ctx.injected_tokens_est = sum(len(c) for c in texts) // 4
-    ctx.stage_trace.append(f"inject:{len(texts)}")
+    await tier2_context.run_context_assembly(ctx, clients)
 
 
 def build_legacy_pipeline_stages() -> list[PipelineStage]:

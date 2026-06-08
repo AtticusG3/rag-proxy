@@ -88,8 +88,8 @@ async def chat_json_completion(
     return parse_json_object(raw)
 
 
-async def classify_intent_via_model(model: str, prompt: str, timeout_ms: int) -> str | None:
-    """Call tiny classifier model; return raw content or None."""
+async def classify_intent_via_model(model: str, prompt: str, timeout_ms: int) -> dict | None:
+    """Call tiny classifier model; return parsed JSON object or None."""
     system = (
         "Classify the user query. Reply with JSON only: "
         '{"intent":"<label>","confidence":0.0-1.0}. '
@@ -97,32 +97,26 @@ async def classify_intent_via_model(model: str, prompt: str, timeout_ms: int) ->
         "research, summarization, troubleshooting, log_analysis, planning, "
         "creative, retrieval_heavy, reasoning_heavy, unknown."
     )
-    data = await chat_json_completion(
+    return await chat_json_completion(
         model,
         system,
         prompt,
         timeout_ms,
         max_tokens=64,
     )
-    if data is None:
-        return None
-    return json.dumps(data, ensure_ascii=False)
 
 
-async def rewrite_query_via_model(model: str, prompt: str, timeout_ms: int) -> str | None:
-    """Rewrite query for retrieval; return raw content or None."""
+async def rewrite_query_via_model(model: str, prompt: str, timeout_ms: int) -> dict | None:
+    """Rewrite query for retrieval; return parsed JSON object or None."""
     system = (
         "Rewrite the user query for knowledge-base search. "
         'Reply with JSON only: {"query":"<rewritten>"}. '
         "Preserve IPs, paths, versions, and error codes."
     )
-    data = await chat_json_completion(
+    return await chat_json_completion(
         model,
         system,
         prompt,
         timeout_ms,
         max_tokens=128,
     )
-    if data is None:
-        return None
-    return json.dumps(data, ensure_ascii=False)

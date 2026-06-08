@@ -14,7 +14,7 @@ from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit, RequestContext
 from rag_proxy.stages.tier2_context import apply_context_budget, dedupe_chunks
 from rag_proxy.stages.tier2_rewrite import (
-    _parse_rewrite_json,
+    _rewrite_query_from_dict,
     rewrite_query_deterministic,
     run_rewrite,
 )
@@ -95,9 +95,9 @@ def test_recency_boost_noop_without_timestamp():
     assert score == 0.5
 
 
-def test_parse_rewrite_json_rejects_non_string_query():
-    assert _parse_rewrite_json('{"query": null}') is None
-    assert _parse_rewrite_json('{"query": 42}') is None
+def test_rewrite_query_from_dict_rejects_non_string_query():
+    assert _rewrite_query_from_dict({"query": None}) is None
+    assert _rewrite_query_from_dict({"query": 42}) is None
 
 
 def test_llm_rewrite_rejects_dropped_literal(monkeypatch):
@@ -106,7 +106,7 @@ def test_llm_rewrite_rejects_dropped_literal(monkeypatch):
     monkeypatch.setattr(settings, "intent_model", "test-model")
 
     async def fake_llm(_model, _query, _timeout):
-        return '{"query": "kubernetes pod scheduling"}'
+        return {"query": "kubernetes pod scheduling"}
 
     monkeypatch.setattr(
         "rag_proxy.stages.tier2_rewrite.rewrite_query_via_model",

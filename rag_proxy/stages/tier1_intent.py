@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from rag_proxy.clients.bundle import ClientBundle
-from rag_proxy.clients.llama_swap import classify_intent_via_model, parse_json_object
+from rag_proxy.clients.llama_swap import classify_intent_via_model
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, RequestContext
 
@@ -44,10 +44,7 @@ def _rules_intent(query: str) -> tuple[IntentLabel, float]:
     return IntentLabel.UNKNOWN, 0.0
 
 
-def _parse_model_intent(raw: str) -> tuple[IntentLabel, float]:
-    data = parse_json_object(raw)
-    if not data:
-        return IntentLabel.UNKNOWN, 0.0
+def _intent_from_dict(data: dict) -> tuple[IntentLabel, float]:
     label = data.get("intent", "unknown")
     try:
         conf = float(data.get("confidence", 0.0))
@@ -65,13 +62,13 @@ async def run_intent(ctx: RequestContext, clients: ClientBundle) -> None:
 
     label, conf = _rules_intent(ctx.query_text)
     if label == IntentLabel.UNKNOWN and settings.intent_model:
-        raw = await classify_intent_via_model(
+        data = await classify_intent_via_model(
             settings.intent_model,
             ctx.query_text,
             settings.intent_timeout_ms,
         )
-        if raw:
-            label, conf = _parse_model_intent(raw)
+        if data:
+            label, conf = _intent_from_dict(data)
 
     if conf < settings.intent_confidence_threshold:
         label = IntentLabel.UNKNOWN

@@ -21,6 +21,12 @@ def test_rerank_stage_requires_hits():
     assert not rerank.should_run(ctx_empty)
 
 
+def test_invalid_float_env_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("SIMILARITY_THRESHOLD", "not-a-float")
+    s = Settings()
+    assert s.similarity_threshold == 0.65
+
+
 def test_stage_budget_defaults_match_legacy(monkeypatch):
     monkeypatch.delenv("STAGE_BUDGET_REWRITE_MS", raising=False)
     monkeypatch.delenv("STAGE_BUDGET_RETRIEVE_MS", raising=False)

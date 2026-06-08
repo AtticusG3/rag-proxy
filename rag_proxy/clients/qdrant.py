@@ -13,7 +13,8 @@ import httpx
 from rag_proxy.clients.embed import embed_text
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit
-from rag_proxy.legacy_rag import extract_chunk_text, search_qdrant_dense
+from rag_proxy.chunk_text import extract_chunk_text
+from rag_proxy.legacy_rag import search_qdrant_dense
 
 log = logging.getLogger("rag-proxy")
 
