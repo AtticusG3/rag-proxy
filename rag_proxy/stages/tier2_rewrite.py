@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from rag_proxy.clients.llama_swap import parse_json_object, rewrite_query_via_model
+from rag_proxy.clients.llama_swap import rewrite_query_via_model
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext, RetrievalDecision
 
@@ -23,6 +23,7 @@ _GLOSSARY = {
 
 
 def _extract_literals(text: str) -> list[str]:
+    """Find IPs, paths, versions, and UUIDs in text."""
     found: list[str] = []
     for pat in _LITERAL_PATTERNS:
         found.extend(pat.findall(text))
@@ -30,6 +31,7 @@ def _extract_literals(text: str) -> list[str]:
 
 
 def _token_overlap(a: str, b: str) -> float:
+    """Jaccard overlap of whitespace token sets."""
     ta = set(a.lower().split())
     tb = set(b.lower().split())
     if not ta or not tb:
@@ -38,6 +40,7 @@ def _token_overlap(a: str, b: str) -> float:
 
 
 def _is_safe_rewrite(original: str, candidate: str) -> bool:
+    """True when rewrite preserves literals and length bounds."""
     if len(candidate) > len(original) * 1.5:
         return False
     if _token_overlap(original, candidate) < 0.3:
@@ -46,6 +49,7 @@ def _is_safe_rewrite(original: str, candidate: str) -> bool:
 
 
 def rewrite_query_deterministic(query: str) -> str:
+    """Expand glossary abbreviations without dropping literals."""
     literals = _extract_literals(query)
     out = query.strip()
     for abbr, full in _GLOSSARY.items():
@@ -60,10 +64,8 @@ def rewrite_query_deterministic(query: str) -> str:
     return out
 
 
-def _parse_rewrite_json(raw: str) -> str | None:
-    data = parse_json_object(raw)
-    if not data:
-        return None
+def _rewrite_query_from_dict(data: dict) -> str | None:
+    """Parse query string from rewrite model JSON."""
     q = data.get("query")
     if not isinstance(q, str):
         return None
@@ -72,6 +74,7 @@ def _parse_rewrite_json(raw: str) -> str | None:
 
 
 async def run_rewrite(ctx: RequestContext) -> None:
+    """Set ctx.retrieval_query via rules and optional LLM."""
     if not ctx.query_text:
         return
     if ctx.retrieval == RetrievalDecision.SKIP:
@@ -81,13 +84,13 @@ async def run_rewrite(ctx: RequestContext) -> None:
     ctx.stage_trace.append("rewrite:deterministic")
 
     if settings.enable_query_rewrite_llm and settings.intent_model:
-        raw = await rewrite_query_via_model(
+        data = await rewrite_query_via_model(
             settings.intent_model,
             ctx.query_text,
             settings.intent_timeout_ms,
         )
-        if raw:
-            llm_q = _parse_rewrite_json(raw)
+        if data:
+            llm_q = _rewrite_query_from_dict(data)
             if llm_q and _is_safe_rewrite(ctx.query_text, llm_q):
                 rewritten = llm_q
                 ctx.stage_trace.append("rewrite:llm")

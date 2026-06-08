@@ -9,7 +9,6 @@ from rag_proxy.clients.bundle import ClientBundle
 from rag_proxy.clients.qdrant import hybrid_search
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, PipelineTier, RequestContext, RetrievalDecision
-from rag_proxy.legacy_rag import inject_context
 from rag_proxy.stages import routing as routing_stage
 from rag_proxy.stages import tier0_heuristics, tier1_gating, tier1_intent
 from rag_proxy.stages import tier2_context, tier2_rerank, tier2_retrieval, tier2_rewrite
@@ -18,6 +17,8 @@ from rag_proxy.stages import tier3_graph, tier3_memory, tier3_tools
 
 @dataclass(frozen=True)
 class PipelineStage:
+    """One named step in the cognitive pipeline."""
+
     name: str
     min_budget_ms: float
     enabled: Callable[[], bool]
@@ -26,6 +27,7 @@ class PipelineStage:
 
 
 def _retrieval_active(ctx: RequestContext) -> bool:
+    """True when retrieval is not skipped."""
     return ctx.retrieval != RetrievalDecision.SKIP
 
 
@@ -39,34 +41,41 @@ _GRAPH_INTENTS = frozenset(
 
 
 def _graph_should_run(ctx: RequestContext) -> bool:
+    """True for infra intents with a query."""
     return bool(ctx.query_text) and ctx.intent in _GRAPH_INTENTS
 
 
 def _tools_should_run(ctx: RequestContext) -> bool:
+    """True when retrieval is active."""
     return _retrieval_active(ctx)
 
 
 def _memory_should_run(ctx: RequestContext) -> bool:
+    """True when a conversation id is present."""
     return bool(ctx.conversation_id)
 
 
 async def _run_tier0(ctx: RequestContext, clients: ClientBundle) -> None:
+    """Run tier0 heuristics and promote tier when retrieval stays on."""
     await tier0_heuristics.run_tier0(ctx)
     if ctx.retrieval != RetrievalDecision.SKIP:
         ctx.tier = PipelineTier.TIER1_LIGHT
 
 
 async def _run_retrieve(ctx: RequestContext, clients: ClientBundle) -> None:
+    """Set retrieval tier and run hybrid retrieval."""
     ctx.tier = PipelineTier.TIER2_RETRIEVAL
     await tier2_retrieval.run_retrieval(ctx, clients)
 
 
 async def _run_graph(ctx: RequestContext, clients: ClientBundle) -> None:
+    """Set heavy tier and run graph lookup."""
     ctx.tier = PipelineTier.TIER3_HEAVY
     await tier3_graph.run_graph(ctx)
 
 
 async def _run_legacy_retrieve(ctx: RequestContext, clients: ClientBundle) -> None:
+    """Legacy path: embed and hybrid-search into ctx.hits."""
     query = ctx.query_text
     if not query:
         return
@@ -79,12 +88,8 @@ async def _run_legacy_retrieve(ctx: RequestContext, clients: ClientBundle) -> No
 
 
 async def _run_legacy_context(ctx: RequestContext, clients: ClientBundle) -> None:
-    texts = ctx.chunk_texts
-    if not texts:
-        return
-    ctx.messages = inject_context(ctx.messages, texts)
-    ctx.injected_tokens_est = sum(len(c) for c in texts) // 4
-    ctx.stage_trace.append(f"inject:{len(texts)}")
+    """Legacy path: assemble and inject context from hits."""
+    await tier2_context.run_context_assembly(ctx, clients)
 
 
 def build_legacy_pipeline_stages() -> list[PipelineStage]:
@@ -108,6 +113,7 @@ def build_legacy_pipeline_stages() -> list[PipelineStage]:
 
 
 def build_pipeline_stages() -> list[PipelineStage]:
+    """Full cognitive pipeline stage list."""
     return [
         PipelineStage(
             name="tier0",

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from rag_proxy.clients.bundle import ClientBundle
-from rag_proxy.clients.llama_swap import classify_intent_via_model, parse_json_object
+from rag_proxy.clients.llama_swap import classify_intent_via_model
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, RequestContext
 
@@ -14,6 +14,7 @@ _LOG_LINE = re.compile(r"^\d{4}-\d{2}-\d{2}|ERROR|WARN|FATAL|traceback", re.I | 
 
 
 def _rules_intent(query: str) -> tuple[IntentLabel, float]:
+    """Classify intent via keyword and pattern rules."""
     q = query.lower()
     if _LOG_LINE.search(query) or "log" in q and ("analyze" in q or "parse" in q):
         return IntentLabel.LOG_ANALYSIS, 0.85
@@ -44,10 +45,8 @@ def _rules_intent(query: str) -> tuple[IntentLabel, float]:
     return IntentLabel.UNKNOWN, 0.0
 
 
-def _parse_model_intent(raw: str) -> tuple[IntentLabel, float]:
-    data = parse_json_object(raw)
-    if not data:
-        return IntentLabel.UNKNOWN, 0.0
+def _intent_from_dict(data: dict) -> tuple[IntentLabel, float]:
+    """Parse intent label and confidence from model JSON."""
     label = data.get("intent", "unknown")
     try:
         conf = float(data.get("confidence", 0.0))
@@ -60,18 +59,19 @@ def _parse_model_intent(raw: str) -> tuple[IntentLabel, float]:
 
 
 async def run_intent(ctx: RequestContext, clients: ClientBundle) -> None:
+    """Classify query intent into ctx.intent."""
     if not ctx.query_text:
         return
 
     label, conf = _rules_intent(ctx.query_text)
     if label == IntentLabel.UNKNOWN and settings.intent_model:
-        raw = await classify_intent_via_model(
+        data = await classify_intent_via_model(
             settings.intent_model,
             ctx.query_text,
             settings.intent_timeout_ms,
         )
-        if raw:
-            label, conf = _parse_model_intent(raw)
+        if data:
+            label, conf = _intent_from_dict(data)
 
     if conf < settings.intent_confidence_threshold:
         label = IntentLabel.UNKNOWN
