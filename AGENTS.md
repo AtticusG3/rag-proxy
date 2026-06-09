@@ -21,6 +21,11 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag_proxy/config.py` | Settings / feature flags |
 | `rag_proxy/upstream_client.py` | Shared upstream httpx pool, `relay_upstream`, stream janitor |
 | `rag_proxy/stages/` | Tier 0–3 stage implementations |
+| `rag_proxy/memgraphrag/` | MemGraphRAG: three-layer memory (schema/fact/passage) + PPR retrieval |
+| `rag_proxy/memgraphrag/memory.py` | `ThreeLayerMemory` — SQLite-backed three-layer memory with inter-layer indices |
+| `rag_proxy/memgraphrag/retrieval.py` | `MemGraphRetriever` — fact scoring → rerank → PPR graph walk → passage retrieval |
+| `rag_proxy/stages/tier3_memgraphrag.py` | MemGraphRAG pipeline stage (after graph, before tools) |
+| `scripts/build_memgraphrag_index.py` | Offline indexing: chunk → entity/rel extraction → ontology filter → memory build |
 | `tests/` | Offline pytest |
 | `sidecars/` | CPU rerank + BM25 sparse HTTP sidecars (Docker `cognitive` profile) |
 | `rag_proxy/chunk_text.py` | Shared Qdrant payload text extraction (dense + sparse) |
@@ -62,9 +67,9 @@ Cognitive rollout, headers, and trace log reading: **docs/COGNITIVE_RAG_PLAN.md*
 ## Cognitive pipeline
 
 - Master switch: `ENABLE_COGNITIVE_PIPELINE` (default **false** = legacy).
-- Stage order (from `pipeline_stages.py`): tier0 → intent → gating → routing → rewrite → retrieve → rerank → graph → tools → memory → context.
+- Stage order (from `pipeline_stages.py`): tier0 → intent → gating → routing → rewrite → retrieve → rerank → graph → memgraphrag → tools → memory → context.
 - Per-stage skip: orchestrator skips a stage when remaining budget `< min_budget_ms` (from `STAGE_BUDGET_*` and related timeouts).
-- Subsystems: `ENABLE_TIER0_HEURISTICS`, `ENABLE_RETRIEVAL_GATING`, `ENABLE_INTENT_ROUTER`, `ENABLE_HYBRID_RETRIEVAL`, `ENABLE_RERANKER`, `ENABLE_GRAPH_LOOKUP`, `ENABLE_TOOLS`, `ENABLE_ROLLING_MEMORY`, etc. Full matrix: `docs/COGNITIVE_RAG_PLAN.md`.
+- Subsystems: `ENABLE_TIER0_HEURISTICS`, `ENABLE_RETRIEVAL_GATING`, `ENABLE_INTENT_ROUTER`, `ENABLE_HYBRID_RETRIEVAL`, `ENABLE_RERANKER`, `ENABLE_GRAPH_LOOKUP`, `ENABLE_MEMGRAPHRAG`, `ENABLE_TOOLS`, `ENABLE_ROLLING_MEMORY`, etc. Full matrix: `docs/COGNITIVE_RAG_PLAN.md`.
 - Hybrid: dense Qdrant + optional `SPARSE_INDEX_URL` sidecar, RRF merge when `ENABLE_HYBRID_RETRIEVAL=true`.
 - Reranker: HTTP sidecar at `RERANKER_URL`, not in-process.
 - Observability: `ENABLE_REQUEST_TRACE`, `ENABLE_JSON_LOGS`, `ENABLE_METRICS` (`GET /metrics` on proxy port, not a separate listener).
