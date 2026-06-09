@@ -107,6 +107,9 @@ class Settings:
     enable_graph_lookup: bool = field(
         default_factory=lambda: _env_bool("ENABLE_GRAPH_LOOKUP", False)
     )
+    enable_memgraphrag: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_MEMGRAPHRAG", False)
+    )
     enable_model_routing: bool = field(
         default_factory=lambda: _env_bool("ENABLE_MODEL_ROUTING", False)
     )
@@ -139,6 +142,9 @@ class Settings:
     )
     stage_budget_graph_ms: int = field(
         default_factory=lambda: _env_int("STAGE_BUDGET_GRAPH_MS", 100)
+    )
+    stage_budget_memgraphrag_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_BUDGET_MEMGRAPHRAG_MS", 200)
     )
     retrieval_candidate_k: int = field(default_factory=lambda: _env_int("RETRIEVAL_CANDIDATE_K", 20))
     context_budget_ratio: float = field(
@@ -186,6 +192,23 @@ class Settings:
     )
     memory_ttl_hours: int = field(default_factory=lambda: _env_int("MEMORY_TTL_HOURS", 72))
     memory_refresh_turns: int = field(default_factory=lambda: _env_int("MEMORY_REFRESH_TURNS", 8))
+
+    # MemGraphRAG
+    memgraphrag_db_path: str = field(
+        default_factory=lambda: os.getenv("MEMGRAPHRAG_DB_PATH", "/var/lib/rag_proxy/memgraphrag.sqlite")
+    )
+    memgraphrag_fact_top_k: int = field(
+        default_factory=lambda: _env_int("MEMGRAPHRAG_FACT_TOP_K", 20)
+    )
+    memgraphrag_ppr_damping: float = field(
+        default_factory=lambda: _env_float("MEMGRAPHRAG_PPR_DAMPING", 0.85)
+    )
+    memgraphrag_ppr_iterations: int = field(
+        default_factory=lambda: _env_int("MEMGRAPHRAG_PPR_ITERATIONS", 20)
+    )
+    memgraphrag_passage_node_weight: float = field(
+        default_factory=lambda: _env_float("MEMGRAPHRAG_PASSAGE_NODE_WEIGHT", 0.5)
+    )
 
     # Model registry / routing
     model_registry_ttl_sec: int = field(

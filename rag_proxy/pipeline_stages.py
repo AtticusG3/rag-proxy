@@ -12,7 +12,7 @@ from rag_proxy.context import IntentLabel, PipelineTier, RequestContext, Retriev
 from rag_proxy.stages import routing as routing_stage
 from rag_proxy.stages import tier0_heuristics, tier1_gating, tier1_intent
 from rag_proxy.stages import tier2_context, tier2_rerank, tier2_retrieval, tier2_rewrite
-from rag_proxy.stages import tier3_graph, tier3_memory, tier3_tools
+from rag_proxy.stages import tier3_graph, tier3_memgraphrag, tier3_memory, tier3_tools
 
 
 @dataclass(frozen=True)
@@ -170,6 +170,13 @@ def build_pipeline_stages() -> list[PipelineStage]:
             enabled=lambda: settings.enable_graph_lookup,
             should_run=_graph_should_run,
             run=_run_graph,
+        ),
+        PipelineStage(
+            name="memgraphrag",
+            min_budget_ms=float(settings.stage_budget_memgraphrag_ms),
+            enabled=lambda: settings.enable_memgraphrag,
+            should_run=_retrieval_active,
+            run=lambda ctx, _clients: tier3_memgraphrag.run_memgraphrag(ctx),
         ),
         PipelineStage(
             name="tools",
