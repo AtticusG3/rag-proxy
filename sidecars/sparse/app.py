@@ -26,6 +26,8 @@ REFRESH_SEC = float(os.getenv("SPARSE_REFRESH_SEC", "3600"))
 SCROLL_BATCH = int(os.getenv("SPARSE_SCROLL_BATCH", "256"))
 HOST = os.getenv("SPARSE_HOST", "0.0.0.0")
 PORT = int(os.getenv("SPARSE_PORT", "8096"))
+# 0 = index everything. Otherwise stop after N points (BM25 sampling for large collections).
+MAX_POINTS = int(os.getenv("SPARSE_MAX_POINTS", "0"))
 
 registry = IndexRegistry()
 
@@ -33,10 +35,17 @@ registry = IndexRegistry()
 async def fetch_qdrant_points(collection: str) -> list[dict[str, Any]]:
     points: list[dict[str, Any]] = []
     offset: str | int | None = None
+    truncated = False
     async with httpx.AsyncClient(timeout=60.0) as client:
         while True:
+            # If MAX_POINTS is set, request only what we still need
+            remaining = SCROLL_BATCH
+            if MAX_POINTS > 0:
+                remaining = min(SCROLL_BATCH, MAX_POINTS - len(points))
+                if remaining <= 0:
+                    break
             body: dict[str, Any] = {
-                "limit": SCROLL_BATCH,
+                "limit": remaining,
                 "with_payload": True,
                 "with_vector": False,
             }
@@ -53,6 +62,11 @@ async def fetch_qdrant_points(collection: str) -> list[dict[str, Any]]:
             offset = result.get("next_page_offset")
             if offset is None:
                 break
+            if MAX_POINTS > 0 and len(points) >= MAX_POINTS:
+                truncated = True
+                break
+    if truncated:
+        log.info("fetch_qdrant_points: stopped at MAX_POINTS=%d", MAX_POINTS)
     return points
 
 
@@ -118,6 +132,8 @@ def health() -> dict[str, Any]:
         "collection": collection,
         "docs": registry.doc_count(collection),
         "last_sync": registry.last_sync(collection),
+        "max_points": MAX_POINTS,
+        "truncated": bool(MAX_POINTS) and registry.doc_count(collection) >= MAX_POINTS,
     }
 
 
