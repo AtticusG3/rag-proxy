@@ -1,20 +1,31 @@
-"""Build MemGraphRAG index from a text corpus.
+"""Build MemGraphRAG index from a text corpus OR a Qdrant collection.
 
 Pipeline:
-  1. Chunk text into passages
-  2. Extract entities and relations (triples + schemas) using LLM
-  3. Filter low-frequency ontologies (thematic denoising)
-  4. Detect and resolve conflicts
+  1. Source:  --input corpus.txt | --source qdrant --qdrant-url ... --collection ...
+  2. Sample chunks (proportional stratified by `source` field if from Qdrant)
+  3. Extract entities and relations (triples + schemas) using LLM
+  4. Filter low-frequency ontologies (thematic denoising)
   5. Build and save ThreeLayerMemory
 
-Usage:
-  python -m scripts.build_memgraphrag_index \
-    --input corpus.txt \
-    --output /var/lib/rag_proxy/memgraphrag.sqlite \
-    --llm-url http://192.168.1.202:8080/v1 \
-    --llm-model qwen3.5-9b-turbo \
-    --chunk-size 512 \
+Usage (file corpus, original mode):
+  python -m scripts.build_memgraphrag_index \\
+    --input corpus.txt \\
+    --output /var/lib/rag_proxy/memgraphrag.sqlite \\
+    --llm-url http://192.168.1.202:8080/v1 \\
+    --llm-model qwen3.5-9b-turbo \\
+    --chunk-size 512 \\
     --overlap 64
+
+Usage (Qdrant collection, new mode):
+  python -m scripts.build_memgraphrag_index \\
+    --source qdrant \\
+    --qdrant-url http://192.168.1.36:6333 \\
+    --collection nomad_knowledge_base \\
+    --output /var/lib/rag_proxy/memgraphrag.sqlite \\
+    --llm-url http://192.168.1.202:8080/v1 \\
+    --llm-model qwen3.5-9b-turbo \\
+    --max-chunks 1000 \\
+    --stratify-field source
 """
 
 from __future__ import annotations
@@ -25,7 +36,9 @@ import json
 import logging
 import hashlib
 import os
+import random
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -61,6 +74,121 @@ def chunk_text(text: str, chunk_size: int = 512, overlap: int = 64) -> list[dict
     return chunks
 
 # ---------------------------------------------------------------------------
+# Qdrant source: stratified sample of pre-chunked payloads
+# ---------------------------------------------------------------------------
+
+async def fetch_qdrant_chunks(
+    qdrant_url: str,
+    collection: str,
+    target_count: int,
+    stratify_field: str = "source",
+    payload_text_field: str = "text",
+    seed: int = 42,
+) -> list[dict]:
+    """Fetch a stratified random sample of chunks from a Qdrant collection.
+
+    Sampling is proportional: each distinct value of `stratify_field` gets
+    ceil(target_count * count_in_field / total_in_collection) chunks.
+
+    Each returned chunk has:
+        chunk_id  : Qdrant point UUID (string)
+        text      : payload[payload_text_field]
+        source    : payload[stratify_field] (for traceability)
+        meta      : {k: v for k, v in payload.items() if k != payload_text_field}
+    """
+    qdrant_url = qdrant_url.rstrip("/")
+    rng = random.Random(seed)
+
+    # Step 1: Get the field value distribution via facet
+    log.info("Fetching %s distribution for stratified sampling...", stratify_field)
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.post(
+            f"{qdrant_url}/collections/{collection}/facet",
+            json={"key": stratify_field, "limit": 200},
+        )
+        resp.raise_for_status()
+        facet = resp.json()["result"]["hits"]
+    log.info("Found %d distinct %s values", len(facet), stratify_field)
+
+    # Step 2: Compute sample size per value
+    total = sum(h["count"] for h in facet)
+    sample_plan: list[tuple[str, int]] = []
+    remaining = target_count
+
+    if target_count < len(facet):
+        # For small sample sizes, pick top N sources by count and take 1 each
+        # (proportional allocation can't give 1 chunk to 100 sources when target=10)
+        log.info("Target %d < %d sources: using top-source strategy (1 chunk per top source)",
+                 target_count, len(facet))
+        for hit in facet[:target_count]:
+            sample_plan.append((hit["value"], 1))
+    else:
+        # Proportional allocation with minimum of 1
+        for hit in facet:
+            value = hit["value"]
+            allocated = max(1, round(target_count * hit["count"] / total))
+            allocated = min(allocated, remaining)
+            sample_plan.append((value, allocated))
+            remaining -= allocated
+            if remaining <= 0:
+                break
+    log.info("Sample plan: %d values, %d total chunks targeted", len(sample_plan), target_count)
+
+    # Step 3: For each value, fetch N random chunks using offset_pagination scroll
+    all_chunks: list[dict] = []
+    async with httpx.AsyncClient(timeout=120) as client:
+        for value, n in sample_plan:
+            offset = None
+            value_chunks: list[dict] = []
+            # Scroll with filter on this value
+            # We use a filter to get only points with this value, then random-offset
+            attempts = 0
+            while len(value_chunks) < n and attempts < n * 4 + 5:
+                attempts += 1
+                filter_ = {
+                    "must": [{"key": stratify_field, "match": {"value": value}}]
+                }
+                params: dict[str, Any] = {
+                    "limit": min(50, n - len(value_chunks)),
+                    "with_payload": True,
+                    "with_vectors": False,
+                    "filter": filter_,
+                }
+                if offset is not None:
+                    params["offset"] = offset
+                resp = await client.post(
+                    f"{qdrant_url}/collections/{collection}/points/scroll",
+                    json=params,
+                )
+                resp.raise_for_status()
+                result = resp.json()["result"]
+                points = result.get("points", [])
+                if not points:
+                    break  # exhausted this value
+                for pt in points:
+                    payload = pt.get("payload", {})
+                    text = payload.get(payload_text_field)
+                    if not text:
+                        continue
+                    meta = {k: v for k, v in payload.items() if k != payload_text_field}
+                    value_chunks.append({
+                        "chunk_id": str(pt["id"]),
+                        "text": text,
+                        "source": value,
+                        "meta": meta,
+                    })
+                offset = result.get("next_page_offset")
+                if offset is None:
+                    break  # no more pages
+            # Shuffle and take exactly n
+            rng.shuffle(value_chunks)
+            all_chunks.extend(value_chunks[:n])
+            log.info("  %s: %d/%d chunks fetched", value[-60:], len(value_chunks[:n]), n)
+
+    log.info("Fetched %d chunks total (target was %d)", len(all_chunks), target_count)
+    return all_chunks
+
+# ---------------------------------------------------------------------------
 # LLM client
 # ---------------------------------------------------------------------------
 
@@ -88,7 +216,7 @@ class LLMClient:
             "temperature": self.temperature,
             "max_tokens": max_tokens,
         }
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=300) as client:
             resp = await client.post(
                 f"{self.base_url}/chat/completions",
                 json=payload,
@@ -103,7 +231,7 @@ class LLMClient:
 # Extraction prompts
 # ---------------------------------------------------------------------------
 
-ENTITY_PROMPT_SYSTEM = """You are an expert information extraction system. 
+ENTITY_PROMPT_SYSTEM = """You are an expert information extraction system.
 Extract ALL named entities and their types from the text.
 
 Output JSON only:
@@ -113,7 +241,9 @@ Rules:
 - Include persons, organizations, locations, events, concepts, objects, dates
 - Use the most specific type possible
 - Do NOT invent entities not in the text
-- Output valid JSON only, no explanations"""
+- Output valid JSON only, no explanations
+
+IMPORTANT: Respond with JSON only. No preamble, no explanation, no markdown code blocks."""
 
 RELATION_PROMPT_SYSTEM = """You are an expert relation extraction system.
 Given text and extracted entities, identify all meaningful relationships.
@@ -125,7 +255,7 @@ Output JSON only:
       "head": "entity text",
       "head_type": "PERSON|ORGANIZATION|...",
       "relation": "relationship verb/phrase",
-      "tail": "entity text", 
+      "tail": "entity text",
       "tail_type": "PERSON|ORGANIZATION|...",
       "schema": ["head_type", "relation", "tail_type"]
     }
@@ -139,7 +269,7 @@ Rules:
 - Output valid JSON only, no explanations"""
 
 async def extract_entities(llm: LLMClient, text: str) -> list[dict]:
-    """Extract entities from text using LLM."""
+    """Extract entities from text using LLM. Returns [] on failure (with warning)."""
     try:
         raw = await llm.chat(ENTITY_PROMPT_SYSTEM, f"Text:\n{text}")
         # Find JSON in response
@@ -148,12 +278,13 @@ async def extract_entities(llm: LLMClient, text: str) -> list[dict]:
         if start >= 0 and end > start:
             data = json.loads(raw[start:end])
             return data.get("entities", [])
+        log.warning("Entity extraction: no JSON object found in response (len=%d)", len(raw))
     except Exception as e:
         log.warning("Entity extraction failed: %s", e)
     return []
 
 async def extract_relations(llm: LLMClient, text: str, entities: list[dict]) -> list[dict]:
-    """Extract relations from text + entities using LLM."""
+    """Extract relations from text + entities using LLM. Returns [] on failure (with warning)."""
     try:
         entity_list = "\n".join(f"- {e['text']} ({e['type']})" for e in entities)
         user_msg = f"Text:\n{text}\n\nEntities:\n{entity_list}"
@@ -163,6 +294,7 @@ async def extract_relations(llm: LLMClient, text: str, entities: list[dict]) -> 
         if start >= 0 and end > start:
             data = json.loads(raw[start:end])
             return data.get("triples", [])
+        log.warning("Relation extraction: no JSON object found in response (len=%d)", len(raw))
     except Exception as e:
         log.warning("Relation extraction failed: %s", e)
     return []
@@ -203,9 +335,9 @@ def filter_ontologies(
 
 def build_memory(chunks_data: list[dict], db_path: str) -> None:
     """Build ThreeLayerMemory from extracted chunks and save to SQLite."""
-    # Import here to avoid circular imports
+    # Import here to avoid circular imports / avoid loading retrieval (which needs rag_proxy.config)
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from rag_proxy.memgraphrag.memory import ThreeLayerMemory
+    from rag_proxy.memgraphrag.memory import ThreeLayerMemory  # direct import, bypass __init__.py
 
     memory = ThreeLayerMemory()
 
@@ -245,76 +377,154 @@ def build_memory(chunks_data: list[dict], db_path: str) -> None:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Build MemGraphRAG index")
-    parser.add_argument("--input", required=True, help="Input text file or directory")
+    # Input source: either --input (file/dir) or --source qdrant
+    parser.add_argument("--input", help="Input text file or directory of .txt files")
+    parser.add_argument("--source", choices=["file", "qdrant"], default="file",
+                        help="Input source type: 'file' (use --input) or 'qdrant' (use --qdrant-url/--collection)")
+    parser.add_argument("--qdrant-url", default="http://127.0.0.1:6333",
+                        help="Qdrant base URL (when --source qdrant)")
+    parser.add_argument("--collection", default="nomad_knowledge_base",
+                        help="Qdrant collection name (when --source qdrant)")
+    parser.add_argument("--stratify-field", default="source",
+                        help="Payload field to stratify sampling by (default: source)")
+    parser.add_argument("--payload-text-field", default="text",
+                        help="Payload field containing the chunk text (default: text)")
+    parser.add_argument("--sample-seed", type=int, default=42,
+                        help="Random seed for stratified sampling (default: 42)")
+
     parser.add_argument("--output", required=True, help="Output SQLite database path")
-    parser.add_argument("--llm-url", default="http://127.0.0.1:8080/v1", help="LLM API URL")
-    parser.add_argument("--llm-model", default="qwen3.5-9b-turbo", help="LLM model name")
-    parser.add_argument("--api-key", default="rag-proxy", help="LLM API key")
-    parser.add_argument("--chunk-size", type=int, default=512, help="Tokens per chunk")
-    parser.add_argument("--overlap", type=int, default=64, help="Token overlap between chunks")
+    parser.add_argument("--llm-url", default="http://192.168.1.202:8088/v1",
+                        help="LLM API URL (default: rag-proxy on nomad, which proxies llama-swap)")
+    parser.add_argument("--llm-model", default="qwen3.5-9b-turbo",
+                        help="LLM model name (alias for Qwen3.5-9B-Abliterated-Claude-4.6-Opus-Reasoning-Distilled)")
+    parser.add_argument("--api-key", default="sk-llama-cpp", help="LLM API key")
+    parser.add_argument("--chunk-size", type=int, default=512, help="Tokens per chunk (file mode only)")
+    parser.add_argument("--overlap", type=int, default=64, help="Token overlap between chunks (file mode only)")
     parser.add_argument("--min-schema-freq", type=int, default=2,
                         help="Minimum schema frequency (thematic denoising)")
     parser.add_argument("--max-chunks", type=int, default=0,
-                        help="Max chunks to process (0 = all)")
+                        help="Max chunks to process (0 = all; for Qdrant this is the stratified sample size)")
     parser.add_argument("--concurrency", type=int, default=3,
                         help="Max concurrent LLM requests")
+    parser.add_argument("--max-chars", type=int, default=2000,
+                        help="Max characters of chunk text to send to LLM (truncate longer chunks)")
+    parser.add_argument("--skip-relations", action="store_true",
+                        help="Skip relation extraction (entities only — 50%% faster)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-    # Load input
-    input_path = Path(args.input)
-    if input_path.is_file():
-        texts = [input_path.read_text(encoding="utf-8")]
-    elif input_path.is_dir():
-        texts = []
-        for f in sorted(input_path.glob("**/*.txt")):
-            texts.append(f.read_text(encoding="utf-8"))
-        log.info("Loaded %d text files from %s", len(texts), input_path)
+    # ---- Load chunks ----
+    t0 = time.time()
+    if args.source == "qdrant":
+        # Backward compat: if --input not given, treat --max-chunks as the sample size
+        target = args.max_chunks if args.max_chunks > 0 else 1000
+        log.info("Loading %d stratified chunks from Qdrant %s/%s", target, args.qdrant_url, args.collection)
+        all_chunks = await fetch_qdrant_chunks(
+            qdrant_url=args.qdrant_url,
+            collection=args.collection,
+            target_count=target,
+            stratify_field=args.stratify_field,
+            payload_text_field=args.payload_text_field,
+            seed=args.sample_seed,
+        )
     else:
-        log.error("Input path not found: %s", input_path)
+        # File/dir mode (original)
+        if not args.input:
+            log.error("--input is required when --source=file")
+            sys.exit(1)
+        input_path = Path(args.input)
+        if input_path.is_file():
+            texts = [input_path.read_text(encoding="utf-8")]
+        elif input_path.is_dir():
+            texts = []
+            for f in sorted(input_path.glob("**/*.txt")):
+                texts.append(f.read_text(encoding="utf-8"))
+            log.info("Loaded %d text files from %s", len(texts), input_path)
+        else:
+            log.error("Input path not found: %s", input_path)
+            sys.exit(1)
+
+        all_chunks = []
+        for text in texts:
+            all_chunks.extend(chunk_text(text, args.chunk_size, args.overlap))
+        if args.max_chunks > 0:
+            all_chunks = all_chunks[:args.max_chunks]
+        log.info("Created %d chunks from file corpus", len(all_chunks))
+
+    log.info("Chunk loading took %.1fs. %d chunks ready for LLM extraction.", time.time() - t0, len(all_chunks))
+    if not all_chunks:
+        log.error("No chunks to process. Aborting.")
         sys.exit(1)
 
-    # Chunk
-    all_chunks: list[dict] = []
-    for text in texts:
-        all_chunks.extend(chunk_text(text, args.chunk_size, args.overlap))
-    if args.max_chunks > 0:
-        all_chunks = all_chunks[:args.max_chunks]
-    log.info("Created %d chunks", len(all_chunks))
-
-    # Extract entities and relations
+    # ---- LLM extraction with throughput tracking ----
     llm = LLMClient(args.llm_url, args.llm_model, args.api_key)
     semaphore = asyncio.Semaphore(args.concurrency)
 
-    async def process_chunk(chunk: dict) -> dict:
+    json_failures = {"entity": 0, "relation": 0}
+    extract_t0 = time.time()
+
+    async def process_chunk(idx: int, chunk: dict) -> dict:
         async with semaphore:
-            entities = await extract_entities(llm, chunk["text"])
-            chunk["entities"] = entities
-            if entities:
-                triples = await extract_relations(llm, chunk["text"], entities)
+            t_chunk = time.time()
+            # Truncate chunk text to bound LLM input cost
+            text = chunk["text"]
+            if len(text) > args.max_chars:
+                text = text[:args.max_chars] + "..."
+                chunk["text_truncated"] = True
+            else:
+                chunk["text_truncated"] = False
+
+            entities = await extract_entities(llm, text)
+            if not entities:
+                json_failures["entity"] += 1
+            if entities and not args.skip_relations:
+                triples = await extract_relations(llm, text, entities)
+                if not triples:
+                    json_failures["relation"] += 1
                 chunk["triples"] = triples
             else:
                 chunk["triples"] = []
-            log.info("Chunk %s: %d entities, %d triples", chunk["chunk_id"], len(entities), len(chunk["triples"]))
+
+            chunk["entities"] = entities
+            elapsed = time.time() - t_chunk
+            log.info("[%d/%d] %s: %d entities, %d triples (%.1fs)",
+                     idx + 1, len(all_chunks), chunk["chunk_id"][:30],
+                     len(entities), len(chunk["triples"]), elapsed)
             return chunk
 
     log.info("Extracting entities and relations (concurrency=%d)...", args.concurrency)
-    chunks_data = await asyncio.gather(*[process_chunk(c) for c in all_chunks])
+    chunks_data = await asyncio.gather(*[process_chunk(i, c) for i, c in enumerate(all_chunks)])
 
+    extract_elapsed = time.time() - extract_t0
     total_entities = sum(len(c.get("entities", [])) for c in chunks_data)
     total_triples = sum(len(c.get("triples", [])) for c in chunks_data)
-    log.info("Extracted %d entities, %d triples from %d chunks", total_entities, total_triples, len(chunks_data))
+    throughput = len(all_chunks) / extract_elapsed if extract_elapsed > 0 else 0
+    log.info(
+        "Extraction complete: %d entities, %d triples from %d chunks in %.1fs (%.2f chunks/sec)",
+        total_entities, total_triples, len(chunks_data), extract_elapsed, throughput,
+    )
+    log.info(
+        "JSON parse failures: entity=%d, relation=%d (out of %d chunks each)",
+        json_failures["entity"], json_failures["relation"], len(all_chunks),
+    )
 
-    # Filter low-frequency ontologies
+    # ---- Filter low-frequency ontologies ----
     chunks_data = filter_ontologies(chunks_data, args.min_schema_freq)
 
-    # Build memory
+    # ---- Build memory ----
+    build_t0 = time.time()
     build_memory(chunks_data, args.output)
+    build_elapsed = time.time() - build_t0
+    log.info("Memory build took %.1fs. Output: %s", build_elapsed, args.output)
 
-    # Print stats
+    # ---- Final stats ----
     total_triples_after = sum(len(c.get("triples", [])) for c in chunks_data)
-    log.info("Done. %d triples retained after filtering. Output: %s", total_triples_after, args.output)
+    log.info(
+        "DONE. %d chunks → %d entities → %d triples (filtered to %d). Total wall time: %.1fs. Output: %s",
+        len(chunks_data), total_entities, total_triples, total_triples_after,
+        time.time() - t0, args.output,
+    )
 
 
 if __name__ == "__main__":
