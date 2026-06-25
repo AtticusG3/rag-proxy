@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_header %}
+{% block title %}Upload - RAG Admin{% endblock %}
+{% block content %}
+{{ page_header("Upload", "Add files directly to the ZIM library or uploads folder.") }}
+
+<section class="card narrow">
+  <form method="post" action="/upload" enctype="multipart/form-data">
+    <div class="upload-drop">
+      <label>File (.zim, .txt, .md, .pdf)
+        <input type="file" name="file" required accept=".zim,.txt,.md,.pdf">
+      </label>
+    </div>
+    <label>Destination
+      <select name="target">
+        <option value="zim">ZIM library (/opt/ai/rag/zim)</option>
+        <option value="upload">Uploads (/opt/ai/rag/uploads)</option>
+      </select>
+    </label>
+    <button type="submit">Upload and queue</button>
+  </form>
+  <p class="muted" style="margin:1rem 0 0">After upload, run <strong>Sync storage</strong> on the Dashboard if ingest does not start automatically.</p>
+</section>
+{% endblock %}

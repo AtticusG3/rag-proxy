@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, status_pill, empty_state %}
+{% block title %}Content - RAG Admin{% endblock %}
+{% block content %}
+{{ page_header("Content Manager", "Local ZIM and upload files on disk with ingest status.") }}
+
+<section class="card card--flush">
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Type</th><th>Size</th><th>Status</th><th>Chunks</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for f in files %}
+      <tr>
+        <td><span class="file-chip">{{ f.name }}</span></td>
+        <td><span class="pill">{{ f.type }}</span></td>
+        <td class="muted">{{ (f.size / 1048576)|round(2) }} MiB</td>
+        <td>{{ status_pill(f.state.status if f.state else 'pending') }}</td>
+        <td class="mono">{{ f.state.chunks_embedded if f.state else 0 }}</td>
+        <td>
+          <form method="post" action="/zim/delete" onsubmit="return confirm('Delete file and remove from index?');">
+            <input type="hidden" name="file_path" value="{{ f.path }}">
+            <button type="submit" class="btn btn--danger btn--small">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6">{{ empty_state("No local content", "Upload a file or subscribe via Explorer.", "/upload", "Upload file") }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

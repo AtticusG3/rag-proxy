@@ -1,0 +1,27 @@
+{% macro page_header(title, subtitle='', actions='') %}
+<header class="page-header">
+  <div class="page-header__copy">
+    <h1>{{ title }}</h1>
+    {% if subtitle %}<p class="page-lead">{{ subtitle }}</p>{% endif %}
+  </div>
+  {% if actions %}<div class="page-header__actions">{{ actions }}</div>{% endif %}
+</header>
+{% endmacro %}
+
+{% macro status_pill(status) %}
+<span class="pill pill--{{ status | replace(' ', '-') }}">{{ status }}</span>
+{% endmacro %}
+
+{% macro empty_state(title, body, cta_href='', cta_label='') %}
+<div class="empty-state">
+  <p class="empty-state__title">{{ title }}</p>
+  <p class="empty-state__body">{{ body }}</p>
+  {% if cta_href %}<a class="btn btn--ghost" href="{{ cta_href }}">{{ cta_label }}</a>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro kind_badge(kind) %}
+<span class="kind-badge kind-badge--{{ kind }}" aria-hidden="true">
+  {% if kind == 'folder' %}DIR{% elif kind == 'zim' %}ZIM{% elif kind == 'pdf' %}PDF{% elif kind == 'paper' %}PDF{% elif kind == 'text' %}TXT{% elif kind == 'collection' %}COL{% elif kind == 'category' %}CAT{% elif kind == 'external' %}URL{% elif kind == 'pagination' %}···{% else %}FILE{% endif %}
+</span>
+{% endmacro %}

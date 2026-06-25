@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Login - RAG Admin{% endblock %}
+{% block content %}
+<section class="card auth-card">
+  <p class="faint" style="margin:0 0 0.5rem;text-transform:uppercase;letter-spacing:0.08em">Buster</p>
+  <h1>Sign in</h1>
+  <p class="muted">Corpus manager for ZIM ingest, subscriptions, and Qdrant indexing.</p>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <label>Password
+      <input type="password" name="password" required autofocus autocomplete="current-password">
+    </label>
+    <button type="submit">Enter admin</button>
+  </form>
+</section>
+{% endblock %}

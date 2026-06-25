@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_header %}
+{% block title %}Dashboard - RAG Admin{% endblock %}
+{% block content %}
+{{ page_header("Dashboard", "Corpus health, storage, and ingest activity on buster.") }}
+
+<div class="grid stats">
+  <div class="stat-card">
+    <p class="stat-card__label">Qdrant vectors</p>
+    <p class="stat-card__value">{{ stats.qdrant_points }}</p>
+    <p class="stat-card__meta mono">{{ stats.collection }}</p>
+  </div>
+  <div class="stat-card">
+    <p class="stat-card__label">Sparse index</p>
+    <p class="stat-card__value">{{ stats.sparse_docs }}</p>
+    <p class="stat-card__meta">{{ stats.sparse_status }}</p>
+  </div>
+  <div class="stat-card">
+    <p class="stat-card__label">Indexed files</p>
+    <p class="stat-card__value">{{ stats.indexed_files }}</p>
+    <p class="stat-card__meta">{{ stats.pending_files }} pending in queue</p>
+  </div>
+  <div class="stat-card">
+    <p class="stat-card__label">Disk headroom</p>
+    <p class="stat-card__value">{{ stats.disk_free_gb }}<span style="font-size:1rem;font-weight:500"> GB</span></p>
+    <p class="stat-card__meta">ZIM library {{ (stats.zim_bytes / 1048576)|round(1) }} MB</p>
+  </div>
+</div>
+
+<section class="card">
+  <h2 class="section-title">Operations</h2>
+  <div class="actions-row">
+    <form method="post" action="/api/ingest/sync-form">
+      <button type="submit">Scan for new files</button>
+    </form>
+    <a class="btn btn--ghost" href="/explorer">Browse catalogs</a>
+    <a class="btn btn--ghost" href="/jobs">View job log</a>
+  </div>
+  <p class="muted" style="margin:0.75rem 0 0">Safe scan: only new or failed files are queued. Indexed corpora are not re-embedded.</p>
+</section>
+
+<section class="card card--flush">
+  <div style="padding: var(--space-4) var(--space-5) var(--space-2)">
+    <h2 class="section-title" style="margin:0">Recent jobs</h2>
+  </div>
+  <table>
+    <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Message</th><th>Created</th></tr></thead>
+    <tbody>
+    {% for job in jobs %}
+      <tr>
+        <td><code>{{ job.id[:8] }}</code></td>
+        <td>{{ job.job_type }}</td>
+        <td>{% from "_macros.html" import status_pill %}{{ status_pill(job.status) }}</td>
+        <td class="muted">{{ job.message or '' }}</td>
+        <td class="faint">{{ job.created_at or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5">{% from "_macros.html" import empty_state %}{{ empty_state("No jobs yet", "Run sync after adding files or subscribing in Explorer.") }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

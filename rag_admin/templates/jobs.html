@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, status_pill, empty_state %}
+{% block title %}Jobs - RAG Admin{% endblock %}
+{% block content %}
+{{ page_header("Ingest jobs", "Per-file embedding state and background job history.") }}
+
+<section class="card">
+  <h2 class="section-title">Queue</h2>
+  <div class="actions-row">
+    <form method="post" action="/api/ingest/sync-form">
+      <button type="submit">Scan for new files</button>
+    </form>
+    <form method="post" action="/api/ingest/retry-failed-form">
+      <button type="submit" class="btn btn--ghost">Retry all failed</button>
+    </form>
+  </div>
+  <p class="muted" style="margin:0.75rem 0 0">
+    Scan only registers files not yet in the database, or re-queues previously failed ingests.
+    Already indexed files are left unchanged.
+  </p>
+</section>
+
+<section class="card card--flush">
+  <div style="padding: var(--space-4) var(--space-5) var(--space-2)">
+    <h2 class="section-title" style="margin:0">File ingest state</h2>
+  </div>
+  <table>
+    <thead>
+      <tr><th>File</th><th>Status</th><th>Chunks</th><th>Error</th><th>Updated</th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for f in files %}
+      <tr>
+        <td><span class="file-chip">{{ f.file_name }}</span></td>
+        <td>{{ status_pill(f.status) }}</td>
+        <td class="mono">{{ f.chunks_embedded }}</td>
+        <td class="error">{{ f.last_error or '' }}</td>
+        <td class="faint">{{ f.updated_at or '' }}</td>
+        <td>
+          {% if f.status == 'failed' %}
+          <form method="post" action="/api/ingest/retry-form" class="inline">
+            <input type="hidden" name="file_path" value="{{ f.file_path }}">
+            <button type="submit" class="btn btn--ghost btn--small">Retry</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6">{{ empty_state("No ingest state", "Subscribe in Explorer or scan storage after adding files.") }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card card--flush">
+  <div style="padding: var(--space-4) var(--space-5) var(--space-2)">
+    <h2 class="section-title" style="margin:0">Job log</h2>
+  </div>
+  <table>
+    <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Message</th></tr></thead>
+    <tbody>
+    {% for job in jobs %}
+      <tr>
+        <td><code>{{ job.id[:8] }}</code></td>
+        <td>{{ job.job_type }}</td>
+        <td>{{ status_pill(job.status) }}</td>
+        <td class="muted">{{ job.message or '' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">No jobs logged</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

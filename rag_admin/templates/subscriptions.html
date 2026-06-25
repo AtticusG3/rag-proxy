@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, status_pill, empty_state %}
+{% block title %}Subscriptions - RAG Admin{% endblock %}
+{% block content %}
+{{ page_header("Subscriptions", "Tracked packages with weekly update checks (Sunday 03:00 UTC).") }}
+
+<section class="card">
+  <h2 class="section-title">Maintenance</h2>
+  <div class="actions-row">
+    <form method="post" action="/subscriptions/check-updates">
+      <button type="submit">Check for updates now</button>
+    </form>
+    <p class="muted" style="margin:0">Re-downloads newer copies, re-ingests, and rebuilds the sparse index.</p>
+  </div>
+</section>
+
+<section class="card card--flush">
+  <table>
+    <thead>
+      <tr>
+        <th>Package</th><th>Source</th><th>Status</th><th>Size</th>
+        <th>Auto</th><th>Checked</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for sub in subscriptions %}
+      <tr>
+        <td>
+          <span class="file-chip">{{ sub.file_name }}</span>
+        </td>
+        <td class="muted">{{ sub.source_id }}</td>
+        <td>{{ status_pill(sub.status) }}</td>
+        <td>{{ sub.size_label }}</td>
+        <td>
+          <form method="post" action="/subscriptions/toggle-auto" class="inline">
+            <input type="hidden" name="sub_id" value="{{ sub.id }}">
+            <input type="hidden" name="enabled" value="{{ 0 if sub.auto_update else 1 }}">
+            <button type="submit" class="btn btn--ghost btn--small">{{ 'On' if sub.auto_update else 'Off' }}</button>
+          </form>
+        </td>
+        <td class="faint">{{ sub.last_checked or '-' }}</td>
+        <td>
+          {% if sub.status == 'failed' %}
+          <form method="post" action="/subscriptions/retry" class="inline">
+            <input type="hidden" name="sub_id" value="{{ sub.id }}">
+            <button type="submit" class="btn btn--ghost btn--small">Retry download</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/subscriptions/delete" class="inline" onsubmit="return confirm('Remove subscription and delete local file from index?');">
+            <input type="hidden" name="sub_id" value="{{ sub.id }}">
+            <button type="submit" class="btn btn--danger btn--small">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% if sub.last_error %}
+      <tr><td colspan="7" class="error">{{ sub.last_error }}</td></tr>
+      {% endif %}
+    {% else %}
+      <tr><td colspan="7">{{ empty_state("No subscriptions", "Use Content Explorer to subscribe to ZIM files, PDFs, or texts.", "/explorer", "Open Explorer") }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

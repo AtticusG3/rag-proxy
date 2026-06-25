@@ -28,6 +28,10 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `scripts/build_memgraphrag_index.py` | Offline indexing: chunk → entity/rel extraction → ontology filter → memory build |
 | `tests/` | Offline pytest |
 | `sidecars/` | CPU rerank + BM25 sparse HTTP sidecars (Docker `cognitive` profile) |
+| `sidecars/mcp_rag/` | MCP retrieval tools (`search_knowledge_base`) over hybrid stack |
+| `rag_admin/` | Content Explorer UI, catalog subscriptions, ingest queue |
+| `ingest/` | ZIM/PDF/text ingest worker (Qdrant + sparse reindex) |
+| `scripts/catalog_weekly_update.py` | Cron helper for subscription update checks |
 | `rag_proxy/chunk_text.py` | Shared Qdrant payload text extraction (dense + sparse) |
 | `.env.example` | Env template |
 | `docs/COGNITIVE_RAG_PLAN.md` | Operator architecture reference |

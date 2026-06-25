@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, kind_badge, empty_state %}
+{% block title %}Content Explorer - RAG Admin{% endblock %}
+{% block content %}
+{{ page_header("Content Explorer", "Subscribe to public catalogs. Packages download, ingest, and refresh on a weekly schedule.") }}
+
+<nav class="tabs" aria-label="Catalog sources">
+  {% for sid, src in sources.items() %}
+    <a href="/explorer?source={{ sid }}" class="tab {% if sid == active_source %}active{% endif %} {% if not src.enabled %}disabled{% endif %}">
+      {{ src.name }}{% if not src.enabled %} (soon){% endif %}
+    </a>
+  {% endfor %}
+</nav>
+
+<div class="source-panel">
+  <div class="source-panel__intro">
+    <p class="faint" style="margin:0 0 0.35rem;text-transform:uppercase;letter-spacing:0.07em">{{ source_meta.label }}</p>
+    <h2>{{ path_title }}</h2>
+    <p class="muted" style="margin:0">{{ source_meta.tagline }}</p>
+    {% if sources[active_source].description and not path %}
+    <p class="muted" style="margin:0.75rem 0 0">{{ sources[active_source].description }}</p>
+    {% endif %}
+    {% if dedupe_hidden and dedupe_hidden > 0 %}
+    <p class="muted" style="margin:0.75rem 0 0">Showing latest release only — {{ dedupe_hidden }} older dated ZIM build(s) hidden in this folder.</p>
+    {% endif %}
+  </div>
+  <div class="source-panel__stats">
+    <div class="source-stat">
+      <strong>{{ browse_stats.visible }}</strong>
+      <span>Entries</span>
+    </div>
+    <div class="source-stat">
+      <strong>{{ browse_stats.subscribable }}</strong>
+      <span>Subscribable</span>
+    </div>
+    <div class="source-stat">
+      <strong>{{ subscriptions_count if subscriptions_count is defined else '-' }}</strong>
+      <span>Active subs</span>
+    </div>
+  </div>
+</div>
+
+{% if error %}
+<section class="card card--error" role="alert">
+  <h2 class="section-title" style="color:var(--color-danger)">Browse error</h2>
+  <p style="margin:0">{{ error }}</p>
+  <p class="muted" style="margin:0.75rem 0 0"><a href="{{ root_href }}">Return to library root</a></p>
+</section>
+{% endif %}
+
+<section class="card card--flush">
+  <div class="breadcrumb" aria-label="Breadcrumb">
+    <a href="{{ root_href }}">root</a>
+    {% for crumb in crumbs %}
+      <span class="sep">/</span>
+      <a href="{{ crumb.href }}">{{ crumb.label }}</a>
+    {% endfor %}
+  </div>
+
+  {% if items %}
+  <div class="explorer-grid">
+    {% for item in items %}
+    <article class="explorer-card {% if item.kind == 'pagination' %}explorer-card--pagination{% endif %}">
+      <div class="explorer-card__head">
+        {{ kind_badge(item.kind) }}
+        <div>
+          <h3 class="explorer-card__title">
+            {% if item.is_directory %}
+              <a href="{{ item.browse_href }}">{{ item.title }}{% if item.kind == 'folder' %}/{% endif %}</a>
+            {% elif item.external_url %}
+              <a href="{{ item.external_url }}" target="_blank" rel="noopener">{{ item.title }}</a>
+            {% elif item.kind == 'pagination' %}
+              <a href="{{ item.browse_href }}">{{ item.title }}</a>
+            {% else %}
+              {{ item.title }}
+            {% endif %}
+          </h3>
+          {% if item.subtitle %}<p class="explorer-card__subtitle">{{ item.subtitle }}</p>{% endif %}
+        </div>
+      </div>
+      {% if item.hint %}<p class="explorer-card__hint">{{ item.hint }}</p>{% endif %}
+      <div class="explorer-card__meta">
+        {% if item.size_label != '-' %}<span>{{ item.size_label }}</span>{% endif %}
+        {% if item.modified %}<span>{{ item.modified }}</span>{% endif %}
+        {% if item.version_stamp %}<span>Latest · {{ item.version_stamp }}</span>{% endif %}
+        <span>{{ item.kind_label }}</span>
+      </div>
+      <div class="explorer-card__actions">
+        {% if item.subscribable %}
+          {% if item.subscribed %}
+            <span class="pill pill--subscribed">Subscribed</span>
+          {% else %}
+            <form method="post" action="/explorer/subscribe" class="inline">
+              <input type="hidden" name="source" value="{{ active_source }}">
+              <input type="hidden" name="remote_url" value="{{ item.url }}">
+              <input type="hidden" name="path" value="{{ path }}">
+              <input type="hidden" name="package_key" value="{{ item.package_key or '' }}">
+              <input type="hidden" name="auto_update" value="1">
+              <button type="submit" class="btn--small">Subscribe + ingest</button>
+            </form>
+          {% endif %}
+        {% elif item.is_directory or item.kind == 'pagination' %}
+          <a class="btn btn--ghost btn--small" href="{{ item.browse_href }}">Open</a>
+        {% elif item.external_url %}
+          <a class="btn btn--ghost btn--small" href="{{ item.external_url }}" target="_blank" rel="noopener">Open link</a>
+        {% else %}
+          <span class="faint">Preview only</span>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+    {{ empty_state("Nothing to show here", "This folder is empty or the source could not be reached.", root_href, "Back to root") }}
+  {% endif %}
+</section>
+
+{% if browse_url %}
+<p class="faint">Upstream listing: <a href="{{ browse_url }}" target="_blank" rel="noopener">{{ browse_url }}</a></p>
+{% endif %}
+{% endblock %}

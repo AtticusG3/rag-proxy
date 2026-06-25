@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}RAG Admin{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="{% if request.url.path == '/login' %}page-auth{% endif %}">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="brand">
+      <strong>RAG Admin</strong>
+      <span>Buster corpus</span>
+    </div>
+    <nav aria-label="Primary">
+      <a href="/" class="{% if request.url.path == '/' %}is-active{% endif %}">Dashboard</a>
+      <a href="/explorer" class="{% if request.url.path.startswith('/explorer') %}is-active{% endif %}">Explorer</a>
+      <a href="/subscriptions" class="{% if request.url.path.startswith('/subscriptions') %}is-active{% endif %}">Subscriptions</a>
+      <a href="/zim" class="{% if request.url.path.startswith('/zim') %}is-active{% endif %}">Content</a>
+      <a href="/upload" class="{% if request.url.path.startswith('/upload') %}is-active{% endif %}">Upload</a>
+      <a href="/jobs" class="{% if request.url.path.startswith('/jobs') %}is-active{% endif %}">Jobs</a>
+    </nav>
+    <form method="post" action="/logout" class="logout">
+      <button type="submit" class="btn btn--ghost btn--small">Logout</button>
+    </form>
+  </header>
+  <main id="main" class="container">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
