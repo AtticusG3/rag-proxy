@@ -7,6 +7,7 @@ import os
 import threading
 import time
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,6 +41,7 @@ class IngestConfig:
     batch_size: int = 32
     max_articles: int = 0
     embed_max_chars: int = 2000
+    sparse_reindex_mode: str = "idle"
 
 
 UpdateStateFn = Callable[..., None]
@@ -56,33 +58,46 @@ def _iter_chunks_for_file(
     file_path: str,
     *,
     max_articles: int,
-) -> list[tuple[str, str, str]]:
-    """Return list of (title, url_or_path, chunk_text) tuples."""
+) -> Iterator[tuple[str, str, str]]:
+    """Yield (title, source, chunk_text) without loading whole ZIMs into RAM."""
     file_type = determine_file_type(file_path)
     source = file_path
-    out: list[tuple[str, str, str]] = []
 
     if file_type == "text":
         title, text = _read_text_file(file_path)
-        for idx, piece in enumerate(chunk_text(text)):
-            out.append((title, source, piece))
-        return out
+        for piece in chunk_text(text):
+            yield title, source, piece
+        return
 
     if file_type == "zim":
         for article in iter_zim_articles(file_path, max_articles=max_articles):
-            for idx, piece in enumerate(chunk_text(article.text)):
-                out.append((article.title, source, piece))
-        return out
+            for piece in chunk_text(article.text):
+                yield article.title, source, piece
+        return
 
     if file_type == "pdf":
         title, text = read_pdf_text(file_path)
         if not text.strip():
-            return out
-        for idx, piece in enumerate(chunk_text(text)):
-            out.append((title, source, piece))
-        return out
+            return
+        for piece in chunk_text(text):
+            yield title, source, piece
+        return
 
     raise ValueError(f"Unsupported file type for {file_path}")
+
+
+def _chunk_batches(
+    chunks: Iterator[tuple[str, str, str]],
+    batch_size: int,
+) -> Iterator[list[tuple[str, str, str]]]:
+    batch: list[tuple[str, str, str]] = []
+    for item in chunks:
+        batch.append(item)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 
 def process_file(
@@ -93,14 +108,11 @@ def process_file(
 ) -> int:
     """Embed one file into Qdrant. Returns total chunks embedded."""
     ensure_collection(config.qdrant_url, config.qdrant_collection)
-    chunks = _iter_chunks_for_file(file_path, max_articles=config.max_articles)
-    if not chunks:
-        return 0
-
-    total = 0
+    chunk_iter = _iter_chunks_for_file(file_path, max_articles=config.max_articles)
     batch_size = max(1, config.batch_size)
-    for batch_start in range(0, len(chunks), batch_size):
-        batch = chunks[batch_start : batch_start + batch_size]
+    total = 0
+
+    for batch in _chunk_batches(chunk_iter, batch_size):
         texts = [c[2] for c in batch]
         embeddings = embed_texts(
             texts,
@@ -109,7 +121,7 @@ def process_file(
         )
         points = []
         for i, (title, source, text) in enumerate(batch):
-            chunk_idx = batch_start + i
+            chunk_idx = total + i
             points.append(
                 build_point(
                     text=text,
@@ -141,6 +153,36 @@ def trigger_sparse_reindex(config: IngestConfig) -> int | None:
         return None
 
 
+class SparseReindexScheduler:
+    """Avoid full-collection BM25 rebuild after every ingested file."""
+
+    def __init__(self, config: IngestConfig) -> None:
+        self.config = config
+        self._dirty = False
+        self._lock = threading.Lock()
+
+    def after_file(self) -> None:
+        mode = self.config.sparse_reindex_mode.lower()
+        if mode == "off":
+            return
+        if mode == "each":
+            trigger_sparse_reindex(self.config)
+            return
+        with self._lock:
+            self._dirty = True
+
+    def flush(self) -> None:
+        mode = self.config.sparse_reindex_mode.lower()
+        if mode == "off":
+            return
+        with self._lock:
+            if not self._dirty:
+                return
+            self._dirty = False
+        log.info("sparse reindex flush (ingest queue idle)")
+        trigger_sparse_reindex(self.config)
+
+
 class IngestWorker:
     """Single-threaded job processor with SQLite-backed state."""
 
@@ -151,6 +193,7 @@ class IngestWorker:
     ) -> None:
         self.config = config
         self.db = db_module
+        self._sparse = SparseReindexScheduler(config)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -164,6 +207,7 @@ class IngestWorker:
 
     def stop(self) -> None:
         self._stop.set()
+        self._sparse.flush()
 
     def enqueue_sync(self) -> str:
         """Scan storage and queue only new or previously failed files."""
@@ -222,6 +266,7 @@ class IngestWorker:
         while not self._stop.is_set():
             pending = self.db.list_pending_files(limit=1)
             if not pending:
+                self._sparse.flush()
                 time.sleep(1.0)
                 continue
             file_path = pending[0]["file_path"]
@@ -257,7 +302,7 @@ class IngestWorker:
                 chunks_embedded=count,
                 finished_at=_utc_now(),
             )
-            trigger_sparse_reindex(self.config)
+            self._sparse.after_file()
 
     def remove_file_from_index(self, file_path: str) -> None:
         delete_by_source(
