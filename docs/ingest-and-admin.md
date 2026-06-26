@@ -82,6 +82,8 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 
 Bulk ZIM ingest uses `ingest/pipeline.py`: multiple embed batches run concurrently (`INGEST_EMBED_CONCURRENCY`) while Qdrant upserts stay in chunk order. Set `llama-server --parallel` on the embed endpoint to at least the same value (e.g. `16` on a dedicated nomic-embed GPU). Smaller `INGEST_BATCH_SIZE` (e.g. `32`) with higher concurrency often beats one huge batch per request.
 
+Chunking defaults to 400 characters so each input stays under the per-slot token limit when context is divided by `--parallel` (e.g. `-c 8096 --parallel 16` -> ~512 tokens per input). The embedder bisects batches on `exceed_context_size` 400 responses.
+
 Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `document`, `page_content` (proxy checks in that order).
 
 ### Stall detection

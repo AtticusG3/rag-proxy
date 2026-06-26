@@ -8,6 +8,12 @@ import httpx
 
 DEFAULT_EMBED_MODEL = "nomic-embed-text-v1.5"
 DEFAULT_MAX_CHARS = 2000
+_CONTEXT_SHRINK_LIMITS = (400, 300, 200, 100)
+
+
+def _exceed_context_size(response_text: str) -> bool:
+    lower = response_text.lower()
+    return "exceed_context_size" in lower or "max context size" in lower
 
 
 def _post_embeddings(
@@ -26,6 +32,62 @@ def _post_embeddings(
     return [item["embedding"] for item in data]
 
 
+def _embed_batch_resilient(
+    client: httpx.Client,
+    *,
+    embed_url: str,
+    model: str,
+    texts: list[str],
+    max_chars: int,
+) -> list[list[float]]:
+    """Embed a batch, bisecting or truncating on per-input context overflow."""
+    trimmed = [t.strip()[:max_chars] for t in texts]
+    try:
+        return _post_embeddings(
+            client, embed_url=embed_url, model=model, trimmed=trimmed
+        )
+    except httpx.HTTPStatusError as exc:
+        body = exc.response.text or ""
+        if exc.response.status_code != 400 or not _exceed_context_size(body):
+            raise
+        if len(trimmed) == 1:
+            text = trimmed[0]
+            for limit in _CONTEXT_SHRINK_LIMITS:
+                if limit >= len(text):
+                    continue
+                try:
+                    return _post_embeddings(
+                        client,
+                        embed_url=embed_url,
+                        model=model,
+                        trimmed=[text[:limit]],
+                    )
+                except httpx.HTTPStatusError as retry_exc:
+                    retry_body = retry_exc.response.text or ""
+                    if retry_exc.response.status_code == 400 and _exceed_context_size(
+                        retry_body
+                    ):
+                        continue
+                    raise
+            raise
+        mid = len(trimmed) // 2
+        left = _embed_batch_resilient(
+            client,
+            embed_url=embed_url,
+            model=model,
+            texts=texts[:mid],
+            max_chars=max_chars,
+        )
+        right = _embed_batch_resilient(
+            client,
+            embed_url=embed_url,
+            model=model,
+            texts=texts[mid:],
+            max_chars=max_chars,
+        )
+        return left + right
+
+
 def embed_texts(
     texts: list[str],
     *,
@@ -36,20 +98,27 @@ def embed_texts(
     client: httpx.Client | None = None,
 ) -> list[list[float]]:
     """Batch-embed texts via OpenAI-compatible embeddings API."""
-    trimmed = [t.strip()[:max_chars] for t in texts]
     last_err: Exception | None = None
     for attempt in range(retries + 1):
         if attempt:
             time.sleep(1.0)
         try:
             if client is not None:
-                return _post_embeddings(
-                    client, embed_url=embed_url, model=model, trimmed=trimmed
+                return _embed_batch_resilient(
+                    client,
+                    embed_url=embed_url,
+                    model=model,
+                    texts=texts,
+                    max_chars=max_chars,
                 )
             owned = httpx.Client(timeout=120.0)
             try:
-                return _post_embeddings(
-                    owned, embed_url=embed_url, model=model, trimmed=trimmed
+                return _embed_batch_resilient(
+                    owned,
+                    embed_url=embed_url,
+                    model=model,
+                    texts=texts,
+                    max_chars=max_chars,
                 )
             finally:
                 owned.close()

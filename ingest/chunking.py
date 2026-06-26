@@ -4,8 +4,30 @@ from __future__ import annotations
 
 import re
 
-DEFAULT_CHUNK_SIZE = 512
+# Keep below llama-server per-slot token limit when --parallel divides context
+# (e.g. -c 8096 --parallel 16 -> ~512 tokens per input).
+DEFAULT_CHUNK_SIZE = 400
 DEFAULT_CHUNK_OVERLAP = 64
+
+
+def _split_fixed(text: str, size: int, overlap: int) -> list[str]:
+    """Split long text into fixed-size overlapping slices."""
+    if not text:
+        return []
+    if size <= 0:
+        return [text]
+    if overlap >= size:
+        overlap = max(0, size // 4)
+    chunks: list[str] = []
+    start = 0
+    length = len(text)
+    while start < length:
+        end = min(start + size, length)
+        chunks.append(text[start:end])
+        if end >= length:
+            break
+        start = end - overlap
+    return chunks
 
 
 def chunk_text(
@@ -22,6 +44,12 @@ def chunk_text(
     for para in text.split("\n\n"):
         para = para.strip()
         if not para:
+            continue
+        if len(para) > size:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.extend(_split_fixed(para, size, overlap))
             continue
         if current and len(current) + len(para) + 2 > size:
             chunks.append(current)
