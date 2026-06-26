@@ -85,6 +85,30 @@ def _drain_next_upsert(
     return total, next_upsert + 1
 
 
+def _drain_ready_upserts(
+    pending: dict[int, PendingBatch],
+    next_upsert: int,
+    *,
+    qdrant_url: str,
+    qdrant_collection: str,
+    qdrant_client: httpx.Client,
+    on_progress: UpdateStateFn | None,
+    total: int,
+) -> tuple[int, int]:
+    """Upsert completed batches in order as soon as they are ready."""
+    while next_upsert in pending and pending[next_upsert][2].done():
+        total, next_upsert = _drain_next_upsert(
+            pending,
+            next_upsert,
+            qdrant_url=qdrant_url,
+            qdrant_collection=qdrant_collection,
+            qdrant_client=qdrant_client,
+            on_progress=on_progress,
+            total=total,
+        )
+    return total, next_upsert
+
+
 def run_ingest_pipeline(
     chunks: Iterator[tuple[str, str, str]],
     *,
@@ -128,6 +152,16 @@ def run_ingest_pipeline(
                 pending[next_seq] = (batch, chunk_start, future)
                 chunk_start += len(batch)
                 next_seq += 1
+
+                total, next_upsert = _drain_ready_upserts(
+                    pending,
+                    next_upsert,
+                    qdrant_url=qdrant_url,
+                    qdrant_collection=qdrant_collection,
+                    qdrant_client=qdrant_client,
+                    on_progress=on_progress,
+                    total=total,
+                )
 
                 while (next_seq - next_upsert) > concurrency:
                     total, next_upsert = _drain_next_upsert(

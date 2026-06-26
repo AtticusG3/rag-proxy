@@ -8,7 +8,19 @@
 
 {{ page_header("Ingest jobs", "Per-file embedding state and background job history.") }}
 
-
+{% set running_files = files | selectattr("status", "equalto", "running") | list %}
+{% if running_files %}
+<section class="card" style="border-color: var(--accent, #3b82f6)">
+  <h2 class="section-title">Currently ingesting</h2>
+  {% for f in running_files %}
+  <p style="margin:0.5rem 0">
+    <strong>{{ f.file_name }}</strong>
+    <span class="mono muted">{{ f.chunks_embedded }} chunks</span>
+    <span class="faint">updated {{ f.updated_at | format_dt }}</span>
+  </p>
+  {% endfor %}
+</section>
+{% endif %}
 
 <section class="card">
 

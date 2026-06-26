@@ -125,6 +125,30 @@ def test_pipeline_overlaps_embed_requests_when_concurrency_gt_one() -> None:
     assert FakeHttpClient.max_active_embeds() >= 2
 
 
+def test_pipeline_reports_progress_before_concurrency_window_fills() -> None:
+    """Progress callbacks should fire as soon as ordered batches finish embedding."""
+    FakeHttpClient = _make_fake_http_client()
+    progress: list[int] = []
+
+    def chunks():
+        for i in range(4):
+            yield ("Title", "/tmp/doc.txt", f"chunk-{i}")
+
+    with patch("ingest.pipeline.httpx.Client", FakeHttpClient):
+        run_ingest_pipeline(
+            chunks(),
+            embed_url="http://127.0.0.1:8089",
+            qdrant_url="http://127.0.0.1:6333",
+            qdrant_collection="test_collection",
+            batch_size=1,
+            embed_max_chars=2000,
+            embed_concurrency=512,
+            on_progress=lambda **kwargs: progress.append(int(kwargs["chunks_embedded"])),
+        )
+
+    assert progress == [1, 2, 3, 4]
+
+
 def test_process_file_uses_pipeline_clients() -> None:
     """process_file must still write text/source/title payload fields via the pipeline."""
     FakeHttpClient = _make_fake_http_client()
