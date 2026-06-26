@@ -11,6 +11,13 @@ def read_pdf_text(path: str | Path) -> tuple[str, str]:
 
     pdf_path = Path(path)
     reader = PdfReader(str(pdf_path))
+    if reader.is_encrypted:
+        # Many "searchable" scans use owner encryption with an empty user password.
+        result = reader.decrypt("")
+        if result == 0:
+            raise ValueError(
+                f"PDF is password-protected and could not be opened: {pdf_path.name}"
+            )
     pages: list[str] = []
     for page in reader.pages:
         pages.append(page.extract_text() or "")
