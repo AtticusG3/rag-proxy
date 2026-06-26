@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate .kg/nodes.jsonl and edges.jsonl against schema constraints."""
+"""Validate .kg/memgraphrag nodes and edges."""
 
 from __future__ import annotations
 
@@ -9,31 +9,30 @@ from pathlib import Path
 
 KG_DIR = Path(__file__).resolve().parent
 ALLOWED_EDGE_TYPES = {
+    "ALLOWS_CLASS",
+    "CONFORMS_TO",
     "CONTAINS",
-    "CONFIGURED_BY",
-    "DEFINES",
-    "DEPENDS_ON",
-    "EXPOSES",
-    "HAS_CONFIG",
+    "EXTRACTED_IN",
+    "HAS_HEAD",
+    "HAS_HEAD_CLASS",
+    "HAS_TAIL",
+    "HAS_TAIL_CLASS",
     "IMPLEMENTS",
     "PRECEDES",
-    "TOGGLED_BY",
-    "USES_ONTOLOGY",
+    "USES",
 }
 REQUIRED_NODE_FIELDS = {"id", "type", "source", "extracted_at"}
 REQUIRED_EDGE_FIELDS = {"from", "to", "type", "source", "extracted_at"}
 
 
 def load_jsonl(path: Path) -> list[dict]:
-    rows: list[dict] = []
     if not path.exists():
-        return rows
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        rows.append(json.loads(line))
-    return rows
+        return []
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 
 def main() -> int:

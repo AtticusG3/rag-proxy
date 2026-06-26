@@ -24,8 +24,8 @@ _PORT = int(os.getenv("MCP_PORT", "9001"))
 mcp = FastMCP(
     "RAG Knowledge Base",
     instructions=(
-        "Search the local offline knowledge base (ZIM archives, PDFs, and text files) "
-        "indexed on buster. Use search_knowledge_base before answering questions that "
+        "Search the local offline knowledge base (ZIM archives, PDFs, and text files). "
+        "Use search_knowledge_base before answering questions that "
         "may depend on ingested documentation."
     ),
     host=_HOST,

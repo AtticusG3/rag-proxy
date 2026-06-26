@@ -1,7 +1,7 @@
 ---
 name: rag-proxy-deploy
 description: >-
-  Deploys or configures rag_proxy on a homelab host — venv, .env, systemd
+  Deploys or configures rag_proxy on a Linux host — venv, .env, systemd
   units, nomic-embed dependency. Use when setting up rag-proxy.service,
   EnvironmentFile, ports 8088/8089, or llama-swap integration.
 ---

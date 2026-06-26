@@ -1,10 +1,12 @@
 # Cognitive RAG Proxy — Operator Reference
 
-Architecture implemented in the `rag_proxy/` package. See README for install, client setup, and smoke tests.
+Detailed rollout phases, flag matrix, and failure modes for the cognitive pipeline. Architecture implemented in the `rag_proxy/` package.
+
+**Related docs:** [Documentation index](README.md) · [Getting started](getting-started.md) · [Cognitive pipeline (summary)](cognitive-pipeline.md) · [MemGraphRAG](memgraphrag.md) · [Configuration](configuration.md) · [Observability](observability.md)
 
 ## Enabling cognitive mode (step-by-step)
 
-**Prerequisite:** Legacy RAG works (`ENABLE_COGNITIVE_PIPELINE=false`, logs show `RAG: injected N chunk(s)` for a known-good query). See README *Verify the stack*.
+**Prerequisite:** Legacy RAG works (`ENABLE_COGNITIVE_PIPELINE=false`, logs show `RAG: injected N chunk(s)` for a known-good query). See [Getting started — Verify the stack](getting-started.md#verify-the-stack).
 
 ### Phase 0 — Baseline
 
@@ -126,7 +128,7 @@ journalctl -u rag-proxy --since "1 hour ago" | grep 'gating_would_skip'
 
 Registered in `pipeline_stages.py`; orchestrator runs in order, skipping disabled stages or those below budget:
 
-`tier0` → `intent` → `gating` → `routing` → `rewrite` → `retrieve` → `rerank` → `graph` → `tools` → `memory` → `context`
+`tier0` → `intent` → `gating` → `routing` → `rewrite` → `retrieve` → `rerank` → `graph` → `memgraphrag` → `tools` → `memory` → `context`
 
 Tier0 bypass and gating skip/light/full decisions live in `retrieval_policy.py`.
 
@@ -148,6 +150,7 @@ Tier0 bypass and gating skip/light/full decisions live in `retrieval_policy.py`.
 | `ENABLE_TOKENIZER_ESTIMATE` | false | Token-budget estimation in context assembly |
 | `ENABLE_MODEL_ROUTING` | false | `suggest` or `force` model override |
 | `ENABLE_GRAPH_LOOKUP` | false | SQLite infra graph |
+| `ENABLE_MEMGRAPHRAG` | false | Three-layer memory + PPR passage retrieval |
 | `ENABLE_TOOLS` | false | Whitelisted file reads |
 | `ENABLE_ROLLING_MEMORY` | false | Session summaries in SQLite |
 | `ENABLE_REQUEST_TRACE` | true | Per-request pipeline summary logs |
@@ -164,6 +167,7 @@ Legacy: `METRICS_PORT` > 0 also enables metrics when `ENABLE_METRICS` is unset/f
   - `STAGE_BUDGET_REWRITE_MS` (20) — query rewrite
   - `STAGE_BUDGET_RETRIEVE_MS` (50) — embed + Qdrant/hybrid
   - `STAGE_BUDGET_GRAPH_MS` (100) — graph lookup
+  - `STAGE_BUDGET_MEMGRAPHRAG_MS` (200) — MemGraphRAG stage
   - Rerank/tools use `RERANK_TIMEOUT_MS` / `TOOL_BUDGET_MS` as their min budgets.
 - Priority when budget exhausted: context inject > rerank > graph > tools > LLM rewrite.
 - `TIER0_MAX_CHARS` (80): max query length for tier0 heuristic bypass.
@@ -175,9 +179,10 @@ Legacy: `METRICS_PORT` > 0 also enables metrics when `ENABLE_METRICS` is unset/f
 | Sparse BM25 | `SPARSE_INDEX_URL` | POST `/search` JSON; optional |
 | Reranker | `RERANKER_URL` | POST `/rerank` with `pairs`, `top_k` |
 | Graph | `GRAPH_DB_PATH` | SQLite `entities` / `edges` tables |
+| MemGraphRAG | `MEMGRAPHRAG_DB_PATH` | SQLite three-layer index — [MemGraphRAG operator guide](memgraphrag.md) |
 | Memory | `MEMORY_DB_PATH` | SQLite `session_memory` |
 
-## Model recommendations (homelab)
+## Model recommendations (examples)
 
 | Role | Model |
 |------|-------|
@@ -196,6 +201,6 @@ Legacy: `METRICS_PORT` > 0 also enables metrics when `ENABLE_METRICS` is unset/f
 | Stage skipped unexpectedly | Compare `latency_ms` total to `COGNITIVE_LATENCY_BUDGET_MS`; raise `STAGE_BUDGET_*` or global budget |
 | No trace logs | Set `ENABLE_REQUEST_TRACE=true`; ensure `LOG_LEVEL=INFO` |
 | Metrics 404 | Set `ENABLE_METRICS=true` (or legacy `METRICS_PORT>0`); hit `http://<proxy>:8088/metrics` |
-| Chat works, RAG silent | Fail-open — check WARNING lines for embed/Qdrant errors; run README smoke tests |
+| Chat works, RAG silent | Fail-open — check WARNING lines for embed/Qdrant errors; run [smoke tests](getting-started.md#verify-the-stack) |
 
 Cognitive and RAG errors are fail-open: the original request body is forwarded unchanged.

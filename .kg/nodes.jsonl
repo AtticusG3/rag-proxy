@@ -1,41 +1,246 @@
-{"id": "doc:readme", "type": "Document", "source": "README.md", "extracted_at": "2026-05-30T13:19:45Z", "name": "README", "path": "README.md"}
-{"id": "repo:rag-proxy", "type": "Repository", "source": "repo-root", "extracted_at": "2026-05-30T13:19:45Z", "name": "rag_proxy", "kind": "python-app", "purpose": "Transparent RAG middleware in front of [llama-swap](https://github.com/mostlygeek/llama-swap). Clients point at this proxy instead of llama-swap directly; chat requests can be augmented with Qdrant co"}
-{"id": "config:docker-compose-yml", "type": "Config", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "docker-compose.yml", "path": "docker-compose.yml"}
-{"id": "service:llama-swap", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "llama-swap"}
-{"id": "service:nomic-embed", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "nomic-embed"}
-{"id": "service:reranker", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "reranker"}
-{"id": "service:sparse-index", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "sparse-index"}
-{"id": "service:rag-proxy", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "rag-proxy"}
-{"id": "service:qdrant", "type": "Service", "source": "docker-compose.yml", "extracted_at": "2026-05-30T13:19:45Z", "name": "qdrant"}
-{"id": "config:dockerfile", "type": "Config", "source": "Dockerfile", "extracted_at": "2026-05-30T13:19:45Z", "name": "Dockerfile", "path": "Dockerfile"}
-{"id": "config:sidecars-rerank-dockerfile", "type": "Config", "source": "sidecars/rerank/Dockerfile", "extracted_at": "2026-05-30T13:19:45Z", "name": "Dockerfile", "path": "sidecars/rerank/Dockerfile"}
-{"id": "config:sidecars-sparse-dockerfile", "type": "Config", "source": "sidecars/sparse/Dockerfile", "extracted_at": "2026-05-30T13:19:45Z", "name": "Dockerfile", "path": "sidecars/sparse/Dockerfile"}
-{"id": "script:dev-log-cap", "type": "Script", "source": "scripts/dev-log-cap.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "dev-log-cap", "path": "scripts/dev-log-cap.sh"}
-{"id": "script:install-dev-logrotate-nomad", "type": "Script", "source": "scripts/install-dev-logrotate-nomad.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "install-dev-logrotate-nomad", "path": "scripts/install-dev-logrotate-nomad.sh"}
-{"id": "script:remote-setup-clanker", "type": "Script", "source": "scripts/remote-setup-clanker.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "remote-setup-clanker", "path": "scripts/remote-setup-clanker.sh"}
-{"id": "script:remote-setup-nomad", "type": "Script", "source": "scripts/remote-setup-nomad.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "remote-setup-nomad", "path": "scripts/remote-setup-nomad.sh"}
-{"id": "script:remote-smoke-chat", "type": "Script", "source": "scripts/remote-smoke-chat.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "remote-smoke-chat", "path": "scripts/remote-smoke-chat.sh"}
-{"id": "script:restart-dev-nomad", "type": "Script", "source": "scripts/restart-dev-nomad.sh", "extracted_at": "2026-05-30T13:19:45Z", "name": "restart-dev-nomad", "path": "scripts/restart-dev-nomad.sh"}
-{"id": "script:run-tests", "type": "Script", "source": "scripts/run-tests.ps1", "extracted_at": "2026-05-30T13:19:45Z", "name": "run-tests", "path": "scripts/run-tests.ps1"}
-{"id": "doc:docs-cognitive-rag-plan-md", "type": "Document", "source": "docs/COGNITIVE_RAG_PLAN.md", "extracted_at": "2026-05-30T13:19:45Z", "name": "COGNITIVE RAG PLAN", "path": "docs/COGNITIVE_RAG_PLAN.md"}
-{"id": "module:rag-proxy-init-py", "type": "Module", "source": "rag_proxy/__init__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__init__", "path": "rag_proxy/__init__.py"}
-{"id": "module:rag-proxy-main-py", "type": "Module", "source": "rag_proxy/__main__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__main__", "path": "rag_proxy/__main__.py"}
-{"id": "module:rag-proxy-app-py", "type": "Module", "source": "rag_proxy/app.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "app", "path": "rag_proxy/app.py"}
-{"id": "route:metrics", "type": "Route", "source": "rag_proxy/app.py:46", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/metrics"}
-{"id": "route:content-type", "type": "Route", "source": "rag_proxy/app.py:100", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "content-type"}
-{"id": "module:rag-proxy-clients-init-py", "type": "Module", "source": "rag_proxy/clients/__init__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__init__", "path": "rag_proxy/clients/__init__.py"}
-{"id": "module:rag-proxy-registry-init-py", "type": "Module", "source": "rag_proxy/registry/__init__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__init__", "path": "rag_proxy/registry/__init__.py"}
-{"id": "module:rag-proxy-stages-init-py", "type": "Module", "source": "rag_proxy/stages/__init__.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "__init__", "path": "rag_proxy/stages/__init__.py"}
-{"id": "module:sidecars-rerank-app-py", "type": "Module", "source": "sidecars/rerank/app.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "app", "path": "sidecars/rerank/app.py"}
-{"id": "route:sidecars-rerank-health", "type": "Route", "source": "sidecars/rerank/app.py:53", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/health"}
-{"id": "route:sidecars-sparse-health", "type": "Route", "source": "sidecars/sparse/app.py:113", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/health"}
-{"id": "route:rerank", "type": "Route", "source": "sidecars/rerank/app.py:54", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/rerank"}
-{"id": "module:sidecars-sparse-app-py", "type": "Module", "source": "sidecars/sparse/app.py", "extracted_at": "2026-05-30T13:19:45Z", "name": "app", "path": "sidecars/sparse/app.py"}
-{"id": "route:search", "type": "Route", "source": "sidecars/sparse/app.py:119", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/search"}
-{"id": "route:reindex", "type": "Route", "source": "sidecars/sparse/app.py:125", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "/reindex"}
-{"id": "route:result", "type": "Route", "source": "sidecars/sparse/app.py:50", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "result"}
-{"id": "route:points", "type": "Route", "source": "sidecars/sparse/app.py:51", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "points"}
-{"id": "route:next-page-offset", "type": "Route", "source": "sidecars/sparse/app.py:53", "extracted_at": "2026-05-30T13:19:45Z", "prefix": "next_page_offset"}
-{"id": "dependency:fastapi", "type": "Dependency", "source": "requirements.txt", "extracted_at": "2026-05-30T13:19:45Z", "name": "fastapi"}
-{"id": "dependency:httpx", "type": "Dependency", "source": "requirements.txt", "extracted_at": "2026-05-30T13:19:45Z", "name": "httpx"}
-{"id": "dependency:uvicorn-standard", "type": "Dependency", "source": "requirements.txt", "extracted_at": "2026-05-30T13:19:45Z", "name": "uvicorn[standard]"}
+{"id": "config:docker-compose-yml", "type": "Config", "name": "docker-compose.yml", "path": "docker-compose.yml", "source": "docker-compose.yml", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "config:dockerfile", "type": "Config", "name": "Dockerfile", "path": "Dockerfile", "source": "Dockerfile", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "config:env-example", "type": "Config", "name": ".env.example", "path": ".env.example", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "config:sidecars-rerank-dockerfile", "type": "Config", "name": "Dockerfile", "path": "sidecars/rerank/Dockerfile", "source": "sidecars/rerank/Dockerfile", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "config:sidecars-sparse-dockerfile", "type": "Config", "name": "Dockerfile", "path": "sidecars/sparse/Dockerfile", "source": "sidecars/sparse/Dockerfile", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "dependency:fastapi", "type": "Dependency", "name": "fastapi", "source": "requirements.txt", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "dependency:httpx", "type": "Dependency", "name": "httpx", "source": "requirements.txt", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "dependency:numpy", "type": "Dependency", "name": "numpy", "source": "requirements.txt", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "dependency:uvicorn", "type": "Dependency", "name": "uvicorn", "source": "requirements.txt", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:agents-md", "type": "Document", "name": "AGENTS", "path": "AGENTS.md", "source": "AGENTS.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-architecture-md", "type": "Document", "name": "architecture", "path": "docs/architecture.md", "source": "docs/architecture.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-cognitive-pipeline-md", "type": "Document", "name": "cognitive pipeline", "path": "docs/cognitive-pipeline.md", "source": "docs/cognitive-pipeline.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-cognitive-rag-plan-md", "type": "Document", "name": "COGNITIVE RAG PLAN", "path": "docs/COGNITIVE_RAG_PLAN.md", "source": "docs/COGNITIVE_RAG_PLAN.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-configuration-md", "type": "Document", "name": "configuration", "path": "docs/configuration.md", "source": "docs/configuration.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-deployment-md", "type": "Document", "name": "deployment", "path": "docs/deployment.md", "source": "docs/deployment.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-getting-started-md", "type": "Document", "name": "getting started", "path": "docs/getting-started.md", "source": "docs/getting-started.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-headers-and-clients-md", "type": "Document", "name": "headers and clients", "path": "docs/headers-and-clients.md", "source": "docs/headers-and-clients.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-ingest-and-admin-md", "type": "Document", "name": "ingest and admin", "path": "docs/ingest-and-admin.md", "source": "docs/ingest-and-admin.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-memgraphrag-md", "type": "Document", "name": "memgraphrag", "path": "docs/memgraphrag.md", "source": "docs/memgraphrag.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-observability-md", "type": "Document", "name": "observability", "path": "docs/observability.md", "source": "docs/observability.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-readme-md", "type": "Document", "name": "README", "path": "docs/README.md", "source": "docs/README.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:docs-troubleshooting-md", "type": "Document", "name": "troubleshooting", "path": "docs/troubleshooting.md", "source": "docs/troubleshooting.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "document:readme-md", "type": "Document", "name": "README", "path": "README.md", "source": "README.md", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:cognitive-latency-budget-ms", "type": "EnvVar", "name": "COGNITIVE_LATENCY_BUDGET_MS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:context-budget-ratio", "type": "EnvVar", "name": "CONTEXT_BUDGET_RATIO", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:context-fallback-chars", "type": "EnvVar", "name": "CONTEXT_FALLBACK_CHARS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:default-completion-reserve", "type": "EnvVar", "name": "DEFAULT_COMPLETION_RESERVE", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:embed-max-chars", "type": "EnvVar", "name": "EMBED_MAX_CHARS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:embed-retries", "type": "EnvVar", "name": "EMBED_RETRIES", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:embed-url", "type": "EnvVar", "name": "EMBED_URL", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-cognitive-pipeline", "type": "EnvVar", "name": "ENABLE_COGNITIVE_PIPELINE", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-embed-cache", "type": "EnvVar", "name": "ENABLE_EMBED_CACHE", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-graph-lookup", "type": "EnvVar", "name": "ENABLE_GRAPH_LOOKUP", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-hybrid-retrieval", "type": "EnvVar", "name": "ENABLE_HYBRID_RETRIEVAL", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-intent-router", "type": "EnvVar", "name": "ENABLE_INTENT_ROUTER", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-json-logs", "type": "EnvVar", "name": "ENABLE_JSON_LOGS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-memgraphrag", "type": "EnvVar", "name": "ENABLE_MEMGRAPHRAG", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-metrics", "type": "EnvVar", "name": "ENABLE_METRICS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-model-routing", "type": "EnvVar", "name": "ENABLE_MODEL_ROUTING", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-query-rewrite", "type": "EnvVar", "name": "ENABLE_QUERY_REWRITE", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-query-rewrite-llm", "type": "EnvVar", "name": "ENABLE_QUERY_REWRITE_LLM", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-request-trace", "type": "EnvVar", "name": "ENABLE_REQUEST_TRACE", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-reranker", "type": "EnvVar", "name": "ENABLE_RERANKER", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-retrieval-gating", "type": "EnvVar", "name": "ENABLE_RETRIEVAL_GATING", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-rolling-memory", "type": "EnvVar", "name": "ENABLE_ROLLING_MEMORY", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-semantic-dedupe", "type": "EnvVar", "name": "ENABLE_SEMANTIC_DEDUPE", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-tier0-heuristics", "type": "EnvVar", "name": "ENABLE_TIER0_HEURISTICS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-tokenizer-estimate", "type": "EnvVar", "name": "ENABLE_TOKENIZER_ESTIMATE", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:enable-tools", "type": "EnvVar", "name": "ENABLE_TOOLS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:gating-log-only", "type": "EnvVar", "name": "GATING_LOG_ONLY", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:graph-db-path", "type": "EnvVar", "name": "GRAPH_DB_PATH", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:graph-max-depth", "type": "EnvVar", "name": "GRAPH_MAX_DEPTH", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:hybrid-dense-weight", "type": "EnvVar", "name": "HYBRID_DENSE_WEIGHT", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:intent-confidence-threshold", "type": "EnvVar", "name": "INTENT_CONFIDENCE_THRESHOLD", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:intent-model", "type": "EnvVar", "name": "INTENT_MODEL", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:intent-timeout-ms", "type": "EnvVar", "name": "INTENT_TIMEOUT_MS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:llama-swap-url", "type": "EnvVar", "name": "LLAMA_SWAP_URL", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:log-level", "type": "EnvVar", "name": "LOG_LEVEL", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:memgraphrag-db-path", "type": "EnvVar", "name": "MEMGRAPHRAG_DB_PATH", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:memgraphrag-fact-top-k", "type": "EnvVar", "name": "MEMGRAPHRAG_FACT_TOP_K", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:memgraphrag-passage-node-weight", "type": "EnvVar", "name": "MEMGRAPHRAG_PASSAGE_NODE_WEIGHT", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:memgraphrag-ppr-damping", "type": "EnvVar", "name": "MEMGRAPHRAG_PPR_DAMPING", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:memgraphrag-ppr-iterations", "type": "EnvVar", "name": "MEMGRAPHRAG_PPR_ITERATIONS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:memory-db-path", "type": "EnvVar", "name": "MEMORY_DB_PATH", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:memory-refresh-turns", "type": "EnvVar", "name": "MEMORY_REFRESH_TURNS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:memory-ttl-hours", "type": "EnvVar", "name": "MEMORY_TTL_HOURS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:metrics-port", "type": "EnvVar", "name": "METRICS_PORT", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:model-capabilities-json", "type": "EnvVar", "name": "MODEL_CAPABILITIES_JSON", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:model-registry-config-path", "type": "EnvVar", "name": "MODEL_REGISTRY_CONFIG_PATH", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:model-registry-ttl-sec", "type": "EnvVar", "name": "MODEL_REGISTRY_TTL_SEC", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:model-routes-json", "type": "EnvVar", "name": "MODEL_ROUTES_JSON", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:model-routing-mode", "type": "EnvVar", "name": "MODEL_ROUTING_MODE", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:proxy-host", "type": "EnvVar", "name": "PROXY_HOST", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:proxy-port", "type": "EnvVar", "name": "PROXY_PORT", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:qdrant-collection", "type": "EnvVar", "name": "QDRANT_COLLECTION", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:qdrant-url", "type": "EnvVar", "name": "QDRANT_URL", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:recency-weight", "type": "EnvVar", "name": "RECENCY_WEIGHT", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:rerank-timeout-ms", "type": "EnvVar", "name": "RERANK_TIMEOUT_MS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:rerank-top-k", "type": "EnvVar", "name": "RERANK_TOP_K", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:reranker-url", "type": "EnvVar", "name": "RERANKER_URL", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:retrieval-candidate-k", "type": "EnvVar", "name": "RETRIEVAL_CANDIDATE_K", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:similarity-threshold", "type": "EnvVar", "name": "SIMILARITY_THRESHOLD", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:sparse-index-url", "type": "EnvVar", "name": "SPARSE_INDEX_URL", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:stage-budget-graph-ms", "type": "EnvVar", "name": "STAGE_BUDGET_GRAPH_MS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:stage-budget-memgraphrag-ms", "type": "EnvVar", "name": "STAGE_BUDGET_MEMGRAPHRAG_MS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:stage-budget-retrieve-ms", "type": "EnvVar", "name": "STAGE_BUDGET_RETRIEVE_MS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:stage-budget-rewrite-ms", "type": "EnvVar", "name": "STAGE_BUDGET_REWRITE_MS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:stage-budget-routing-ms", "type": "EnvVar", "name": "STAGE_BUDGET_ROUTING_MS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:tier0-max-chars", "type": "EnvVar", "name": "TIER0_MAX_CHARS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:tool-allowed-roots", "type": "EnvVar", "name": "TOOL_ALLOWED_ROOTS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:tool-budget-ms", "type": "EnvVar", "name": "TOOL_BUDGET_MS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:tool-max-output-chars", "type": "EnvVar", "name": "TOOL_MAX_OUTPUT_CHARS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:tool-timeout-sec", "type": "EnvVar", "name": "TOOL_TIMEOUT_SEC", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:top-k", "type": "EnvVar", "name": "TOP_K", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:upstream-idle-sweep-sec", "type": "EnvVar", "name": "UPSTREAM_IDLE_SWEEP_SEC", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:upstream-keepalive-expiry-sec", "type": "EnvVar", "name": "UPSTREAM_KEEPALIVE_EXPIRY_SEC", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:upstream-max-connections", "type": "EnvVar", "name": "UPSTREAM_MAX_CONNECTIONS", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:upstream-max-keepalive", "type": "EnvVar", "name": "UPSTREAM_MAX_KEEPALIVE", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:upstream-stream-abandon-sec", "type": "EnvVar", "name": "UPSTREAM_STREAM_ABANDON_SEC", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "env:upstream-timeout-sec", "type": "EnvVar", "name": "UPSTREAM_TIMEOUT_SEC", "source": ".env.example", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-chunking-py", "type": "Module", "name": "chunking", "path": "ingest/chunking.py", "source": "ingest/chunking.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-db-py", "type": "Module", "name": "db", "path": "ingest/db.py", "source": "ingest/db.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-embedder-py", "type": "Module", "name": "embedder", "path": "ingest/embedder.py", "source": "ingest/embedder.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-init-py", "type": "Module", "name": "__init__", "path": "ingest/__init__.py", "source": "ingest/__init__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-pdf-reader-py", "type": "Module", "name": "pdf_reader", "path": "ingest/pdf_reader.py", "source": "ingest/pdf_reader.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-qdrant-writer-py", "type": "Module", "name": "qdrant_writer", "path": "ingest/qdrant_writer.py", "source": "ingest/qdrant_writer.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-scanner-py", "type": "Module", "name": "scanner", "path": "ingest/scanner.py", "source": "ingest/scanner.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-stall-py", "type": "Module", "name": "stall", "path": "ingest/stall.py", "source": "ingest/stall.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-types-py", "type": "Module", "name": "types", "path": "ingest/types.py", "source": "ingest/types.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-worker-py", "type": "Module", "name": "worker", "path": "ingest/worker.py", "source": "ingest/worker.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:ingest-zim-reader-py", "type": "Module", "name": "zim_reader", "path": "ingest/zim_reader.py", "source": "ingest/zim_reader.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-app-py", "type": "Module", "name": "app", "path": "rag_admin/app.py", "source": "rag_admin/app.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-auth-py", "type": "Module", "name": "auth", "path": "rag_admin/auth.py", "source": "rag_admin/auth.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-catalog-archive-py", "type": "Module", "name": "archive", "path": "rag_admin/catalog/archive.py", "source": "rag_admin/catalog/archive.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-catalog-arxiv-py", "type": "Module", "name": "arxiv", "path": "rag_admin/catalog/arxiv.py", "source": "rag_admin/catalog/arxiv.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-catalog-download-manager-py", "type": "Module", "name": "download_manager", "path": "rag_admin/catalog/download_manager.py", "source": "rag_admin/catalog/download_manager.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-catalog-init-py", "type": "Module", "name": "__init__", "path": "rag_admin/catalog/__init__.py", "source": "rag_admin/catalog/__init__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-catalog-item-context-py", "type": "Module", "name": "item_context", "path": "rag_admin/catalog/item_context.py", "source": "rag_admin/catalog/item_context.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-catalog-listing-parser-py", "type": "Module", "name": "listing_parser", "path": "rag_admin/catalog/listing_parser.py", "source": "rag_admin/catalog/listing_parser.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-catalog-providers-py", "type": "Module", "name": "providers", "path": "rag_admin/catalog/providers.py", "source": "rag_admin/catalog/providers.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-catalog-zim-versions-py", "type": "Module", "name": "zim_versions", "path": "rag_admin/catalog/zim_versions.py", "source": "rag_admin/catalog/zim_versions.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-config-py", "type": "Module", "name": "config", "path": "rag_admin/config.py", "source": "rag_admin/config.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-db-py", "type": "Module", "name": "db", "path": "rag_admin/db.py", "source": "rag_admin/db.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-formatting-py", "type": "Module", "name": "formatting", "path": "rag_admin/formatting.py", "source": "rag_admin/formatting.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-init-py", "type": "Module", "name": "__init__", "path": "rag_admin/__init__.py", "source": "rag_admin/__init__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-main-py", "type": "Module", "name": "__main__", "path": "rag_admin/__main__.py", "source": "rag_admin/__main__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-paths-py", "type": "Module", "name": "paths", "path": "rag_admin/paths.py", "source": "rag_admin/paths.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-routes-dashboard-py", "type": "Module", "name": "dashboard", "path": "rag_admin/routes/dashboard.py", "source": "rag_admin/routes/dashboard.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-routes-explorer-py", "type": "Module", "name": "explorer", "path": "rag_admin/routes/explorer.py", "source": "rag_admin/routes/explorer.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-routes-ingest-py", "type": "Module", "name": "ingest", "path": "rag_admin/routes/ingest.py", "source": "rag_admin/routes/ingest.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-routes-init-py", "type": "Module", "name": "__init__", "path": "rag_admin/routes/__init__.py", "source": "rag_admin/routes/__init__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-routes-zim-py", "type": "Module", "name": "zim", "path": "rag_admin/routes/zim.py", "source": "rag_admin/routes/zim.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-admin-templates-env-py", "type": "Module", "name": "templates_env", "path": "rag_admin/templates_env.py", "source": "rag_admin/templates_env.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-app-py", "type": "Module", "name": "app", "path": "rag_proxy/app.py", "source": "rag_proxy/app.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-chunk-text-py", "type": "Module", "name": "chunk_text", "path": "rag_proxy/chunk_text.py", "source": "rag_proxy/chunk_text.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-clients-bundle-py", "type": "Module", "name": "bundle", "path": "rag_proxy/clients/bundle.py", "source": "rag_proxy/clients/bundle.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-clients-embed-py", "type": "Module", "name": "embed", "path": "rag_proxy/clients/embed.py", "source": "rag_proxy/clients/embed.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-clients-init-py", "type": "Module", "name": "__init__", "path": "rag_proxy/clients/__init__.py", "source": "rag_proxy/clients/__init__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-clients-llama-swap-py", "type": "Module", "name": "llama_swap", "path": "rag_proxy/clients/llama_swap.py", "source": "rag_proxy/clients/llama_swap.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-clients-qdrant-py", "type": "Module", "name": "qdrant", "path": "rag_proxy/clients/qdrant.py", "source": "rag_proxy/clients/qdrant.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-clients-retrieve-sync-py", "type": "Module", "name": "retrieve_sync", "path": "rag_proxy/clients/retrieve_sync.py", "source": "rag_proxy/clients/retrieve_sync.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-config-py", "type": "Module", "name": "config", "path": "rag_proxy/config.py", "source": "rag_proxy/config.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-context-py", "type": "Module", "name": "context", "path": "rag_proxy/context.py", "source": "rag_proxy/context.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-init-py", "type": "Module", "name": "__init__", "path": "rag_proxy/__init__.py", "source": "rag_proxy/__init__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-legacy-rag-py", "type": "Module", "name": "legacy_rag", "path": "rag_proxy/legacy_rag.py", "source": "rag_proxy/legacy_rag.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-main-py", "type": "Module", "name": "__main__", "path": "rag_proxy/__main__.py", "source": "rag_proxy/__main__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-memgraphrag-init-py", "type": "Module", "name": "__init__", "path": "rag_proxy/memgraphrag/__init__.py", "source": "rag_proxy/memgraphrag/__init__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-memgraphrag-memory-py", "type": "Module", "name": "memory", "path": "rag_proxy/memgraphrag/memory.py", "source": "rag_proxy/memgraphrag/memory.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-memgraphrag-retrieval-py", "type": "Module", "name": "retrieval", "path": "rag_proxy/memgraphrag/retrieval.py", "source": "rag_proxy/memgraphrag/retrieval.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-observability-py", "type": "Module", "name": "observability", "path": "rag_proxy/observability.py", "source": "rag_proxy/observability.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-orchestrator-py", "type": "Module", "name": "orchestrator", "path": "rag_proxy/orchestrator.py", "source": "rag_proxy/orchestrator.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-pipeline-stages-py", "type": "Module", "name": "pipeline_stages", "path": "rag_proxy/pipeline_stages.py", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-py", "type": "Module", "name": "rag_proxy", "path": "rag_proxy.py", "source": "rag_proxy.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-registry-init-py", "type": "Module", "name": "__init__", "path": "rag_proxy/registry/__init__.py", "source": "rag_proxy/registry/__init__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-registry-models-py", "type": "Module", "name": "models", "path": "rag_proxy/registry/models.py", "source": "rag_proxy/registry/models.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-retrieval-policy-py", "type": "Module", "name": "retrieval_policy", "path": "rag_proxy/retrieval_policy.py", "source": "rag_proxy/retrieval_policy.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-init-py", "type": "Module", "name": "__init__", "path": "rag_proxy/stages/__init__.py", "source": "rag_proxy/stages/__init__.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-routing-py", "type": "Module", "name": "routing", "path": "rag_proxy/stages/routing.py", "source": "rag_proxy/stages/routing.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier0-heuristics-py", "type": "Module", "name": "tier0_heuristics", "path": "rag_proxy/stages/tier0_heuristics.py", "source": "rag_proxy/stages/tier0_heuristics.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier1-gating-py", "type": "Module", "name": "tier1_gating", "path": "rag_proxy/stages/tier1_gating.py", "source": "rag_proxy/stages/tier1_gating.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier1-intent-py", "type": "Module", "name": "tier1_intent", "path": "rag_proxy/stages/tier1_intent.py", "source": "rag_proxy/stages/tier1_intent.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier2-context-py", "type": "Module", "name": "tier2_context", "path": "rag_proxy/stages/tier2_context.py", "source": "rag_proxy/stages/tier2_context.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier2-rerank-py", "type": "Module", "name": "tier2_rerank", "path": "rag_proxy/stages/tier2_rerank.py", "source": "rag_proxy/stages/tier2_rerank.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier2-retrieval-py", "type": "Module", "name": "tier2_retrieval", "path": "rag_proxy/stages/tier2_retrieval.py", "source": "rag_proxy/stages/tier2_retrieval.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier2-rewrite-py", "type": "Module", "name": "tier2_rewrite", "path": "rag_proxy/stages/tier2_rewrite.py", "source": "rag_proxy/stages/tier2_rewrite.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier3-graph-py", "type": "Module", "name": "tier3_graph", "path": "rag_proxy/stages/tier3_graph.py", "source": "rag_proxy/stages/tier3_graph.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier3-memgraphrag-py", "type": "Module", "name": "tier3_memgraphrag", "path": "rag_proxy/stages/tier3_memgraphrag.py", "source": "rag_proxy/stages/tier3_memgraphrag.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier3-memory-py", "type": "Module", "name": "tier3_memory", "path": "rag_proxy/stages/tier3_memory.py", "source": "rag_proxy/stages/tier3_memory.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-stages-tier3-tools-py", "type": "Module", "name": "tier3_tools", "path": "rag_proxy/stages/tier3_tools.py", "source": "rag_proxy/stages/tier3_tools.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:rag-proxy-upstream-client-py", "type": "Module", "name": "upstream_client", "path": "rag_proxy/upstream_client.py", "source": "rag_proxy/upstream_client.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:scripts-build-memgraphrag-index-py", "type": "Module", "name": "build_memgraphrag_index", "path": "scripts/build_memgraphrag_index.py", "source": "scripts/build_memgraphrag_index.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:scripts-catalog-weekly-update-py", "type": "Module", "name": "catalog_weekly_update", "path": "scripts/catalog_weekly_update.py", "source": "scripts/catalog_weekly_update.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:scripts-ingest-books-py", "type": "Module", "name": "ingest_books", "path": "scripts/ingest_books.py", "source": "scripts/ingest_books.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:scripts-test-memgraphrag-retrieve-py", "type": "Module", "name": "test_memgraphrag_retrieve", "path": "scripts/test_memgraphrag_retrieve.py", "source": "scripts/test_memgraphrag_retrieve.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:sidecars-mcp-rag-app-py", "type": "Module", "name": "app", "path": "sidecars/mcp_rag/app.py", "source": "sidecars/mcp_rag/app.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:sidecars-mcp-rag-retrieve-py", "type": "Module", "name": "retrieve", "path": "sidecars/mcp_rag/retrieve.py", "source": "sidecars/mcp_rag/retrieve.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:sidecars-rerank-app-py", "type": "Module", "name": "app", "path": "sidecars/rerank/app.py", "source": "sidecars/rerank/app.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:sidecars-rerank-core-py", "type": "Module", "name": "core", "path": "sidecars/rerank/core.py", "source": "sidecars/rerank/core.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:sidecars-sparse-app-py", "type": "Module", "name": "app", "path": "sidecars/sparse/app.py", "source": "sidecars/sparse/app.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "module:sidecars-sparse-core-py", "type": "Module", "name": "core", "path": "sidecars/sparse/core.py", "source": "sidecars/sparse/core.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "package:ingest", "type": "Package", "name": "ingest", "path": "ingest", "source": "ingest", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "package:rag-admin", "type": "Package", "name": "rag_admin", "path": "rag_admin", "source": "rag_admin", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "package:rag-proxy", "type": "Package", "name": "rag_proxy", "path": "rag_proxy", "source": "rag_proxy", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "package:sidecars", "type": "Package", "name": "sidecars", "path": "sidecars", "source": "sidecars", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "repo:rag-proxy", "type": "Repository", "name": "rag_proxy", "kind": "python-app", "source": "repo-root", "purpose": "Transparent RAG middleware with optional cognitive pipeline", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-app-py-health-get", "type": "Route", "name": "/health", "prefix": "/health", "source": "rag_admin/app.py:81", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-app-py-login-get", "type": "Route", "name": "/login", "prefix": "/login", "source": "rag_admin/app.py:85", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-app-py-login-post", "type": "Route", "name": "/login", "prefix": "/login", "source": "rag_admin/app.py:89", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-app-py-logout-post", "type": "Route", "name": "/logout", "prefix": "/logout", "source": "rag_admin/app.py:105", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-dashboard-py-get", "type": "Route", "name": "/", "prefix": "/", "source": "rag_admin/routes/dashboard.py:91", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-dashboard-py-jobs-get", "type": "Route", "name": "/jobs", "prefix": "/jobs", "source": "rag_admin/routes/dashboard.py:103", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-explorer-py-api-catalog-browse-get", "type": "Route", "name": "/api/catalog/browse", "prefix": "/api/catalog/browse", "source": "rag_admin/routes/explorer.py:256", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-explorer-py-explorer-get", "type": "Route", "name": "/explorer", "prefix": "/explorer", "source": "rag_admin/routes/explorer.py:63", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-explorer-py-explorer-subscribe-post", "type": "Route", "name": "/explorer/subscribe", "prefix": "/explorer/subscribe", "source": "rag_admin/routes/explorer.py:186", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-explorer-py-subscriptions-check-updates-post", "type": "Route", "name": "/subscriptions/check-updates", "prefix": "/subscriptions/check-updates", "source": "rag_admin/routes/explorer.py:209", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-explorer-py-subscriptions-delete-post", "type": "Route", "name": "/subscriptions/delete", "prefix": "/subscriptions/delete", "source": "rag_admin/routes/explorer.py:243", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-explorer-py-subscriptions-get", "type": "Route", "name": "/subscriptions", "prefix": "/subscriptions", "source": "rag_admin/routes/explorer.py:172", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-explorer-py-subscriptions-retry-post", "type": "Route", "name": "/subscriptions/retry", "prefix": "/subscriptions/retry", "source": "rag_admin/routes/explorer.py:233", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-explorer-py-subscriptions-toggle-auto-post", "type": "Route", "name": "/subscriptions/toggle-auto", "prefix": "/subscriptions/toggle-auto", "source": "rag_admin/routes/explorer.py:222", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-ingest-py-file-post", "type": "Route", "name": "/file", "prefix": "/file", "source": "rag_admin/routes/ingest.py:27", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-ingest-py-restart-stalled-form-post", "type": "Route", "name": "/restart-stalled-form", "prefix": "/restart-stalled-form", "source": "rag_admin/routes/ingest.py:72", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-ingest-py-retry-failed-form-post", "type": "Route", "name": "/retry-failed-form", "prefix": "/retry-failed-form", "source": "rag_admin/routes/ingest.py:65", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-ingest-py-retry-form-post", "type": "Route", "name": "/retry-form", "prefix": "/retry-form", "source": "rag_admin/routes/ingest.py:54", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-ingest-py-retry-post", "type": "Route", "name": "/retry", "prefix": "/retry", "source": "rag_admin/routes/ingest.py:46", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-ingest-py-status-get", "type": "Route", "name": "/status", "prefix": "/status", "source": "rag_admin/routes/ingest.py:35", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-ingest-py-sync-form-post", "type": "Route", "name": "/sync-form", "prefix": "/sync-form", "source": "rag_admin/routes/ingest.py:79", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-ingest-py-sync-post", "type": "Route", "name": "/sync", "prefix": "/sync", "source": "rag_admin/routes/ingest.py:20", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-zim-py-upload-get", "type": "Route", "name": "/upload", "prefix": "/upload", "source": "rag_admin/routes/zim.py:65", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-zim-py-upload-post", "type": "Route", "name": "/upload", "prefix": "/upload", "source": "rag_admin/routes/zim.py:70", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-zim-py-zim-delete-post", "type": "Route", "name": "/zim/delete", "prefix": "/zim/delete", "source": "rag_admin/routes/zim.py:91", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-admin-routes-zim-py-zim-get", "type": "Route", "name": "/zim", "prefix": "/zim", "source": "rag_admin/routes/zim.py:50", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-proxy-app-py-metrics-get", "type": "Route", "name": "/metrics", "prefix": "/metrics", "source": "rag_proxy/app.py:46", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:rag-proxy-app-py-path-path-api-route", "type": "Route", "name": "/{path:path}", "prefix": "/{path:path}", "source": "rag_proxy/app.py:56", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:sidecars-rerank-app-py-health-get", "type": "Route", "name": "/health", "prefix": "/health", "source": "sidecars/rerank/app.py:53", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:sidecars-rerank-app-py-rerank-post", "type": "Route", "name": "/rerank", "prefix": "/rerank", "source": "sidecars/rerank/app.py:58", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:sidecars-sparse-app-py-health-get", "type": "Route", "name": "/health", "prefix": "/health", "source": "sidecars/sparse/app.py:127", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:sidecars-sparse-app-py-reindex-post", "type": "Route", "name": "/reindex", "prefix": "/reindex", "source": "sidecars/sparse/app.py:146", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "route:sidecars-sparse-app-py-search-post", "type": "Route", "name": "/search", "prefix": "/search", "source": "sidecars/sparse/app.py:140", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "script:scripts-clean-workspace-ps1", "type": "Script", "name": "clean-workspace", "path": "scripts/clean-workspace.ps1", "source": "scripts/clean-workspace.ps1", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "script:scripts-dev-log-cap-sh", "type": "Script", "name": "dev-log-cap", "path": "scripts/dev-log-cap.sh", "source": "scripts/dev-log-cap.sh", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "script:scripts-install-dev-logrotate-nomad-sh", "type": "Script", "name": "install-dev-logrotate-nomad", "path": "scripts/install-dev-logrotate-nomad.sh", "source": "scripts/install-dev-logrotate-nomad.sh", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "script:scripts-logrotate-rag-proxy-dev-conf", "type": "Script", "name": "logrotate-rag-proxy-dev", "path": "scripts/logrotate-rag-proxy-dev.conf", "source": "scripts/logrotate-rag-proxy-dev.conf", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "script:scripts-remote-setup-clanker-sh", "type": "Script", "name": "remote-setup-clanker", "path": "scripts/remote-setup-clanker.sh", "source": "scripts/remote-setup-clanker.sh", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "script:scripts-remote-setup-nomad-sh", "type": "Script", "name": "remote-setup-nomad", "path": "scripts/remote-setup-nomad.sh", "source": "scripts/remote-setup-nomad.sh", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "script:scripts-remote-smoke-chat-sh", "type": "Script", "name": "remote-smoke-chat", "path": "scripts/remote-smoke-chat.sh", "source": "scripts/remote-smoke-chat.sh", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "script:scripts-restart-dev-nomad-sh", "type": "Script", "name": "restart-dev-nomad", "path": "scripts/restart-dev-nomad.sh", "source": "scripts/restart-dev-nomad.sh", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "script:scripts-run-tests-ps1", "type": "Script", "name": "run-tests", "path": "scripts/run-tests.ps1", "source": "scripts/run-tests.ps1", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "service:llama-swap", "type": "Service", "name": "llama-swap", "source": "docker-compose.yml", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "service:nomic-embed", "type": "Service", "name": "nomic-embed", "source": "docker-compose.yml", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "service:qdrant", "type": "Service", "name": "qdrant", "source": "docker-compose.yml", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "service:rag-proxy", "type": "Service", "name": "rag-proxy", "source": "docker-compose.yml", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "service:reranker", "type": "Service", "name": "reranker", "source": "docker-compose.yml", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "service:sparse-index", "type": "Service", "name": "sparse-index", "source": "docker-compose.yml", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:context", "type": "PipelineStage", "name": "context", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:gating", "type": "PipelineStage", "name": "gating", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:graph", "type": "PipelineStage", "name": "graph", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:intent", "type": "PipelineStage", "name": "intent", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:memgraphrag", "type": "PipelineStage", "name": "memgraphrag", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:memory", "type": "PipelineStage", "name": "memory", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:rerank", "type": "PipelineStage", "name": "rerank", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:retrieve", "type": "PipelineStage", "name": "retrieve", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:rewrite", "type": "PipelineStage", "name": "rewrite", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:routing", "type": "PipelineStage", "name": "routing", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:tier0", "type": "PipelineStage", "name": "tier0", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "stage:tools", "type": "PipelineStage", "name": "tools", "source": "rag_proxy/pipeline_stages.py", "extracted_at": "2026-06-26T10:58:07Z"}
+{"id": "subgraph:memgraphrag-ontology", "type": "Subgraph", "name": "memgraphrag-ontology", "path": ".kg/memgraphrag", "source": ".kg/memgraphrag", "extracted_at": "2026-06-26T10:58:07Z"}

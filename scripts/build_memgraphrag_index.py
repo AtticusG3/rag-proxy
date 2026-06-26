@@ -413,8 +413,8 @@ async def main() -> None:
                         help="Random seed for stratified sampling (default: 42)")
 
     parser.add_argument("--output", required=True, help="Output SQLite database path")
-    parser.add_argument("--llm-url", default="http://192.168.1.202:8088/v1",
-                        help="LLM API URL (default: rag-proxy on nomad, which proxies llama-swap)")
+    parser.add_argument("--llm-url", default="http://127.0.0.1:8080/v1",
+                        help="LLM API URL (OpenAI-compatible, e.g. llama-swap)")
     parser.add_argument("--llm-model", default="qwen3.5-9b-turbo",
                         help="LLM model name (alias for Qwen3.5-9B-Abliterated-Claude-4.6-Opus-Reasoning-Distilled)")
     parser.add_argument("--api-key", default="sk-llama-cpp", help="LLM API key")

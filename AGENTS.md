@@ -64,9 +64,21 @@ Shared `httpx.AsyncClient` started in app lifespan (`startup_upstream_client` / 
 
 ## User-facing docs
 
-Operator setup, client configuration, smoke tests, and troubleshooting: **README.md** (*First-time setup*, *Verify the stack*, *Troubleshooting*).
+Operator guides: **docs/README.md** (index). Entry point: **README.md** (quick start + links).
 
-Cognitive rollout, headers, and trace log reading: **docs/COGNITIVE_RAG_PLAN.md**.
+| Topic | Doc |
+| --- | --- |
+| Install, verify, legacy RAG | `docs/getting-started.md` |
+| Env vars | `docs/configuration.md` |
+| Architecture | `docs/architecture.md` |
+| Cognitive rollout (summary) | `docs/cognitive-pipeline.md` |
+| Cognitive rollout (detail) | `docs/COGNITIVE_RAG_PLAN.md` |
+| Clients and headers | `docs/headers-and-clients.md` |
+| Traces and metrics | `docs/observability.md` |
+| systemd / Docker | `docs/deployment.md` |
+| Troubleshooting | `docs/troubleshooting.md` |
+| Admin UI and ingest | `docs/ingest-and-admin.md` |
+| MemGraphRAG | `docs/memgraphrag.md` |
 
 ## Cognitive pipeline
 
@@ -87,12 +99,10 @@ Cognitive rollout, headers, and trace log reading: **docs/COGNITIVE_RAG_PLAN.md*
 
 - Git remotes: `origin` (Gitea primary) `https://git.kevynwatkins.com/kevyn/rag-proxy.git`; `github` (secondary) `https://github.com/AtticusG3/rag-proxy.git`
 - `gh` CLI works for GitHub (`AtticusG3/rag-proxy`); Gitea `origin` pull requests use the Gitea web UI, not `gh`
-- `nomad` is the inference/RAG deploy and test host; `clanker` is studio/frontend only—not part of the rag_proxy stack
-- Inference host `nomad`: prod rag-proxy `8088` (systemd), dev checkout `8087`, llama-swap `8080`; `EMBED_URL` is llama.cpp `llama-server` with nomic-embed only on `127.0.0.1:8089` (not proxied on 8088/8087)
-- Production install path on nomad: `/home/kevyn/rag_proxy` (`rag-proxy.service` uses `.venv/bin/python rag_proxy.py`; missing venv causes systemd 203/EXEC)
-- On nomad shell sessions, `.env` is not auto-loaded; source explicitly (`set -a; . ./.env; set +a`) before smoke scripts
-- Qdrant: `http://192.168.1.36:6333`, collection `nomad_knowledge_base`
-- Qdrant collection `nomad_knowledge_base` is owned by project-nomad; rag_proxy cannot change upstream collection schema or indexing
-- Production tuning: `SIMILARITY_THRESHOLD=0.65`, `TOP_K=5`, `EMBED_MAX_CHARS=2000`
-- No admin UI or JSON settings API; config via `.env`/systemd restart; per-request `x-rag-mode` / `x-no-cache` / `x-conversation-id` headers; `GET /metrics` is Prometheus counters only
+- Default ports (all overridable in `.env`): proxy `8088`, llama-swap `8080`, nomic-embed `8089`; embed is called at `EMBED_URL`, not served on the proxy port
+- `rag_admin` and ingest are optional and separate from the proxy — any host with reachable Qdrant/embed URLs
+- Example systemd units: `rag-proxy.service`, `nomic-embed.service` — edit paths before install; missing venv causes systemd 203/EXEC
+- Shell sessions do not auto-load `.env`; source explicitly (`set -a; . ./.env; set +a`) before smoke scripts
+- Production tuning reference: `SIMILARITY_THRESHOLD=0.65`, `TOP_K=5`, `EMBED_MAX_CHARS=2000`
+- No admin JSON settings API; config via `.env`/systemd restart; per-request `x-rag-mode` / `x-no-cache` / `x-conversation-id` headers; `GET /metrics` is Prometheus counters only
 - Run offline tests from repo root with `.\scripts\run-tests.ps1` (uses `.venv\Scripts\python.exe` when present)

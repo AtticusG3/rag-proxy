@@ -1,0 +1,124 @@
+# Deployment
+
+Production patterns for **rag_proxy** on any Linux host or via Docker. Components are node-agnostic — set URLs in `.env` to match where each service actually runs.
+
+## Typical port layout
+
+Default ports from `.env.example` (all overridable):
+
+| Service | Port | Notes |
+| --- | --- | --- |
+| rag-proxy | `8088` | `PROXY_PORT` |
+| rag-proxy (second instance) | `8087` | Side-by-side dev with `PROXY_PORT=8087` |
+| llama-swap | `8080` | `LLAMA_SWAP_URL` |
+| nomic-embed | `8089` | `EMBED_URL` — usually localhost; not served on the proxy port |
+| Qdrant | `6333` | `QDRANT_URL` — same host or remote |
+| Reranker (optional) | `8095` | Cognitive sidecar |
+| Sparse index (optional) | `8096` | BM25 sidecar |
+| RAG admin UI (optional) | `8087` | `ADMIN_PORT` — only if `rag_admin` runs on this host |
+
+Embedding is called directly at `EMBED_URL` — not proxied through `PROXY_PORT`.
+
+When running smoke scripts in a shell, `.env` is not auto-loaded:
+
+```bash
+set -a; . ./.env; set +a
+```
+
+## systemd (Linux)
+
+### Unit files
+
+Repository ships example units:
+
+- `rag-proxy.service` — FastAPI proxy
+- `nomic-embed.service` — llama-server with nomic-embed only
+
+**Edit paths before install** — `User`, `WorkingDirectory`, model path, and `ExecStart` are placeholders.
+
+`rag-proxy.service` essentials (adjust paths):
+
+```ini
+WorkingDirectory=/opt/rag_proxy
+EnvironmentFile=-/opt/rag_proxy/.env
+ExecStart=/opt/rag_proxy/.venv/bin/python rag_proxy.py
+```
+
+### Install
+
+```bash
+sudo cp nomic-embed.service rag-proxy.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now nomic-embed rag-proxy
+```
+
+### Operations
+
+```bash
+sudo systemctl status rag-proxy nomic-embed
+sudo systemctl restart rag-proxy          # after .env changes
+journalctl -u rag-proxy -f
+```
+
+`rag-proxy.service` starts after `nomic-embed.service` (`Wants=` / `After=`).
+
+### Common startup failures
+
+| Symptom | Fix |
+| --- | --- |
+| `status=203/EXEC` | `.venv` missing or wrong path in `ExecStart` — recreate venv at `WorkingDirectory` |
+| Proxy up, never injects | Wrong `QDRANT_URL` or embed down — [Verify the stack](getting-started.md#verify-the-stack) |
+| `Address already in use` | Another process on `PROXY_PORT` |
+
+## Side-by-side prod and dev
+
+Run one checkout on `PROXY_PORT=8088`. Clone a second checkout, set `PROXY_PORT=8087`, run manually or with a separate unit — without stopping the first instance.
+
+## Docker
+
+Docker Compose bundles rag-proxy, llama-swap:cuda, nomic-embed, and optional Qdrant + cognitive sidecars.
+
+```bash
+# Legacy only
+docker compose up -d --build
+
+# Qdrant + cognitive sidecars
+docker compose --profile qdrant --profile cognitive up -d --build
+```
+
+Service map, env wiring, sidecar APIs: [docker/README.md](../docker/README.md).
+
+## Cognitive rollout
+
+Recommended sequence after legacy RAG is stable:
+
+1. Deploy with `ENABLE_COGNITIVE_PIPELINE=false` (no behavior change).
+2. Enable pipeline + tier0 + `GATING_LOG_ONLY=true` — observe traces.
+3. Enable `ENABLE_RETRIEVAL_GATING=true`, `GATING_LOG_ONLY=false`.
+4. Enable one subsystem per week (intent, rewrite, hybrid, rerank, tier 3).
+
+Details: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIVE_RAG_PLAN.md](COGNITIVE_RAG_PLAN.md).
+
+## Production tuning (reference)
+
+| Variable | Typical value |
+| --- | --- |
+| `SIMILARITY_THRESHOLD` | `0.65` |
+| `TOP_K` | `5` |
+| `EMBED_MAX_CHARS` | `2000` |
+
+Align `nomic-embed.service` `-ub 2048` with embed batch limits for large inputs.
+
+## Optional admin / ingest
+
+`rag_admin` and the ingest worker are separate from the proxy — same machine or another host. See [Ingest and admin](ingest-and-admin.md). This repository does not ship a `rag-admin.service` unit.
+
+## Config changes
+
+No hot reload — edit `.env` or systemd `EnvironmentFile` and restart:
+
+```bash
+sudo systemctl restart rag-proxy
+```
+
+Per-request overrides without restart: [Headers and clients](headers-and-clients.md).

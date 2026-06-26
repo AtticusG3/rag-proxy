@@ -15,6 +15,6 @@ python app.py
 
 Default transport: streamable HTTP at `http://127.0.0.1:9001/mcp`. Set `MCP_TRANSPORT=stdio` for stdio mode.
 
-## Homelab (buster)
+## Production (systemd)
 
-See `local-ai-infra/nodes/buster/systemd/mcp-rag-context.service` in the homelab repo.
+Run under your process manager with `EMBED_URL`, `QDRANT_URL`, and optional `SPARSE_INDEX_URL` / `RERANKER_URL` set in the unit environment or an `EnvironmentFile`.
