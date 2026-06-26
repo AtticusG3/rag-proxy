@@ -112,7 +112,18 @@ Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `documen
 
 ### Stall detection
 
-`ingest/stall.py` marks long-idle jobs using `INGEST_STALL_MINUTES`.
+`ingest/stall.py` marks long-idle jobs using `INGEST_STALL_MINUTES`. The Jobs page auto-refreshes while files are pending or running and shows embed rate (chunks/min).
+
+### Tuning bulk ingest throughput
+
+| Lever | Variable | Notes |
+| --- | --- | --- |
+| Batch size | `INGEST_BATCH_SIZE` | Raise (e.g. `256`) when embed server supports large batches |
+| Parallel embeds | `INGEST_EMBED_CONCURRENCY` | Default `4`; raise if embed server keeps up |
+| GPU embed | `nomic-embed` `-ngl` | CPU embed is the usual bottleneck; see [Deployment](deployment.md) |
+| Sparse rebuild | `INGEST_SPARSE_REINDEX=off` | Disable during bulk; reindex once at end |
+
+Effective values appear read-only on the Dashboard and Jobs pages. Restart admin after changing env vars.
 
 ## Qdrant ownership
 

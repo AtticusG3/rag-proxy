@@ -13,12 +13,12 @@
     </div>
     <label>Destination
       <select name="target">
-        <option value="zim">ZIM library (/opt/ai/rag/zim)</option>
-        <option value="upload">Uploads (/opt/ai/rag/uploads)</option>
+        <option value="zim">ZIM library ({{ zim_dir }})</option>
+        <option value="upload">Uploads ({{ upload_dir }})</option>
       </select>
     </label>
     <button type="submit">Upload and queue</button>
   </form>
-  <p class="muted" style="margin:1rem 0 0">After upload, run <strong>Sync storage</strong> on the Dashboard if ingest does not start automatically.</p>
+  <p class="muted" style="margin:1rem 0 0">Ingest starts automatically after upload. Use <strong>Scan for new files</strong> on the Dashboard only for files copied in outside Admin (rsync, SSH).</p>
 </section>
 {% endblock %}

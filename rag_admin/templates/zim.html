@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, status_pill, empty_state %}
-{% block title %}Content - RAG Admin{% endblock %}
+{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner %}
+{% block title %}Local files - RAG Admin{% endblock %}
 {% block content %}
-{{ page_header("Content Manager", "Local ZIM and upload files on disk with ingest status.") }}
+{{ page_header("Local files", "ZIM and upload files on disk with ingest status.") }}
+{{ flash_banner() }}
 
 <section class="card card--flush">
   <table>

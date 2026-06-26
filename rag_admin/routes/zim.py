@@ -10,6 +10,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ingest.types import determine_file_type
+from rag_admin.flash import flash_redirect
 from rag_admin.config import settings
 from rag_admin.paths import validated_ingest_file_path
 from rag_admin.templates_env import templates
@@ -64,7 +65,14 @@ async def zim_list(request: Request) -> HTMLResponse:
 
 @router.get("/upload", response_class=HTMLResponse)
 async def upload_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "upload.html", {})
+    return templates.TemplateResponse(
+        request,
+        "upload.html",
+        {
+            "zim_dir": settings.zim_dir,
+            "upload_dir": settings.upload_dir,
+        },
+    )
 
 
 @router.post("/upload")
@@ -72,7 +80,7 @@ async def upload_file(
     request: Request,
     file: UploadFile = File(...),
     target: str = Form("zim"),
-) -> RedirectResponse:
+):
     _ensure_dirs()
     dest_dir = settings.zim_dir if target == "zim" else settings.upload_dir
     filename = Path(file.filename or "upload.bin").name
@@ -85,7 +93,7 @@ async def upload_file(
         status="pending",
         file_type=determine_file_type(dest),
     )
-    return RedirectResponse(url="/zim", status_code=303)
+    return flash_redirect("/zim", f"Uploaded {filename} and queued for ingest.")
 
 
 @router.post("/zim/delete")

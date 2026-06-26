@@ -564,6 +564,122 @@ form.inline { display: inline; }
   background: var(--color-bg-elevated);
 }
 
+.flash {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.flash--info {
+  border-color: var(--color-info);
+  background: var(--color-info-soft);
+}
+.flash--success {
+  border-color: var(--color-ok);
+  background: var(--color-ok-soft);
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+.banner--active {
+  border-color: var(--color-teal);
+  background: var(--color-teal-soft);
+}
+.banner__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.banner__copy strong {
+  color: var(--color-text);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ok);
+  background: var(--color-ok-soft);
+  border: 1px solid rgba(94, 207, 154, 0.35);
+}
+.live-badge::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--color-ok);
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.ingest-velocity {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+
+.card--compact {
+  padding: var(--space-4) var(--space-5);
+}
+
+.config-dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+.config-dl > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.config-dl dt {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+.config-dl dd {
+  margin: 0;
+  color: var(--color-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-badge::before {
+    animation: none;
+  }
+}
+
 @media (max-width: 720px) {
   .topbar { flex-wrap: wrap; }
   .logout { margin-left: 0; width: 100%; }

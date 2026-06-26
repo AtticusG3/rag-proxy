@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from rag_admin.config import settings
+from rag_admin.flash import flash_redirect
+from rag_admin.ingest_status import (
+    enrich_file_rows,
+    ingest_config_snapshot,
+    ingest_queue_stats,
+)
 from rag_admin.paths import validated_ingest_file_path
 
 router = APIRouter(prefix="/api/ingest")
@@ -35,10 +41,16 @@ async def ingest_file(request: Request, file_path: str) -> JSONResponse:
 @router.get("/status")
 async def ingest_status(request: Request) -> JSONResponse:
     db = request.app.state.db
+    files = enrich_file_rows(
+        db.ingest.list_file_states(order="updated_desc"),
+        stall_seconds=settings.stall_seconds,
+    )
     return JSONResponse(
         {
-            "files": db.ingest.list_file_states(),
+            "files": files,
             "jobs": db.ingest.list_jobs(limit=20),
+            "stats": ingest_queue_stats(files),
+            "config": ingest_config_snapshot(settings),
         }
     )
 
@@ -55,29 +67,30 @@ async def retry_file(request: Request, file_path: str) -> JSONResponse:
 async def retry_file_form(
     request: Request,
     file_path: str = Form(...),
-) -> RedirectResponse:
+):
     file_path = validated_ingest_file_path(file_path)
     worker = request.app.state.worker
     worker.retry_file(file_path)
-    return RedirectResponse(url="/jobs", status_code=303)
+    name = file_path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    return flash_redirect(f"/jobs", f"Retry queued for {name}.")
 
 
 @router.post("/retry-failed-form")
-async def retry_failed_form(request: Request) -> RedirectResponse:
+async def retry_failed_form(request: Request):
     worker = request.app.state.worker
     worker.retry_all_failed()
-    return RedirectResponse(url="/jobs", status_code=303)
+    return flash_redirect("/jobs", "All failed files re-queued for ingest.")
 
 
 @router.post("/restart-stalled-form")
-async def restart_stalled_form(request: Request) -> RedirectResponse:
+async def restart_stalled_form(request: Request):
     worker = request.app.state.worker
     worker.restart_stalled_files()
-    return RedirectResponse(url="/jobs", status_code=303)
+    return flash_redirect("/jobs", "Stalled files restarted.")
 
 
 @router.post("/sync-form")
-async def sync_form(request: Request) -> RedirectResponse:
+async def sync_form(request: Request):
     worker = request.app.state.worker
     worker.enqueue_sync()
-    return RedirectResponse(url="/jobs", status_code=303)
+    return flash_redirect("/jobs", "Storage scan complete. New and failed files were queued.")

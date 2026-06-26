@@ -1,3 +1,23 @@
+{% macro flash_banner() %}
+{% if request.query_params.get('flash') %}
+<div class="flash flash--{{ request.query_params.get('flash_level', 'info') }}" role="status">
+  {{ request.query_params.get('flash') }}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro ingest_active_banner(stats) %}
+{% if stats.active > 0 %}
+<section class="banner banner--active" role="status">
+  <div class="banner__copy">
+    <strong>Ingest in progress</strong>
+    <span>{{ stats.active }} file(s) queued or running{% if stats.running %} · {{ stats.running }} embedding now{% endif %}{% if stats.stalled %} · {{ stats.stalled }} stalled{% endif %}</span>
+  </div>
+  <a class="btn btn--ghost btn--small" href="/jobs">View live progress</a>
+</section>
+{% endif %}
+{% endmacro %}
+
 {% macro page_header(title, subtitle='', actions='') %}
 <header class="page-header">
   <div class="page-header__copy">

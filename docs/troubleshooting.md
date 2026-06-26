@@ -101,3 +101,21 @@ journalctl -u rag-proxy -f | grep -E 'RAG:|trace=|WARNING'
 | Bypass embed cache | `X-No-Cache: true` |
 
 [Headers and clients](headers-and-clients.md)
+
+## Ingest slow or stuck (rag-admin)
+
+| Symptom | Check | Action |
+| --- | --- | --- |
+| Chunks not increasing | Open **Jobs** (live refresh) | Confirm file status is `running`; if `stalled`, click Restart |
+| Very slow embed | Dashboard tuning panel | Raise `INGEST_EMBED_CONCURRENCY` and `INGEST_BATCH_SIZE`; use GPU embed for bulk |
+| Wrong embed host | `EMBED_URL` on admin host | Admin defaults differ from proxy if unset — set explicitly (often `:8089`) |
+| Remote Qdrant latency | Upsert RTT to `QDRANT_URL` | Run admin near Qdrant or accept slower upserts |
+| End-of-run delay | `INGEST_SPARSE_REINDEX=idle` | Full BM25 rebuild when queue drains — set `off` during bulk |
+| Upload not ingesting | Jobs page status | Uploads queue automatically; use **Scan** only for files copied outside Admin |
+
+```bash
+# Ingest API status (same data as Jobs live view)
+curl -s -b "rag_admin_session=..." "http://127.0.0.1:8087/api/ingest/status" | head
+```
+
+See [Ingest and admin](ingest-and-admin.md).

@@ -11,13 +11,13 @@
   <header class="topbar">
     <div class="brand">
       <strong>RAG Admin</strong>
-      <span>Buster corpus</span>
+      <span>Corpus indexing</span>
     </div>
     <nav aria-label="Primary">
       <a href="/" class="{% if request.url.path == '/' %}is-active{% endif %}">Dashboard</a>
       <a href="/explorer" class="{% if request.url.path.startswith('/explorer') %}is-active{% endif %}">Explorer</a>
       <a href="/subscriptions" class="{% if request.url.path.startswith('/subscriptions') %}is-active{% endif %}">Subscriptions</a>
-      <a href="/zim" class="{% if request.url.path.startswith('/zim') %}is-active{% endif %}">Content</a>
+      <a href="/zim" class="{% if request.url.path.startswith('/zim') %}is-active{% endif %}">Local files</a>
       <a href="/upload" class="{% if request.url.path.startswith('/upload') %}is-active{% endif %}">Upload</a>
       <a href="/jobs" class="{% if request.url.path.startswith('/jobs') %}is-active{% endif %}">Jobs</a>
     </nav>
@@ -28,5 +28,6 @@
   <main id="main" class="container">
     {% block content %}{% endblock %}
   </main>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
