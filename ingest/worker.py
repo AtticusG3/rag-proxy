@@ -23,6 +23,8 @@ from ingest.scanner import scan_storage
 from ingest.types import determine_file_type
 from ingest.zim_reader import iter_zim_articles
 
+from ingest.stall import interrupt_error_message, is_stalled, stall_error_message
+
 log = logging.getLogger("ingest.worker")
 
 
@@ -42,6 +44,7 @@ class IngestConfig:
     max_articles: int = 0
     embed_max_chars: int = 2000
     sparse_reindex_mode: str = "idle"
+    stall_seconds: int = 900
 
 
 UpdateStateFn = Callable[..., None]
@@ -202,6 +205,7 @@ class IngestWorker:
         if self._thread and self._thread.is_alive():
             return
         self._stop.clear()
+        self._recover_interrupted_running()
         self._thread = threading.Thread(target=self._run_loop, daemon=True, name="ingest-worker")
         self._thread.start()
 
@@ -235,20 +239,56 @@ class IngestWorker:
     def retry_file(self, file_path: str) -> str:
         job_id = str(uuid.uuid4())
         self.db.create_job(job_id, job_type="retry", message=file_path)
-        if not self.db.retry_file_state(file_path):
+        self._prepare_file_restart(file_path)
+        return job_id
+
+    def restart_stalled_files(self) -> str:
+        """Re-queue running files that have not updated recently."""
+        job_id = str(uuid.uuid4())
+        stalled = self._list_stalled_running()
+        restarted: list[str] = []
+        for row in stalled:
+            path = row["file_path"]
+            self._prepare_file_restart(path)
+            restarted.append(Path(path).name)
+        message = (
+            f"restarted {len(restarted)} stalled file(s)"
+            if restarted
+            else "no stalled files"
+        )
+        self.db.create_job(job_id, job_type="restart_stalled", message=message)
+        self.db.update_job(job_id, status="done", message=message)
+        return job_id
+
+    def _prepare_file_restart(self, file_path: str) -> None:
+        row = self.db.get_file_state(file_path)
+        if row is None:
             self.db.upsert_file_state(
                 file_path,
                 status="pending",
                 file_type=determine_file_type(file_path),
             )
-        return job_id
+            return
+        if row["status"] != "indexed":
+            delete_by_source(
+                self.config.qdrant_url,
+                self.config.qdrant_collection,
+                file_path,
+            )
+        if not self.db.retry_file_state(file_path, reset_chunks=True):
+            self.db.upsert_file_state(
+                file_path,
+                status="pending",
+                file_type=determine_file_type(file_path),
+                chunks_embedded=0,
+            )
 
     def retry_all_failed(self) -> str:
         job_id = str(uuid.uuid4())
         failed = self.db.list_failed_files()
         self.db.create_job(job_id, job_type="retry_failed")
         for row in failed:
-            self.db.retry_file_state(row["file_path"])
+            self._prepare_file_restart(row["file_path"])
         self.db.update_job(
             job_id,
             status="queued",
@@ -264,6 +304,7 @@ class IngestWorker:
 
     def _run_loop(self) -> None:
         while not self._stop.is_set():
+            self._fail_stalled_running()
             pending = self.db.list_pending_files(limit=1)
             if not pending:
                 self._sparse.flush()
@@ -303,6 +344,47 @@ class IngestWorker:
                 finished_at=_utc_now(),
             )
             self._sparse.after_file()
+
+    def _recover_interrupted_running(self) -> None:
+        for row in self.db.list_running_files():
+            message = interrupt_error_message(int(row.get("chunks_embedded") or 0))
+            self.db.update_file_state(
+                row["file_path"],
+                status="failed",
+                last_error=message,
+                finished_at=_utc_now(),
+            )
+            log.warning(
+                "recovered interrupted ingest: %s (%s)",
+                row["file_path"],
+                message,
+            )
+
+    def _fail_stalled_row(self, row: dict[str, object]) -> None:
+        file_path = str(row["file_path"])
+        chunks = int(row.get("chunks_embedded") or 0)
+        message = stall_error_message(
+            stall_seconds=self.config.stall_seconds,
+            chunks_embedded=chunks,
+        )
+        self.db.update_file_state(
+            file_path,
+            status="failed",
+            last_error=message,
+            finished_at=_utc_now(),
+        )
+        log.warning("marked stalled ingest failed: %s", file_path)
+
+    def _fail_stalled_running(self) -> None:
+        for row in self._list_stalled_running():
+            self._fail_stalled_row(row)
+
+    def _list_stalled_running(self) -> list[dict[str, object]]:
+        return [
+            row
+            for row in self.db.list_running_files()
+            if is_stalled(row.get("updated_at"), self.config.stall_seconds)
+        ]
 
     def remove_file_from_index(self, file_path: str) -> None:
         delete_by_source(

@@ -332,6 +332,9 @@ button.danger:hover, .btn--danger:hover {
 .pill--running, .pill--downloading, .pill--queued, .pill--update_queued, .pill--pending {
   background: var(--color-warn-soft); color: var(--color-warn); border-color: transparent;
 }
+.pill--stalled {
+  background: var(--color-danger-soft); color: var(--color-danger); border-color: transparent;
+}
 .pill--failed { background: var(--color-danger-soft); color: var(--color-danger); border-color: transparent; }
 .pill--subscribed { background: var(--color-info-soft); color: var(--color-info); border-color: transparent; }
 
