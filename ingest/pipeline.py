@@ -147,6 +147,7 @@ def run_ingest_pipeline(
                     embed_texts,
                     texts,
                     embed_url=target_url,
+                    embed_urls=urls,
                     max_chars=embed_max_chars,
                 )
                 pending[next_seq] = (batch, chunk_start, future)

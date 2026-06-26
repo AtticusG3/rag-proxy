@@ -92,36 +92,60 @@ def embed_texts(
     texts: list[str],
     *,
     embed_url: str,
+    embed_urls: list[str] | None = None,
     model: str = DEFAULT_EMBED_MODEL,
     max_chars: int = DEFAULT_MAX_CHARS,
     retries: int = 2,
     client: httpx.Client | None = None,
 ) -> list[list[float]]:
     """Batch-embed texts via OpenAI-compatible embeddings API."""
+    candidates = [embed_url.rstrip("/")]
+    if embed_urls:
+        for url in embed_urls:
+            normalized = url.rstrip("/")
+            if normalized not in candidates:
+                candidates.append(normalized)
+
     last_err: Exception | None = None
     for attempt in range(retries + 1):
         if attempt:
             time.sleep(1.0)
-        try:
-            if client is not None:
-                return _embed_batch_resilient(
-                    client,
-                    embed_url=embed_url,
-                    model=model,
-                    texts=texts,
-                    max_chars=max_chars,
-                )
-            owned = httpx.Client(timeout=120.0)
+        for url in candidates:
             try:
-                return _embed_batch_resilient(
-                    owned,
-                    embed_url=embed_url,
-                    model=model,
-                    texts=texts,
-                    max_chars=max_chars,
+                if client is not None:
+                    return _embed_batch_resilient(
+                        client,
+                        embed_url=url,
+                        model=model,
+                        texts=texts,
+                        max_chars=max_chars,
+                    )
+                owned = httpx.Client(timeout=120.0)
+                try:
+                    return _embed_batch_resilient(
+                        owned,
+                        embed_url=url,
+                        model=model,
+                        texts=texts,
+                        max_chars=max_chars,
+                    )
+                finally:
+                    owned.close()
+            except Exception as exc:
+                last_err = exc
+                retryable = isinstance(
+                    exc, (httpx.HTTPStatusError, httpx.ConnectError, httpx.ReadTimeout)
                 )
-            finally:
-                owned.close()
-        except Exception as exc:
-            last_err = exc
+                if isinstance(exc, httpx.HTTPStatusError):
+                    retryable = exc.response.status_code in (
+                        404,
+                        408,
+                        429,
+                        500,
+                        502,
+                        503,
+                        504,
+                    )
+                if not retryable:
+                    raise
     raise RuntimeError(f"embed batch failed after {retries + 1} attempts: {last_err}") from last_err

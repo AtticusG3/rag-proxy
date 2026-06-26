@@ -52,6 +52,30 @@ def test_embed_texts_splits_batch_on_context_overflow():
     assert client.post.call_count == 3
 
 
+def test_embed_texts_tries_fallback_url_on_404():
+    client = MagicMock()
+    request = httpx.Request("POST", "http://bad/v1/embeddings")
+    bad = httpx.HTTPStatusError(
+        "404",
+        request=request,
+        response=httpx.Response(404, request=request),
+    )
+    ok = MagicMock()
+    ok.raise_for_status = MagicMock()
+    ok.json.return_value = {"data": [{"embedding": [1.0]}]}
+    client.post.side_effect = [bad, ok]
+
+    result = embed_texts(
+        ["hello"],
+        embed_url="http://bad",
+        embed_urls=["http://bad", "http://good"],
+        client=client,
+    )
+
+    assert result == [[1.0]]
+    assert client.post.call_count == 2
+
+
 def test_embed_texts_truncates_single_oversized_input():
     client = MagicMock()
     client.post.side_effect = [
