@@ -105,7 +105,6 @@ def run_ingest_pipeline(
     chunk_start = 0
     pending: dict[int, PendingBatch] = {}
 
-    embed_client = httpx.Client(timeout=120.0)
     qdrant_client = httpx.Client(timeout=120.0)
     try:
         ensure_collection(qdrant_url, qdrant_collection, client=qdrant_client)
@@ -120,7 +119,6 @@ def run_ingest_pipeline(
                     texts,
                     embed_url=embed_url,
                     max_chars=embed_max_chars,
-                    client=embed_client,
                 )
                 pending[next_seq] = (batch, chunk_start, future)
                 chunk_start += len(batch)
@@ -148,7 +146,6 @@ def run_ingest_pipeline(
                     total=total,
                 )
     finally:
-        embed_client.close()
         qdrant_client.close()
 
     return total

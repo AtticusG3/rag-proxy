@@ -148,7 +148,8 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `ADMIN_SESSION_SECRET` | *(must change)* | Session signing key |
 | `ADMIN_PASSWORD` | *(must change)* | Login password |
 | `ADMIN_ALLOW_INSECURE_DEFAULTS` | — | Set `true` for local dev only |
-| `INGEST_BATCH_SIZE` | `64` | Vectors per Qdrant upsert batch |
+| `INGEST_BATCH_SIZE` | `64` | Texts per embed HTTP request / Qdrant upsert batch |
+| `INGEST_EMBED_CONCURRENCY` | `4` | Concurrent in-flight embed batches (match `llama-server --parallel`) |
 | `INGEST_MAX_ARTICLES` | `0` | ZIM article cap (`0` = unlimited) |
 | `INGEST_SPARSE_REINDEX` | `idle` | Sparse sidecar reindex mode |
 | `INGEST_STALL_MINUTES` | `15` | Stall detection for ingest jobs |

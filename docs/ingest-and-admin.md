@@ -62,7 +62,8 @@ Proxy and admin share many vars (`EMBED_URL`, `QDRANT_URL`, `QDRANT_COLLECTION`)
 | `ADMIN_SESSION_SECRET` | *(required)* | Session cookie signing |
 | `ADMIN_PASSWORD` | *(required)* | Login password |
 | `ADMIN_ALLOW_INSECURE_DEFAULTS` | — | `true` for local dev only |
-| `INGEST_BATCH_SIZE` | `64` | Vectors per Qdrant upsert batch |
+| `INGEST_BATCH_SIZE` | `64` | Texts per embed HTTP request / Qdrant upsert batch |
+| `INGEST_EMBED_CONCURRENCY` | `4` | Concurrent in-flight embed batches (match `llama-server --parallel`) |
 | `INGEST_MAX_ARTICLES` | `0` | ZIM article limit (`0` = unlimited) |
 | `INGEST_SPARSE_REINDEX` | `idle` | When to trigger sparse sidecar reindex |
 | `INGEST_STALL_MINUTES` | `15` | Mark jobs stalled after no progress |
@@ -78,6 +79,8 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 4. **Embed** — `ingest/embedder.py` calls `EMBED_URL` (same nomic-embed as proxy).
 5. **Write** — `ingest/qdrant_writer.py` upserts to `QDRANT_COLLECTION`.
 6. **Sparse reindex** — optional POST to `SPARSE_INDEX_URL` when `INGEST_SPARSE_REINDEX` triggers (hybrid cognitive mode).
+
+Bulk ZIM ingest uses `ingest/pipeline.py`: multiple embed batches run concurrently (`INGEST_EMBED_CONCURRENCY`) while Qdrant upserts stay in chunk order. Set `llama-server --parallel` on the embed endpoint to at least the same value (e.g. `16` on a dedicated nomic-embed GPU). Smaller `INGEST_BATCH_SIZE` (e.g. `32`) with higher concurrency often beats one huge batch per request.
 
 Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `document`, `page_content` (proxy checks in that order).
 
