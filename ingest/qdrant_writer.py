@@ -19,17 +19,31 @@ def ensure_collection(
     qdrant_url: str,
     collection: str,
     vector_size: int = DEFAULT_VECTOR_SIZE,
+    *,
+    client: httpx.Client | None = None,
 ) -> None:
     base = qdrant_url.rstrip("/")
-    with httpx.Client(timeout=30.0) as client:
-        exists = client.get(f"{base}/collections/{collection}")
-        if exists.status_code == 200:
-            return
-        response = client.put(
-            f"{base}/collections/{collection}",
-            json={"vectors": {"size": vector_size, "distance": "Cosine"}},
-        )
-        response.raise_for_status()
+    if client is not None:
+        _ensure_collection_with_client(client, base, collection, vector_size)
+        return
+    with httpx.Client(timeout=30.0) as owned:
+        _ensure_collection_with_client(owned, base, collection, vector_size)
+
+
+def _ensure_collection_with_client(
+    client: httpx.Client,
+    base: str,
+    collection: str,
+    vector_size: int,
+) -> None:
+    exists = client.get(f"{base}/collections/{collection}")
+    if exists.status_code == 200:
+        return
+    response = client.put(
+        f"{base}/collections/{collection}",
+        json={"vectors": {"size": vector_size, "distance": "Cosine"}},
+    )
+    response.raise_for_status()
 
 
 def get_collection_count(qdrant_url: str, collection: str) -> int:
@@ -43,14 +57,19 @@ def upsert_points(
     qdrant_url: str,
     collection: str,
     points: list[dict[str, Any]],
+    *,
+    client: httpx.Client | None = None,
 ) -> None:
     if not points:
         return
-    with httpx.Client(timeout=120.0) as client:
-        response = client.put(
-            f"{qdrant_url.rstrip('/')}/collections/{collection}/points",
-            json={"points": points},
-        )
+    url = f"{qdrant_url.rstrip('/')}/collections/{collection}/points"
+    payload = {"points": points}
+    if client is not None:
+        response = client.put(url, json=payload)
+        response.raise_for_status()
+        return
+    with httpx.Client(timeout=120.0) as owned:
+        response = owned.put(url, json=payload)
         response.raise_for_status()
 
 

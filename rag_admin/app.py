@@ -46,6 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         qdrant_collection=settings.qdrant_collection,
         sparse_index_url=settings.sparse_index_url,
         batch_size=settings.batch_size,
+        embed_concurrency=settings.embed_concurrency,
         max_articles=settings.max_articles,
         embed_max_chars=settings.embed_max_chars,
         sparse_reindex_mode=settings.sparse_reindex_mode,

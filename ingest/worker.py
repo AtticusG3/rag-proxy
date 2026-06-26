@@ -17,9 +17,9 @@ import httpx
 
 from ingest.db import IngestDatabase
 from ingest.chunking import chunk_text
-from ingest.embedder import embed_texts
 from ingest.pdf_reader import read_pdf_text
-from ingest.qdrant_writer import build_point, delete_by_source, ensure_collection, upsert_points
+from ingest.pipeline import run_ingest_pipeline
+from ingest.qdrant_writer import delete_by_source
 from ingest.scanner import scan_storage
 from ingest.types import determine_file_type
 from ingest.zim_reader import iter_zim_articles
@@ -42,6 +42,7 @@ class IngestConfig:
     qdrant_collection: str
     sparse_index_url: str
     batch_size: int = 32
+    embed_concurrency: int = 4
     max_articles: int = 0
     embed_max_chars: int = 2000
     sparse_reindex_mode: str = "idle"
@@ -90,20 +91,6 @@ def _iter_chunks_for_file(
     raise ValueError(f"Unsupported file type for {file_path}")
 
 
-def _chunk_batches(
-    chunks: Iterator[tuple[str, str, str]],
-    batch_size: int,
-) -> Iterator[list[tuple[str, str, str]]]:
-    batch: list[tuple[str, str, str]] = []
-    for item in chunks:
-        batch.append(item)
-        if len(batch) >= batch_size:
-            yield batch
-            batch = []
-    if batch:
-        yield batch
-
-
 def process_file(
     file_path: str,
     config: IngestConfig,
@@ -111,36 +98,17 @@ def process_file(
     on_progress: UpdateStateFn | None = None,
 ) -> int:
     """Embed one file into Qdrant. Returns total chunks embedded."""
-    ensure_collection(config.qdrant_url, config.qdrant_collection)
     chunk_iter = _iter_chunks_for_file(file_path, max_articles=config.max_articles)
-    batch_size = max(1, config.batch_size)
-    total = 0
-
-    for batch in _chunk_batches(chunk_iter, batch_size):
-        texts = [c[2] for c in batch]
-        embeddings = embed_texts(
-            texts,
-            embed_url=config.embed_url,
-            max_chars=config.embed_max_chars,
-        )
-        points = []
-        for i, (title, source, text) in enumerate(batch):
-            chunk_idx = total + i
-            points.append(
-                build_point(
-                    text=text,
-                    source=source,
-                    title=title,
-                    chunk_idx=chunk_idx,
-                    embedding=embeddings[i],
-                )
-            )
-        upsert_points(config.qdrant_url, config.qdrant_collection, points)
-        total += len(points)
-        if on_progress:
-            on_progress(chunks_embedded=total)
-
-    return total
+    return run_ingest_pipeline(
+        chunk_iter,
+        embed_url=config.embed_url,
+        qdrant_url=config.qdrant_url,
+        qdrant_collection=config.qdrant_collection,
+        batch_size=config.batch_size,
+        embed_max_chars=config.embed_max_chars,
+        embed_concurrency=config.embed_concurrency,
+        on_progress=on_progress,
+    )
 
 
 def trigger_sparse_reindex(config: IngestConfig) -> int | None:

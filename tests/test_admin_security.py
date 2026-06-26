@@ -28,6 +28,7 @@ def _admin_settings(**overrides: object) -> AdminSettings:
         "qdrant_collection": "test",
         "sparse_index_url": "http://127.0.0.1:18096",
         "batch_size": 64,
+        "embed_concurrency": 4,
         "max_articles": 0,
         "embed_max_chars": 2000,
         "sparse_reindex_mode": "idle",
