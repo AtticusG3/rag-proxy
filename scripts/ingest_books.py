@@ -3,7 +3,7 @@
 ingest_books.py -- chunk and ingest Project Gutenberg ebooks into Qdrant.
 
 Usage:
-    python ingest_books.py
+    python scripts/ingest_books.py
 """
 from __future__ import annotations
 

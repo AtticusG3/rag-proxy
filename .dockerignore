@@ -15,4 +15,3 @@ docker/config.yaml
 rag_proxy_deploy.tgz
 *.tgz
 *.log
-deploy/

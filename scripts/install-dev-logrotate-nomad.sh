@@ -3,7 +3,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CONF_SRC="${REPO_ROOT}/deploy/logrotate-rag-proxy-dev.conf"
+CONF_SRC="${REPO_ROOT}/scripts/logrotate-rag-proxy-dev.conf"
 CONF_DST="${HOME}/.config/rag-proxy/logrotate-dev.conf"
 STATE="${HOME}/.config/rag-proxy/logrotate-dev.state"
 CRON_LOG="${HOME}/.config/rag-proxy/logrotate-dev.cron.log"
