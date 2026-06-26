@@ -18,12 +18,8 @@ if _root not in sys.path:
 from rag_proxy.chunk_text import extract_chunk_text
 from rag_proxy.clients.retrieve_sync import (
     RetrieveConfig,
-    dense_search,
-    embed_query,
-    hybrid_retrieve as sync_hybrid_retrieve,
+    hybrid_retrieve_with_dense_ids,
     rerank_pairs,
-    rrf_merge,
-    sparse_search,
 )
 
 
@@ -117,61 +113,6 @@ def _hit_to_chunk(hit: dict[str, Any], retrieval: str) -> RetrievedChunk | None:
     )
 
 
-def _collect_hybrid_hits(
-    config: RetrieveConfig,
-    query: str,
-    *,
-    limit: int,
-    score_threshold: float | None,
-) -> tuple[list[dict[str, Any]], set[str]]:
-    """Single embed+dense+sparse+RRF path; dense id set supports retrieval tagging."""
-    vector = embed_query(config, query)
-    dense_hits: list[dict[str, Any]] = []
-    dense_ids: set[str] = set()
-    if vector is not None:
-        dense_hits = dense_search(
-            config, vector, limit=limit, score_threshold=score_threshold
-        )
-        dense_hits = [h for h in dense_hits if extract_chunk_text(h)]
-        dense_ids = {str(h.get("id", "")) for h in dense_hits if h.get("id")}
-
-    sparse_raw = sparse_search(config, query, limit=limit)
-    if not sparse_raw:
-        return dense_hits, dense_ids
-
-    dense_ranked = [
-        (str(h.get("id", "")), float(h.get("score", 0.0))) for h in dense_hits
-    ]
-    sparse_ranked = [
-        (str(h.get("id", i)), float(h.get("score", 0.0)))
-        for i, h in enumerate(sparse_raw)
-    ]
-    dense_w = config.hybrid_dense_weight
-    sparse_w = max(0.0, 1.0 - dense_w)
-    fused_ids = [
-        doc_id
-        for doc_id, _ in rrf_merge(
-            [dense_ranked, sparse_ranked],
-            limit=limit,
-            list_weights=[dense_w, sparse_w],
-        )
-    ]
-
-    by_id: dict[str, dict[str, Any]] = {
-        str(h.get("id", "")): h for h in dense_hits
-    }
-    for h in sparse_raw:
-        cid = str(h.get("id", ""))
-        if cid and cid not in by_id and extract_chunk_text(h):
-            by_id[cid] = h
-
-    ordered: list[dict[str, Any]] = []
-    for doc_id in fused_ids:
-        if doc_id in by_id:
-            ordered.append(by_id[doc_id])
-    return ordered, dense_ids
-
-
 def hybrid_retrieve(
     settings: RetrieveSettings,
     query: str,
@@ -185,19 +126,13 @@ def hybrid_retrieve(
         if score_threshold is None
         else score_threshold
     )
-    candidate_k = max(top_k, top_k * 4)
     hybrid_on = settings.enable_hybrid and bool(settings.sparse_index_url)
+    candidate_k = max(top_k, top_k * 4)
     limit = candidate_k if hybrid_on else top_k
 
-    if hybrid_on:
-        hits, dense_ids = _collect_hybrid_hits(
-            config, query, limit=limit, score_threshold=threshold
-        )
-    else:
-        hits = sync_hybrid_retrieve(
-            config, query, limit=limit, score_threshold=threshold
-        )
-        dense_ids = set()
+    hits, dense_ids = hybrid_retrieve_with_dense_ids(
+        config, query, limit=limit, score_threshold=threshold
+    )
     chunks: list[RetrievedChunk] = []
     for hit in hits:
         cid = str(hit.get("id", ""))

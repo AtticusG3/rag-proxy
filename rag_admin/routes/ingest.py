@@ -2,26 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
-from rag_admin.config import resolve_ingest_path, settings
+from rag_admin.config import settings
+from rag_admin.paths import validated_ingest_file_path
 
 router = APIRouter(prefix="/api/ingest")
-
-
-def _validated_file_path(file_path: str) -> str:
-    try:
-        return str(
-            resolve_ingest_path(
-                file_path,
-                zim_dir=settings.zim_dir,
-                upload_dir=settings.upload_dir,
-            )
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 class SyncResponse(BaseModel):
@@ -38,7 +26,7 @@ async def sync_storage(request: Request) -> SyncResponse:
 
 @router.post("/file")
 async def ingest_file(request: Request, file_path: str) -> JSONResponse:
-    file_path = _validated_file_path(file_path)
+    file_path = validated_ingest_file_path(file_path)
     worker = request.app.state.worker
     job_id = worker.enqueue_file(file_path)
     return JSONResponse({"job_id": job_id, "status": "queued"})
@@ -57,7 +45,7 @@ async def ingest_status(request: Request) -> JSONResponse:
 
 @router.post("/retry")
 async def retry_file(request: Request, file_path: str) -> JSONResponse:
-    file_path = _validated_file_path(file_path)
+    file_path = validated_ingest_file_path(file_path)
     worker = request.app.state.worker
     job_id = worker.retry_file(file_path)
     return JSONResponse({"job_id": job_id, "status": "queued"})
@@ -68,7 +56,7 @@ async def retry_file_form(
     request: Request,
     file_path: str = Form(...),
 ) -> RedirectResponse:
-    file_path = _validated_file_path(file_path)
+    file_path = validated_ingest_file_path(file_path)
     worker = request.app.state.worker
     worker.retry_file(file_path)
     return RedirectResponse(url="/jobs", status_code=303)

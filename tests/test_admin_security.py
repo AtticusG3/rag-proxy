@@ -147,19 +147,19 @@ def test_resolve_ingest_path_rejects_traversal(tmp_path: Path) -> None:
         )
 
 
-def _patch_zim_settings(
+def _patch_paths_settings(
     monkeypatch: pytest.MonkeyPatch, zim_dir: Path, upload_dir: Path
 ) -> None:
     monkeypatch.setattr(
-        "rag_admin.routes.zim.settings",
+        "rag_admin.paths.settings",
         _admin_settings(zim_dir=str(zim_dir), upload_dir=str(upload_dir)),
     )
 
 
-def test_zim_validated_file_path_accepts_zim_file(
+def test_validated_ingest_file_path_accepts_zim_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from rag_admin.routes.zim import _validated_file_path
+    from rag_admin.paths import validated_ingest_file_path
 
     zim_dir = tmp_path / "zim"
     upload_dir = tmp_path / "uploads"
@@ -167,15 +167,15 @@ def test_zim_validated_file_path_accepts_zim_file(
     upload_dir.mkdir()
     zim_file = zim_dir / "wiki.zim"
     zim_file.write_text("data", encoding="ascii")
-    _patch_zim_settings(monkeypatch, zim_dir, upload_dir)
+    _patch_paths_settings(monkeypatch, zim_dir, upload_dir)
 
-    assert _validated_file_path(str(zim_file)) == str(zim_file.resolve())
+    assert validated_ingest_file_path(str(zim_file)) == str(zim_file.resolve())
 
 
-def test_zim_validated_file_path_rejects_outside_roots(
+def test_validated_ingest_file_path_rejects_outside_roots(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from rag_admin.routes.zim import _validated_file_path
+    from rag_admin.paths import validated_ingest_file_path
 
     zim_dir = tmp_path / "zim"
     upload_dir = tmp_path / "uploads"
@@ -183,18 +183,18 @@ def test_zim_validated_file_path_rejects_outside_roots(
     upload_dir.mkdir()
     outside = tmp_path / "outside.zim"
     outside.write_text("x", encoding="ascii")
-    _patch_zim_settings(monkeypatch, zim_dir, upload_dir)
+    _patch_paths_settings(monkeypatch, zim_dir, upload_dir)
 
     with pytest.raises(HTTPException) as exc_info:
-        _validated_file_path(str(outside))
+        validated_ingest_file_path(str(outside))
     assert exc_info.value.status_code == 400
     assert "must be under" in str(exc_info.value.detail)
 
 
-def test_zim_validated_file_path_rejects_traversal(
+def test_validated_ingest_file_path_rejects_traversal(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from rag_admin.routes.zim import _validated_file_path
+    from rag_admin.paths import validated_ingest_file_path
 
     zim_dir = tmp_path / "zim"
     upload_dir = tmp_path / "uploads"
@@ -203,9 +203,9 @@ def test_zim_validated_file_path_rejects_traversal(
     outside = tmp_path / "evil.zim"
     outside.write_text("x", encoding="ascii")
     traversal = zim_dir / ".." / "evil.zim"
-    _patch_zim_settings(monkeypatch, zim_dir, upload_dir)
+    _patch_paths_settings(monkeypatch, zim_dir, upload_dir)
 
     with pytest.raises(HTTPException) as exc_info:
-        _validated_file_path(str(traversal))
+        validated_ingest_file_path(str(traversal))
     assert exc_info.value.status_code == 400
     assert "must be under" in str(exc_info.value.detail)

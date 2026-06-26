@@ -1,4 +1,9 @@
-"""Qdrant dense + optional sparse / hybrid retrieval."""
+"""Async Qdrant dense + optional sparse / hybrid retrieval for the proxy pipeline.
+
+Sync retrieval (MCP sidecar, scripts) lives in retrieve_sync.py and shares only
+rrf_merge today. This module adds recency boosting, merge_fused_with_sparse_reserve,
+and async httpx orchestration -- intentional divergence unless parity is required.
+"""
 
 from __future__ import annotations
 

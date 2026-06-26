@@ -6,27 +6,15 @@ import os
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ingest.types import determine_file_type
-from rag_admin.config import resolve_ingest_path, settings
+from rag_admin.config import settings
+from rag_admin.paths import validated_ingest_file_path
 from rag_admin.templates_env import templates
 
 router = APIRouter()
-
-
-def _validated_file_path(file_path: str) -> str:
-    try:
-        return str(
-            resolve_ingest_path(
-                file_path,
-                zim_dir=settings.zim_dir,
-                upload_dir=settings.upload_dir,
-            )
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _ensure_dirs() -> None:
@@ -102,7 +90,7 @@ async def upload_file(
 
 @router.post("/zim/delete")
 async def delete_zim(request: Request, file_path: str = Form(...)) -> RedirectResponse:
-    file_path = _validated_file_path(file_path)
+    file_path = validated_ingest_file_path(file_path)
     worker = request.app.state.worker
     worker.remove_file_from_index(file_path)
     return RedirectResponse(url="/zim", status_code=303)

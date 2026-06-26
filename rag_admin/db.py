@@ -1,4 +1,8 @@
-"""SQLite persistence for catalog subscriptions (ingest state in ingest.db)."""
+"""SQLite persistence for catalog subscriptions in the admin database file.
+
+Ingest state (kb_ingest_state, ingest_jobs) is stored by ingest.db.IngestDatabase
+using the same sqlite path (ADMIN_DB_PATH).
+"""
 
 from __future__ import annotations
 

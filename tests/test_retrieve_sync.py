@@ -9,6 +9,7 @@ import pytest
 from rag_proxy.clients.retrieve_sync import (
     RetrieveConfig,
     hybrid_retrieve,
+    hybrid_retrieve_with_dense_ids,
     rerank_pairs,
     rrf_merge,
 )
@@ -86,6 +87,28 @@ def test_hybrid_retrieve_dense_only_when_hybrid_disabled() -> None:
     dense.assert_called_once()
     assert len(hits) == 1
     assert hits[0]["id"] == "d1"
+
+
+def test_hybrid_retrieve_with_dense_ids_tags_dense_sources() -> None:
+    """Hybrid fusion returns dense id set for downstream retrieval tagging."""
+    cfg = _config(enable_hybrid=True)
+    dense_hit = {"id": "d1", "score": 0.9, "payload": {"text": "dense"}}
+    sparse_hit = {"id": "s1", "score": 0.8, "payload": {"text": "sparse"}}
+
+    with patch(
+        "rag_proxy.clients.retrieve_sync.embed_query", return_value=[0.1, 0.2]
+    ):
+        with patch(
+            "rag_proxy.clients.retrieve_sync.dense_search", return_value=[dense_hit]
+        ):
+            with patch(
+                "rag_proxy.clients.retrieve_sync.sparse_search",
+                return_value=[sparse_hit],
+            ):
+                hits, dense_ids = hybrid_retrieve_with_dense_ids(cfg, "query", limit=3)
+
+    assert dense_ids == {"d1"}
+    assert {str(h["id"]) for h in hits} == {"d1", "s1"}
 
 
 def test_rerank_pairs_returns_sidecar_order() -> None:

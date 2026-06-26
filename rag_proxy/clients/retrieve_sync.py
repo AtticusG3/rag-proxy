@@ -175,34 +175,38 @@ def _hit_has_text(hit: dict) -> bool:
     return bool(extract_chunk_text(hit))
 
 
-def hybrid_retrieve(
+def hybrid_retrieve_with_dense_ids(
     config: RetrieveConfig,
     query: str,
     *,
     limit: int,
     score_threshold: float | None = None,
-) -> list[dict]:
-    """Dense-only or RRF hybrid dense+sparse retrieval; returns raw hit dicts."""
+) -> tuple[list[dict], set[str]]:
+    """Dense-only or RRF hybrid retrieval; returns hits and dense-source id set."""
     if not config.enable_hybrid or not config.sparse_index_url:
         vector = embed_query(config, query)
         if vector is None:
-            return []
+            return [], set()
         hits = dense_search(
             config, vector, limit=limit, score_threshold=score_threshold
         )
-        return [h for h in hits if _hit_has_text(h)]
+        hits = [h for h in hits if _hit_has_text(h)]
+        dense_ids = {str(h.get("id", "")) for h in hits if h.get("id")}
+        return hits, dense_ids
 
     vector = embed_query(config, query)
     dense_hits: list[dict] = []
+    dense_ids: set[str] = set()
     if vector is not None:
         dense_hits = dense_search(
             config, vector, limit=limit, score_threshold=score_threshold
         )
         dense_hits = [h for h in dense_hits if _hit_has_text(h)]
+        dense_ids = {str(h.get("id", "")) for h in dense_hits if h.get("id")}
 
     sparse_raw = sparse_search(config, query, limit=limit)
     if not sparse_raw:
-        return dense_hits
+        return dense_hits, dense_ids
 
     dense_ranked = [
         (str(h.get("id", "")), float(h.get("score", 0.0))) for h in dense_hits
@@ -232,4 +236,18 @@ def hybrid_retrieve(
     for doc_id in fused_ids:
         if doc_id in by_id:
             ordered.append(by_id[doc_id])
-    return ordered
+    return ordered, dense_ids
+
+
+def hybrid_retrieve(
+    config: RetrieveConfig,
+    query: str,
+    *,
+    limit: int,
+    score_threshold: float | None = None,
+) -> list[dict]:
+    """Dense-only or RRF hybrid dense+sparse retrieval; returns raw hit dicts."""
+    hits, _ = hybrid_retrieve_with_dense_ids(
+        config, query, limit=limit, score_threshold=score_threshold
+    )
+    return hits
