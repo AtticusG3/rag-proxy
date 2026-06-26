@@ -12,7 +12,7 @@ class EmbedPoolConfig:
     vram_per_instance_mib: int = 1024
     vram_reserve_mib: int = 2048
     port_base: int = 18089
-    max_instances: int = 32
+    max_instances: int = 12
     min_instances: int = 1
     parallel_per_instance: int = 32
     gpu_index: int = 0
@@ -42,7 +42,7 @@ def load_embed_pool_config() -> EmbedPoolConfig:
         vram_per_instance_mib=_env_int("NOMIC_POOL_VRAM_PER_INSTANCE_MIB", 1024),
         vram_reserve_mib=_env_int("NOMIC_POOL_VRAM_RESERVE_MIB", 2048),
         port_base=_env_int("NOMIC_POOL_PORT_BASE", 18089),
-        max_instances=_env_int("NOMIC_POOL_MAX_INSTANCES", 32),
+        max_instances=_env_int("NOMIC_POOL_MAX_INSTANCES", 12),
         min_instances=_env_int("NOMIC_POOL_MIN_INSTANCES", 1),
         parallel_per_instance=_env_int("NOMIC_POOL_PARALLEL_PER_INSTANCE", 32),
         gpu_index=_env_int("NOMIC_POOL_GPU_INDEX", 0),

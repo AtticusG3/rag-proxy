@@ -95,7 +95,7 @@ For bulk ingest on a GPU host, run several `llama-server` embed instances (syste
 instances = clamp((gpu_free_mib - NOMIC_POOL_VRAM_RESERVE_MIB) / NOMIC_POOL_VRAM_PER_INSTANCE_MIB)
 ```
 
-It writes `/opt/ai/config/nomic-embed-pool.env` with `INGEST_EMBED_URLS` and `INGEST_EMBED_CONCURRENCY` (`instances * --parallel` per unit). Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example` in infra).
+It writes `/opt/ai/config/nomic-embed-pool.env` with `INGEST_EMBED_URLS` and `INGEST_EMBED_CONCURRENCY` (`instances * --parallel` per unit). Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example` in infra). Default hard cap: `NOMIC_POOL_MAX_INSTANCES=12` (raise only if you need more throughput and stable VRAM headroom).
 
 ```bash
 # Dry-run plan
