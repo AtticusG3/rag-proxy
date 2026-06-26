@@ -63,7 +63,8 @@ Proxy and admin share many vars (`EMBED_URL`, `QDRANT_URL`, `QDRANT_COLLECTION`)
 | `ADMIN_PASSWORD` | *(required)* | Login password |
 | `ADMIN_ALLOW_INSECURE_DEFAULTS` | — | `true` for local dev only |
 | `INGEST_BATCH_SIZE` | `64` | Texts per embed HTTP request / Qdrant upsert batch |
-| `INGEST_EMBED_CONCURRENCY` | `4` | Concurrent in-flight embed batches (match `llama-server --parallel`) |
+| `INGEST_EMBED_CONCURRENCY` | `4` | Concurrent in-flight embed batches (auto-set when using VRAM pool) |
+| `INGEST_EMBED_URLS` | — | Comma-separated embed endpoints for ingest round-robin (generated pool file) |
 | `INGEST_MAX_ARTICLES` | `0` | ZIM article limit (`0` = unlimited) |
 | `INGEST_SPARSE_REINDEX` | `idle` | When to trigger sparse sidecar reindex |
 | `INGEST_STALL_MINUTES` | `15` | Mark jobs stalled after no progress |
@@ -83,6 +84,29 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 Bulk ZIM ingest uses `ingest/pipeline.py`: multiple embed batches run concurrently (`INGEST_EMBED_CONCURRENCY`) while Qdrant upserts stay in chunk order. Set `llama-server --parallel` on the embed endpoint to at least the same value (e.g. `16` on a dedicated nomic-embed GPU). Smaller `INGEST_BATCH_SIZE` (e.g. `32`) with higher concurrency often beats one huge batch per request.
 
 Chunking defaults to 400 characters so each input stays under the per-slot token limit when context is divided by `--parallel` (e.g. `-c 8096 --parallel 16` -> ~512 tokens per input). The embedder bisects batches on `exceed_context_size` 400 responses.
+
+### Multi-instance embed pool (VRAM auto-scale)
+
+For bulk ingest on a GPU host, run several `llama-server` embed instances (systemd template `nomic-embed@PORT.service`) and round-robin across them via `INGEST_EMBED_URLS`.
+
+`scripts/scale_nomic_embed_pool.py` sizes the pool from free VRAM:
+
+```text
+instances = clamp((gpu_free_mib - NOMIC_POOL_VRAM_RESERVE_MIB) / NOMIC_POOL_VRAM_PER_INSTANCE_MIB)
+```
+
+It writes `/opt/ai/config/nomic-embed-pool.env` with `INGEST_EMBED_URLS` and `INGEST_EMBED_CONCURRENCY` (`instances * --parallel` per unit). Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example` in infra).
+
+```bash
+# Dry-run plan
+python scripts/scale_nomic_embed_pool.py
+
+# Apply via systemd (recommended on boot)
+systemctl start nomic-embed-scale.service
+systemctl restart rag-admin.service
+```
+
+Without `nvidia-smi`, the planner falls back to a single port (`NOMIC_POOL_PORT_BASE`). The embedder fails over to alternate pool URLs on HTTP 404/5xx.
 
 Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `document`, `page_content` (proxy checks in that order).
 
