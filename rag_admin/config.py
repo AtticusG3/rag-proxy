@@ -25,6 +25,7 @@ class AdminSettings:
     zim_dir: str
     upload_dir: str
     embed_url: str
+    ingest_embed_urls: str
     qdrant_url: str
     qdrant_collection: str
     sparse_index_url: str
@@ -47,6 +48,7 @@ class AdminSettings:
             zim_dir=os.getenv("ZIM_DIR", "/opt/ai/rag/zim"),
             upload_dir=os.getenv("UPLOAD_DIR", "/opt/ai/rag/uploads"),
             embed_url=os.getenv("EMBED_URL", "http://127.0.0.1:18089"),
+            ingest_embed_urls=os.getenv("INGEST_EMBED_URLS", "").strip(),
             qdrant_url=os.getenv("QDRANT_URL", "http://127.0.0.1:6333"),
             qdrant_collection=os.getenv("QDRANT_COLLECTION", "nomad_knowledge_base"),
             sparse_index_url=os.getenv("SPARSE_INDEX_URL", "http://127.0.0.1:18096"),

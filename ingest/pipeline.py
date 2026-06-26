@@ -88,7 +88,8 @@ def _drain_next_upsert(
 def run_ingest_pipeline(
     chunks: Iterator[tuple[str, str, str]],
     *,
-    embed_url: str,
+    embed_url: str = "",
+    embed_urls: list[str] | None = None,
     qdrant_url: str,
     qdrant_collection: str,
     batch_size: int,
@@ -97,6 +98,9 @@ def run_ingest_pipeline(
     on_progress: UpdateStateFn | None = None,
 ) -> int:
     """Embed batches concurrently and upsert to Qdrant in chunk order."""
+    urls = embed_urls or ([embed_url] if embed_url else [])
+    if not urls:
+        raise ValueError("embed_urls or embed_url is required")
     batch_size = max(1, batch_size)
     concurrency = max(1, embed_concurrency)
     total = 0
@@ -114,10 +118,11 @@ def run_ingest_pipeline(
         ) as pool:
             for batch in chunk_batches(chunks, batch_size):
                 texts = [chunk[2] for chunk in batch]
+                target_url = urls[next_seq % len(urls)]
                 future = pool.submit(
                     embed_texts,
                     texts,
-                    embed_url=embed_url,
+                    embed_url=target_url,
                     max_chars=embed_max_chars,
                 )
                 pending[next_seq] = (batch, chunk_start, future)

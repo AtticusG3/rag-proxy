@@ -12,6 +12,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.worker import IngestConfig, IngestWorker
 from rag_admin.auth import (
     AuthMiddleware,
@@ -42,6 +43,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         zim_dir=settings.zim_dir,
         upload_dir=settings.upload_dir,
         embed_url=settings.embed_url,
+        embed_urls=parse_ingest_embed_urls(
+            embed_url=settings.embed_url,
+            ingest_embed_urls=settings.ingest_embed_urls or None,
+        ),
         qdrant_url=settings.qdrant_url,
         qdrant_collection=settings.qdrant_collection,
         sparse_index_url=settings.sparse_index_url,

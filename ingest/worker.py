@@ -17,6 +17,7 @@ import httpx
 
 from ingest.db import IngestDatabase
 from ingest.chunking import chunk_text
+from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.pdf_reader import read_pdf_text
 from ingest.pipeline import run_ingest_pipeline
 from ingest.qdrant_writer import delete_by_source
@@ -47,6 +48,7 @@ class IngestConfig:
     embed_max_chars: int = 2000
     sparse_reindex_mode: str = "idle"
     stall_seconds: int = 900
+    embed_urls: list[str] | None = None
 
 
 UpdateStateFn = Callable[..., None]
@@ -102,6 +104,8 @@ def process_file(
     return run_ingest_pipeline(
         chunk_iter,
         embed_url=config.embed_url,
+        embed_urls=config.embed_urls
+        or parse_ingest_embed_urls(embed_url=config.embed_url),
         qdrant_url=config.qdrant_url,
         qdrant_collection=config.qdrant_collection,
         batch_size=config.batch_size,
