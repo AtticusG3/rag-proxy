@@ -49,12 +49,17 @@ def _probe_embed(url: str, *, timeout: float = 5.0) -> bool:
     return False
 
 
-def _wait_for_health(urls: list[str], *, timeout_s: float = 45.0) -> list[str]:
+def _wait_for_health(urls: list[str], *, timeout_s: float | None = None) -> list[str]:
+  if timeout_s is None:
+    timeout_s = min(180.0, 20.0 + 3.0 * len(urls))
   deadline = time.time() + timeout_s
   healthy: list[str] = []
   while time.time() < deadline:
     healthy = [url for url in urls if _probe_embed(url)]
     if len(healthy) == len(urls):
+      return healthy
+    if healthy and time.time() + 5 > deadline:
+      # Accept partial pool near deadline rather than failing the whole scale.
       return healthy
     time.sleep(1.0)
   return healthy
@@ -84,15 +89,25 @@ def apply_plan(plan, *, pool_env_path: str, wait_health: bool) -> int:
   _stop_legacy_pool_instances(config)
 
   target_urls = [f"http://127.0.0.1:{port}" for port in plan.ports]
+  restart_cmds = " ".join(
+    f"systemctl restart {TEMPLATE_UNIT}{port}.service &"
+    for port in plan.ports
+  )
   for port in plan.ports:
     unit = f"{TEMPLATE_UNIT}{port}.service"
     _systemctl("enable", unit, check=False)
-    _systemctl("restart", unit)
+  if restart_cmds:
+    _run(["bash", "-lc", f"{restart_cmds} wait"], check=False)
 
   healthy_urls = _wait_for_health(target_urls) if wait_health else target_urls
   if not healthy_urls:
     print("error: no healthy nomic-embed instances after scale", file=sys.stderr)
     return 1
+  if len(healthy_urls) < len(target_urls):
+    print(
+      f"warning: using {len(healthy_urls)}/{len(target_urls)} healthy embed instances",
+      file=sys.stderr,
+    )
 
   healthy_ports = tuple(int(url.rsplit(":", 1)[-1]) for url in healthy_urls)
   healthy_plan = EmbedPoolPlan(
