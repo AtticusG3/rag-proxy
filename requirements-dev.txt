@@ -1,2 +1,5 @@
 # Optional deps for offline tests (sidecar contract tests).
 rank-bm25>=0.2.2
+# Admin route tests import Jinja2 templates (full admin stack: requirements-admin.txt).
+jinja2>=3.1.0
+python-multipart>=0.0.9
