@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Chunk and ingest Project Gutenberg ebooks into Qdrant.
+"""
+ingest_books.py -- chunk and ingest Project Gutenberg ebooks into Qdrant.
 
 Usage:
     python ingest_books.py
@@ -12,12 +13,7 @@ import sys
 
 from ingest.chunking import chunk_text
 from ingest.embedder import embed_texts
-from ingest.qdrant_writer import (
-    build_point,
-    ensure_collection,
-    get_collection_count,
-    upsert_points,
-)
+from ingest.qdrant_writer import build_point, ensure_collection, get_collection_count, upsert_points
 
 BOOKS_DIR = os.getenv("BOOKS_DIR", "/home/kevyn/rag-proxy-dev/books")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://127.0.0.1:6333")

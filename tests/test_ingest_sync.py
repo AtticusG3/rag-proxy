@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 import tempfile
+from unittest.mock import patch
 
 from ingest.types import determine_file_type
-from ingest.worker import IngestConfig, IngestWorker
+from ingest.worker import IngestConfig, IngestWorker, SparseReindexScheduler
 from rag_admin.db import AdminDatabase
 
 
@@ -20,6 +21,40 @@ def _worker_with_dirs(db: AdminDatabase, zim_dir: str, upload_dir: str) -> Inges
         sparse_index_url="",
     )
     return IngestWorker(config, db)
+
+
+def test_sparse_scheduler_idle_defers_until_flush() -> None:
+    config = IngestConfig(
+        zim_dir="/tmp",
+        upload_dir="/tmp",
+        embed_url="http://127.0.0.1:1",
+        qdrant_url="http://127.0.0.1:1",
+        qdrant_collection="test",
+        sparse_index_url="http://127.0.0.1:1",
+        sparse_reindex_mode="idle",
+    )
+    scheduler = SparseReindexScheduler(config)
+    with patch("ingest.worker.trigger_sparse_reindex") as trigger:
+        scheduler.after_file()
+        trigger.assert_not_called()
+        scheduler.flush()
+        trigger.assert_called_once()
+
+
+def test_sparse_scheduler_each_reindexes_immediately() -> None:
+    config = IngestConfig(
+        zim_dir="/tmp",
+        upload_dir="/tmp",
+        embed_url="http://127.0.0.1:1",
+        qdrant_url="http://127.0.0.1:1",
+        qdrant_collection="test",
+        sparse_index_url="http://127.0.0.1:1",
+        sparse_reindex_mode="each",
+    )
+    scheduler = SparseReindexScheduler(config)
+    with patch("ingest.worker.trigger_sparse_reindex") as trigger:
+        scheduler.after_file()
+        trigger.assert_called_once()
 
 
 def test_enqueue_sync_skips_indexed_files() -> None:

@@ -159,7 +159,7 @@ class AdminDatabase:
             ).fetchone()
         return dict(row) if row else None
 
-    def retry_file_state(self, file_path: str) -> bool:
+    def retry_file_state(self, file_path: str, *, reset_chunks: bool = False) -> bool:
         """Re-queue one file for ingest without touching indexed rows."""
         with self._conn() as conn:
             row = conn.execute(
@@ -168,16 +168,28 @@ class AdminDatabase:
             ).fetchone()
             if row is None:
                 return False
+            chunks_sql = ", chunks_embedded = 0" if reset_chunks else ""
             conn.execute(
-                """
+                f"""
                 UPDATE kb_ingest_state
                 SET status = 'pending', last_error = NULL,
-                    started_at = NULL, finished_at = NULL, updated_at = ?
+                    started_at = NULL, finished_at = NULL, updated_at = ?{chunks_sql}
                 WHERE file_path = ?
                 """,
                 (_utc_now(), file_path),
             )
         return True
+
+    def list_running_files(self) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM kb_ingest_state
+                WHERE status = 'running'
+                ORDER BY updated_at
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def list_failed_files(self) -> list[dict[str, Any]]:
         with self._conn() as conn:
@@ -190,10 +202,16 @@ class AdminDatabase:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def list_file_states(self) -> list[dict[str, Any]]:
+    def list_file_states(self, *, order: str = "file_name") -> list[dict[str, Any]]:
+        if order == "updated_desc":
+            order_clause = "ORDER BY (updated_at IS NULL), updated_at DESC"
+        elif order == "file_name":
+            order_clause = "ORDER BY file_name"
+        else:
+            raise ValueError(f"unsupported file state order: {order}")
         with self._conn() as conn:
             rows = conn.execute(
-                "SELECT * FROM kb_ingest_state ORDER BY file_name"
+                f"SELECT * FROM kb_ingest_state {order_clause}"
             ).fetchall()
         return [dict(row) for row in rows]
 

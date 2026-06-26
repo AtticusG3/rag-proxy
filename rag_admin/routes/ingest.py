@@ -63,6 +63,13 @@ async def retry_failed_form(request: Request) -> RedirectResponse:
     return RedirectResponse(url="/jobs", status_code=303)
 
 
+@router.post("/restart-stalled-form")
+async def restart_stalled_form(request: Request) -> RedirectResponse:
+    worker = request.app.state.worker
+    worker.restart_stalled_files()
+    return RedirectResponse(url="/jobs", status_code=303)
+
+
 @router.post("/sync-form")
 async def sync_form(request: Request) -> RedirectResponse:
     worker = request.app.state.worker

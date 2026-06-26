@@ -11,9 +11,7 @@ import uvicorn
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 
-from rag_admin.catalog import CatalogDownloadManager
 from ingest.worker import IngestConfig, IngestWorker
 from rag_admin.auth import (
     AuthMiddleware,
@@ -23,12 +21,13 @@ from rag_admin.auth import (
 )
 from rag_admin.config import settings
 from rag_admin.db import AdminDatabase
+from rag_admin.catalog import CatalogDownloadManager
 from rag_admin.routes import dashboard, explorer, ingest, zim
+from rag_admin.templates_env import templates
 
 log = logging.getLogger("rag-admin")
 
 _BASE = os.path.dirname(__file__)
-templates = Jinja2Templates(directory=os.path.join(_BASE, "templates"))
 
 
 @asynccontextmanager
@@ -48,6 +47,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         batch_size=settings.batch_size,
         max_articles=settings.max_articles,
         embed_max_chars=settings.embed_max_chars,
+        sparse_reindex_mode=settings.sparse_reindex_mode,
+        stall_seconds=settings.stall_seconds,
     )
     worker = IngestWorker(config, db)
     worker.start()

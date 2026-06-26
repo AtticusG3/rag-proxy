@@ -9,12 +9,12 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 
+from ingest.stall import is_stalled
 from rag_admin.config import settings
+from rag_admin.templates_env import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "..", "templates"))
 
 
 def _dir_size(path: str) -> int:
@@ -28,6 +28,20 @@ def _dir_size(path: str) -> int:
             except OSError:
                 pass
     return total
+
+
+def _enrich_file_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    stall_seconds = settings.stall_seconds
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        stalled = item.get("status") == "running" and is_stalled(
+            item.get("updated_at"), stall_seconds
+        )
+        item["is_stalled"] = stalled
+        item["display_status"] = "stalled" if stalled else item.get("status", "")
+        enriched.append(item)
+    return enriched
 
 
 async def fetch_stats(db: Any) -> dict[str, Any]:
@@ -89,10 +103,16 @@ async def dashboard(request: Request) -> HTMLResponse:
 @router.get("/jobs", response_class=HTMLResponse)
 async def jobs_page(request: Request) -> HTMLResponse:
     db = request.app.state.db
-    files = db.list_file_states()
+    files = _enrich_file_rows(db.list_file_states(order="updated_desc"))
     jobs = db.list_jobs(limit=100)
+    stalled_count = sum(1 for row in files if row.get("is_stalled"))
     return templates.TemplateResponse(
         request,
         "jobs.html",
-        {"files": files, "jobs": jobs},
+        {
+            "files": files,
+            "jobs": jobs,
+            "stalled_count": stalled_count,
+            "stall_minutes": settings.stall_seconds // 60,
+        },
     )

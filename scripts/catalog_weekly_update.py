@@ -42,6 +42,7 @@ def main() -> int:
         batch_size=settings.batch_size,
         max_articles=settings.max_articles,
         embed_max_chars=settings.embed_max_chars,
+        sparse_reindex_mode=settings.sparse_reindex_mode,
     )
     worker = IngestWorker(config, db)
     worker.start()

@@ -27,6 +27,8 @@ class AdminSettings:
     batch_size: int
     max_articles: int
     embed_max_chars: int
+    sparse_reindex_mode: str
+    stall_seconds: int
     session_secret: str
     password: str
     rag_proxy_url: str
@@ -43,9 +45,11 @@ class AdminSettings:
             qdrant_url=os.getenv("QDRANT_URL", "http://127.0.0.1:6333"),
             qdrant_collection=os.getenv("QDRANT_COLLECTION", "nomad_knowledge_base"),
             sparse_index_url=os.getenv("SPARSE_INDEX_URL", "http://127.0.0.1:18096"),
-            batch_size=_env_int("INGEST_BATCH_SIZE", 32),
+            batch_size=_env_int("INGEST_BATCH_SIZE", 64),
             max_articles=_env_int("INGEST_MAX_ARTICLES", 0),
             embed_max_chars=_env_int("EMBED_MAX_CHARS", 2000),
+            sparse_reindex_mode=os.getenv("INGEST_SPARSE_REINDEX", "idle").strip().lower(),
+            stall_seconds=_env_int("INGEST_STALL_MINUTES", 15) * 60,
             session_secret=os.getenv("ADMIN_SESSION_SECRET", "change-me-in-production"),
             password=os.getenv("ADMIN_PASSWORD", "changeme"),
             rag_proxy_url=os.getenv("RAG_PROXY_URL", "http://127.0.0.1:8081"),
