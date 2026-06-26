@@ -46,10 +46,13 @@ def embed_texts(
                 return _post_embeddings(
                     client, embed_url=embed_url, model=model, trimmed=trimmed
                 )
-            with httpx.Client(timeout=120.0) as owned:
+            owned = httpx.Client(timeout=120.0)
+            try:
                 return _post_embeddings(
                     owned, embed_url=embed_url, model=model, trimmed=trimmed
                 )
+            finally:
+                owned.close()
         except Exception as exc:
             last_err = exc
     raise RuntimeError(f"embed batch failed after {retries + 1} attempts: {last_err}") from last_err
