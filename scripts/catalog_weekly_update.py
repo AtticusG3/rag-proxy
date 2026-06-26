@@ -44,7 +44,7 @@ def main() -> int:
         embed_max_chars=settings.embed_max_chars,
         sparse_reindex_mode=settings.sparse_reindex_mode,
     )
-    worker = IngestWorker(config, db)
+    worker = IngestWorker(config, db.ingest)
     worker.start()
     catalog = CatalogDownloadManager(db, settings.zim_dir, settings.upload_dir, worker)
 

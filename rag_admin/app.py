@@ -19,7 +19,7 @@ from rag_admin.auth import (
     set_session,
     verify_password,
 )
-from rag_admin.config import settings
+from rag_admin.config import settings, validate_settings
 from rag_admin.db import AdminDatabase
 from rag_admin.catalog import CatalogDownloadManager
 from rag_admin.routes import dashboard, explorer, ingest, zim
@@ -32,6 +32,7 @@ _BASE = os.path.dirname(__file__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    validate_settings(settings)
     os.makedirs(settings.zim_dir, exist_ok=True)
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(os.path.dirname(settings.db_path), exist_ok=True)
@@ -50,7 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         sparse_reindex_mode=settings.sparse_reindex_mode,
         stall_seconds=settings.stall_seconds,
     )
-    worker = IngestWorker(config, db)
+    worker = IngestWorker(config, db.ingest)
     worker.start()
     catalog_manager = CatalogDownloadManager(
         db, settings.zim_dir, settings.upload_dir, worker

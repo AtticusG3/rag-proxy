@@ -6,12 +6,12 @@ import os
 import tempfile
 from unittest.mock import patch
 
+from ingest.db import IngestDatabase
 from ingest.types import determine_file_type
 from ingest.worker import IngestConfig, IngestWorker, SparseReindexScheduler
-from rag_admin.db import AdminDatabase
 
 
-def _worker_with_dirs(db: AdminDatabase, zim_dir: str, upload_dir: str) -> IngestWorker:
+def _worker_with_dirs(db: IngestDatabase, zim_dir: str, upload_dir: str) -> IngestWorker:
     config = IngestConfig(
         zim_dir=zim_dir,
         upload_dir=upload_dir,
@@ -61,7 +61,7 @@ def test_enqueue_sync_skips_indexed_files() -> None:
     with tempfile.TemporaryDirectory() as zim_dir:
         upload_dir = tempfile.mkdtemp()
         db_path = os.path.join(zim_dir, "admin.sqlite")
-        db = AdminDatabase(db_path)
+        db = IngestDatabase(db_path)
         zim_path = os.path.join(zim_dir, "sample.txt")
         with open(zim_path, "w", encoding="utf-8") as handle:
             handle.write("hello")
@@ -86,7 +86,7 @@ def test_enqueue_sync_retries_failed_only() -> None:
     with tempfile.TemporaryDirectory() as zim_dir:
         upload_dir = tempfile.mkdtemp()
         db_path = os.path.join(zim_dir, "admin.sqlite")
-        db = AdminDatabase(db_path)
+        db = IngestDatabase(db_path)
         ok_path = os.path.join(zim_dir, "ok.txt")
         bad_path = os.path.join(zim_dir, "bad.txt")
         for path, text in ((ok_path, "ok"), (bad_path, "bad")):
@@ -114,7 +114,7 @@ def test_enqueue_sync_registers_new_files() -> None:
     with tempfile.TemporaryDirectory() as zim_dir:
         upload_dir = tempfile.mkdtemp()
         db_path = os.path.join(zim_dir, "admin.sqlite")
-        db = AdminDatabase(db_path)
+        db = IngestDatabase(db_path)
         new_path = os.path.join(zim_dir, "fresh.txt")
         with open(new_path, "w", encoding="utf-8") as handle:
             handle.write("new")

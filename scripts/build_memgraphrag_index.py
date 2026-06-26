@@ -333,7 +333,24 @@ def filter_ontologies(
 # Build memory
 # ---------------------------------------------------------------------------
 
-def build_memory(chunks_data: list[dict], db_path: str) -> None:
+def embed_fact_embeddings(memory: Any, embed_url: str, batch_size: int = 32) -> None:
+    """Batch-embed all fact triples and attach vectors to memory nodes."""
+    from ingest.embedder import embed_texts
+
+    fact_items = list(memory.facts.items())
+    if not fact_items:
+        return
+    log.info("Embedding %d facts (batch_size=%d)...", len(fact_items), batch_size)
+    for i in range(0, len(fact_items), batch_size):
+        batch = fact_items[i:i + batch_size]
+        texts = [fact.triple_str for _, fact in batch]
+        embeddings = embed_texts(texts, embed_url=embed_url)
+        for (fi, _), emb in zip(batch, embeddings):
+            memory.set_fact_embedding(fi, emb)
+    log.info("Embedded %d facts", len(fact_items))
+
+
+def build_memory(chunks_data: list[dict], db_path: str, embed_url: str | None = None) -> None:
     """Build ThreeLayerMemory from extracted chunks and save to SQLite."""
     # Import here to avoid circular imports / avoid loading retrieval (which needs rag_proxy.config)
     sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -367,6 +384,9 @@ def build_memory(chunks_data: list[dict], db_path: str) -> None:
         for fi in fact_indices:
             if fi in memory.facts and passage_idx not in memory.facts[fi].passage_indices:
                 memory.facts[fi].passage_indices.append(passage_idx)
+
+    if embed_url:
+        embed_fact_embeddings(memory, embed_url)
 
     memory.save(db_path)
     log.info("Built memory: %s → %s", memory.stats, db_path)
@@ -410,6 +430,10 @@ async def main() -> None:
                         help="Max characters of chunk text to send to LLM (truncate longer chunks)")
     parser.add_argument("--skip-relations", action="store_true",
                         help="Skip relation extraction (entities only — 50%% faster)")
+    parser.add_argument("--embed-url", default=os.getenv("EMBED_URL", "http://127.0.0.1:8089"),
+                        help="Embedding API URL for fact vectors (default: EMBED_URL or 127.0.0.1:8089)")
+    parser.add_argument("--skip-embed", action="store_true",
+                        help="Skip fact embedding at build time (online scoring will skip those facts)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -514,7 +538,8 @@ async def main() -> None:
 
     # ---- Build memory ----
     build_t0 = time.time()
-    build_memory(chunks_data, args.output)
+    embed_url = None if args.skip_embed else args.embed_url
+    build_memory(chunks_data, args.output, embed_url=embed_url)
     build_elapsed = time.time() - build_t0
     log.info("Memory build took %.1fs. Output: %s", build_elapsed, args.output)
 

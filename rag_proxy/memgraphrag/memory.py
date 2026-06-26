@@ -52,6 +52,7 @@ class FactNode:
     tail: str
     schema_idx: int = -1
     passage_indices: list[int] = field(default_factory=list)
+    embedding: list[float] | None = None
 
     @property
     def key(self) -> tuple[str, str, str]:
@@ -98,6 +99,7 @@ CREATE TABLE IF NOT EXISTS facts (
     tail           TEXT NOT NULL,
     schema_idx     INTEGER DEFAULT -1,
     passage_indices TEXT DEFAULT '[]',
+    embedding      TEXT,
     UNIQUE(head, relation, tail)
 );
 """
@@ -140,6 +142,9 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
     conn.execute(_PASSAGE_DDL)
     conn.execute(_SCHEMA_FACT_DDL)
     conn.execute(_FACT_PASSAGE_DDL)
+    fact_cols = {row[1] for row in conn.execute("PRAGMA table_info(facts)")}
+    if "embedding" not in fact_cols:
+        conn.execute("ALTER TABLE facts ADD COLUMN embedding TEXT")
     conn.commit()
 
 
@@ -204,6 +209,11 @@ class ThreeLayerMemory:
             if idx not in self.schemas[schema_idx].fact_indices:
                 self.schemas[schema_idx].fact_indices.append(idx)
         return idx
+
+    def set_fact_embedding(self, fact_idx: int, embedding: list[float]) -> None:
+        """Attach a precomputed embedding vector to a fact."""
+        if fact_idx in self.facts:
+            self.facts[fact_idx].embedding = embedding
 
     # -- passage ----------------------------------------------------------
 
@@ -297,9 +307,10 @@ class ThreeLayerMemory:
                 (s.idx, s.head_type, s.relation, s.tail_type, s.frequency, json.dumps(s.fact_indices)),
             )
         for f in self.facts.values():
+            emb_json = json.dumps(f.embedding) if f.embedding else None
             conn.execute(
-                "INSERT OR REPLACE INTO facts (idx, head, relation, tail, schema_idx, passage_indices) VALUES (?,?,?,?,?,?)",
-                (f.idx, f.head, f.relation, f.tail, f.schema_idx, json.dumps(f.passage_indices)),
+                "INSERT OR REPLACE INTO facts (idx, head, relation, tail, schema_idx, passage_indices, embedding) VALUES (?,?,?,?,?,?,?)",
+                (f.idx, f.head, f.relation, f.tail, f.schema_idx, json.dumps(f.passage_indices), emb_json),
             )
         for p in self.passages.values():
             conn.execute(
@@ -328,10 +339,16 @@ class ThreeLayerMemory:
             self._schema_key_to_idx[(ht, r, tt)] = idx
             self._next_schema_idx = max(self._next_schema_idx, idx + 1)
 
-        for row in conn.execute("SELECT idx, head, relation, tail, schema_idx, passage_indices FROM facts"):
-            idx, h, r, t, si, pi_json = row
-            node = FactNode(idx=idx, head=h, relation=r, tail=t, schema_idx=si,
-                            passage_indices=json.loads(pi_json or "[]"))
+        for row in conn.execute(
+            "SELECT idx, head, relation, tail, schema_idx, passage_indices, embedding FROM facts"
+        ):
+            idx, h, r, t, si, pi_json, emb_json = row
+            embedding = json.loads(emb_json) if emb_json else None
+            node = FactNode(
+                idx=idx, head=h, relation=r, tail=t, schema_idx=si,
+                passage_indices=json.loads(pi_json or "[]"),
+                embedding=embedding,
+            )
             self.facts[idx] = node
             self._fact_key_to_idx[(h, r, t)] = idx
             self._next_fact_idx = max(self._next_fact_idx, idx + 1)

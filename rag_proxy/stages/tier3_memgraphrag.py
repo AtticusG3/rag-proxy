@@ -6,7 +6,8 @@ Uses the three-layer memory (schema/fact/passage) for graph-based retrieval:
   3. Personalized PageRank on the fact graph
   4. Aggregate passage scores from PPR
 
-Falls back to dense retrieval if no facts are found.
+When MemGraphRAG finds no scored facts or passages, the stage adds no hits
+(fail-open: prior retrieval hits are preserved).
 """
 
 from __future__ import annotations

@@ -9,12 +9,12 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+from ingest.db import IngestDatabase
 from ingest.stall import is_stalled, stall_error_message
 from ingest.worker import IngestConfig, IngestWorker
-from rag_admin.db import AdminDatabase
 
 
-def _worker(db: AdminDatabase) -> IngestWorker:
+def _worker(db: IngestDatabase) -> IngestWorker:
     config = IngestConfig(
         zim_dir="/tmp",
         upload_dir="/tmp",
@@ -46,7 +46,7 @@ class TestStallRecovery(unittest.TestCase):
     def test_recover_interrupted_running_on_start(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = os.path.join(tmp, "admin.sqlite")
-            db = AdminDatabase(db_path)
+            db = IngestDatabase(db_path)
             db.upsert_file_state("/zim/stuck.zim", status="running", chunks_embedded=99)
             worker = _worker(db)
 
@@ -61,7 +61,7 @@ class TestStallRecovery(unittest.TestCase):
     def test_fail_stalled_running(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = os.path.join(tmp, "admin.sqlite")
-            db = AdminDatabase(db_path)
+            db = IngestDatabase(db_path)
             db.upsert_file_state("/zim/stuck.zim", status="running", chunks_embedded=12)
             old = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
             conn = sqlite3.connect(db_path)
@@ -83,7 +83,7 @@ class TestStallRecovery(unittest.TestCase):
     def test_restart_stalled_requeues_and_clears_chunks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = os.path.join(tmp, "admin.sqlite")
-            db = AdminDatabase(db_path)
+            db = IngestDatabase(db_path)
             db.upsert_file_state("/zim/stuck.zim", status="running", chunks_embedded=12)
             old = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
             conn = sqlite3.connect(db_path)

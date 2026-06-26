@@ -229,7 +229,7 @@ class CatalogDownloadManager:
             last_downloaded=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             last_error=None,
         )
-        self.db.upsert_file_state(
+        self.db.ingest.upsert_file_state(
             local_path,
             status="pending",
             file_type=determine_file_type(local_path),

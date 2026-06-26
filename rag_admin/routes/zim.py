@@ -6,15 +6,27 @@ import os
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from ingest.types import determine_file_type
-from rag_admin.config import settings
+from rag_admin.config import resolve_ingest_path, settings
+from rag_admin.templates_env import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "..", "templates"))
+
+
+def _validated_file_path(file_path: str) -> str:
+    try:
+        return str(
+            resolve_ingest_path(
+                file_path,
+                zim_dir=settings.zim_dir,
+                upload_dir=settings.upload_dir,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _ensure_dirs() -> None:
@@ -51,12 +63,12 @@ def _list_zim_files() -> list[dict]:
 async def zim_list(request: Request) -> HTMLResponse:
     db = request.app.state.db
     files = _list_zim_files()
-    states = {row["file_path"]: row for row in db.list_file_states()}
+    states = {row["file_path"]: row for row in db.ingest.list_file_states()}
     for item in files:
         path = item["path"]
         if path not in states:
-            db.upsert_file_state(path, status="pending", file_type=item["type"])
-    states = {row["file_path"]: row for row in db.list_file_states()}
+            db.ingest.upsert_file_state(path, status="pending", file_type=item["type"])
+    states = {row["file_path"]: row for row in db.ingest.list_file_states()}
     for item in files:
         item["state"] = states.get(item["path"], {})
     return templates.TemplateResponse(request, "zim.html", {"files": files})
@@ -80,7 +92,7 @@ async def upload_file(
     with open(dest, "wb") as handle:
         shutil.copyfileobj(file.file, handle)
     db = request.app.state.db
-    db.upsert_file_state(
+    db.ingest.upsert_file_state(
         dest,
         status="pending",
         file_type=determine_file_type(dest),
@@ -90,6 +102,7 @@ async def upload_file(
 
 @router.post("/zim/delete")
 async def delete_zim(request: Request, file_path: str = Form(...)) -> RedirectResponse:
+    file_path = _validated_file_path(file_path)
     worker = request.app.state.worker
     worker.remove_file_from_index(file_path)
     return RedirectResponse(url="/zim", status_code=303)

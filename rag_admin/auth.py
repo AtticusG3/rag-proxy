@@ -6,6 +6,7 @@ import hmac
 from typing import Callable
 
 from fastapi import HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from rag_admin.config import settings
@@ -65,7 +66,5 @@ class AuthMiddleware(BaseHTTPMiddleware):
             and path not in PUBLIC_PATHS
             and not is_authenticated(request)
         ):
-            from fastapi.responses import RedirectResponse
-
             return RedirectResponse(url="/login", status_code=303)
         return await call_next(request)

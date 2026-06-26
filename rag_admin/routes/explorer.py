@@ -7,16 +7,13 @@ from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from rag_admin.catalog.item_context import SOURCE_META, describe_item
 from rag_admin.catalog.listing_parser import infer_subscribable, is_internal_href
 from rag_admin.catalog.providers import SOURCES, browse_source
+from rag_admin.templates_env import templates
 
 router = APIRouter()
-templates = Jinja2Templates(
-    directory=os.path.join(os.path.dirname(__file__), "..", "templates")
-)
 
 
 def _format_bytes(size: int | None) -> str:
@@ -214,7 +211,7 @@ async def check_updates(request: Request) -> RedirectResponse:
     catalog = request.app.state.catalog_manager
     queued = catalog.check_updates()
     db = request.app.state.db
-    db.create_job(
+    db.ingest.create_job(
         "catalog-update",
         job_type="catalog_update",
         message=f"queued {len(queued)} updates",

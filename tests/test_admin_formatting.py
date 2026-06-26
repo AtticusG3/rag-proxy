@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rag_admin.db import AdminDatabase
+from ingest.db import IngestDatabase
 from rag_admin.formatting import format_datetime
 
 
@@ -27,7 +27,7 @@ class TestFileStateOrdering(unittest.TestCase):
     def test_list_file_states_updated_desc(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = str(Path(tmp) / "admin.sqlite")
-            db = AdminDatabase(db_path)
+            db = IngestDatabase(db_path)
             stamps = {
                 "/zim/a.zim": "2026-06-25T10:00:00+00:00",
                 "/zim/b.zim": "2026-06-25T12:00:00+00:00",

@@ -15,6 +15,7 @@ from typing import Callable
 
 import httpx
 
+from ingest.db import IngestDatabase
 from ingest.chunking import chunk_text
 from ingest.embedder import embed_texts
 from ingest.pdf_reader import read_pdf_text
@@ -192,10 +193,10 @@ class IngestWorker:
     def __init__(
         self,
         config: IngestConfig,
-        db_module: object,
+        db: IngestDatabase,
     ) -> None:
         self.config = config
-        self.db = db_module
+        self.db = db
         self._sparse = SparseReindexScheduler(config)
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -331,19 +332,21 @@ class IngestWorker:
                 last_error=None,
             )
 
-            def on_progress(**kwargs: object) -> None:
-                chunks = kwargs.get("chunks_embedded")
-                if isinstance(chunks, int):
-                    self.db.update_file_state(file_path, chunks_embedded=chunks)
+        def on_progress(**kwargs: object) -> None:
+            chunks = kwargs.get("chunks_embedded")
+            if isinstance(chunks, int):
+                self.db.update_file_state(file_path, chunks_embedded=chunks)
 
-            count = process_file(file_path, self.config, on_progress=on_progress)
+        count = process_file(file_path, self.config, on_progress=on_progress)
+
+        with self._lock:
             self.db.update_file_state(
                 file_path,
                 status="indexed",
                 chunks_embedded=count,
                 finished_at=_utc_now(),
             )
-            self._sparse.after_file()
+        self._sparse.after_file()
 
     def _recover_interrupted_running(self) -> None:
         for row in self.db.list_running_files():

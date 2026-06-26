@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+DEFAULT_SESSION_SECRET = "change-me-in-production"
+DEFAULT_PASSWORD = "changeme"
 
 
 def _env_int(name: str, default: int) -> int:
@@ -50,9 +54,48 @@ class AdminSettings:
             embed_max_chars=_env_int("EMBED_MAX_CHARS", 2000),
             sparse_reindex_mode=os.getenv("INGEST_SPARSE_REINDEX", "idle").strip().lower(),
             stall_seconds=_env_int("INGEST_STALL_MINUTES", 15) * 60,
-            session_secret=os.getenv("ADMIN_SESSION_SECRET", "change-me-in-production"),
-            password=os.getenv("ADMIN_PASSWORD", "changeme"),
+            session_secret=os.getenv("ADMIN_SESSION_SECRET", DEFAULT_SESSION_SECRET),
+            password=os.getenv("ADMIN_PASSWORD", DEFAULT_PASSWORD),
             rag_proxy_url=os.getenv("RAG_PROXY_URL", "http://127.0.0.1:8081"),
+        )
+
+
+def _path_is_under_root(path: Path, root: Path) -> bool:
+    try:
+        common = os.path.commonpath([str(path), str(root)])
+    except ValueError:
+        return False
+    return common == str(root)
+
+
+def resolve_ingest_path(file_path: str, *, zim_dir: str, upload_dir: str) -> Path:
+    """Resolve file_path and ensure it lies under zim_dir or upload_dir."""
+    try:
+        resolved = Path(file_path).resolve()
+    except OSError as exc:
+        raise ValueError(f"Invalid file path: {file_path}") from exc
+    roots = (Path(zim_dir).resolve(), Path(upload_dir).resolve())
+    for root in roots:
+        if _path_is_under_root(resolved, root):
+            return resolved
+    raise ValueError(f"file_path must be under {zim_dir} or {upload_dir}")
+
+
+def validate_settings(s: AdminSettings) -> None:
+    """Refuse insecure default secrets unless explicitly allowed for local dev."""
+    allow = os.getenv("ADMIN_ALLOW_INSECURE_DEFAULTS", "").strip().lower()
+    if allow in ("true", "1", "yes"):
+        return
+    problems: list[str] = []
+    if s.session_secret == DEFAULT_SESSION_SECRET:
+        problems.append("ADMIN_SESSION_SECRET is still the default placeholder")
+    if s.password == DEFAULT_PASSWORD:
+        problems.append("ADMIN_PASSWORD is still the default placeholder")
+    if problems:
+        raise RuntimeError(
+            "rag-admin refused to start: "
+            + "; ".join(problems)
+            + ". Set secure values or ADMIN_ALLOW_INSECURE_DEFAULTS=true for local dev only."
         )
 
 

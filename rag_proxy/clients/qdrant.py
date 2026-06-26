@@ -5,12 +5,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections import defaultdict
 from datetime import datetime
 
 import httpx
 
 from rag_proxy.clients.embed import embed_text
+from rag_proxy.clients.retrieve_sync import rrf_merge
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit
 from rag_proxy.chunk_text import extract_chunk_text
@@ -19,35 +19,6 @@ from rag_proxy.legacy_rag import search_qdrant_dense
 log = logging.getLogger("rag-proxy")
 
 _RECENCY_KEYS = ("updated_at", "mtime", "timestamp")
-
-
-def rrf_merge(
-    ranked_lists: list[list[tuple[str, float]]],
-    k: int = 60,
-    limit: int = 20,
-    list_weights: list[float] | None = None,
-) -> list[tuple[str, float]]:
-    """Reciprocal rank fusion over document ids.
-
-    When list_weights is set, each ranked list is scaled by its weight (e.g. dense vs sparse).
-    """
-    scores: dict[str, float] = defaultdict(float)
-    if list_weights is not None:
-        if len(list_weights) != len(ranked_lists):
-            raise ValueError(
-                f"list_weights length ({len(list_weights)}) "
-                f"must match ranked_lists length ({len(ranked_lists)})"
-            )
-        weights = list_weights
-    else:
-        weights = [1.0] * len(ranked_lists)
-    for weight, ranked in zip(weights, ranked_lists):
-        if weight <= 0:
-            continue
-        for rank, (doc_id, _score) in enumerate(ranked):
-            scores[doc_id] += weight * (1.0 / (k + rank + 1))
-    merged = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    return merged[:limit]
 
 
 def _parse_recency_epoch(payload: dict) -> float | None:

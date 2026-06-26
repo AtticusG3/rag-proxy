@@ -1,13 +1,13 @@
-"""MemGraphRAG retrieval: fact scoring → rerank → PPR graph walk → passage retrieval.
+"""MemGraphRAG retrieval: fact scoring -> rerank -> PPR graph walk -> passage retrieval.
 
 Implements the memory-guided online retrieval from the MemGraphRAG paper:
   1. Embed query, score facts via dense similarity
   2. Rerank facts with cross-encoder
-  3. Multi-layer memory filtering (schema → fact)
+  3. Multi-layer memory filtering (schema -> fact)
   4. Structure-aware node initialization + Personalized PageRank on the memory graph
   5. Return top passages ranked by PPR score
 
-Falls back to dense passage retrieval if no facts are found.
+When no facts score above zero similarity, returns an empty list (no dense fallback).
 """
 
 from __future__ import annotations
@@ -24,6 +24,8 @@ from rag_proxy.context import ChunkHit
 from rag_proxy.memgraphrag.memory import ThreeLayerMemory
 
 log = logging.getLogger("rag-proxy.memgraphrag.retrieval")
+
+_EMBED_MODEL = "nomic-embed-text-v1.5"
 
 
 class MemGraphRetriever:
@@ -64,20 +66,24 @@ class MemGraphRetriever:
     # -- embedding ---------------------------------------------------------
 
     async def _embed_query(self, query: str) -> list[float]:
-        """Embed a query string via the embed server."""
+        """Embed a query string via the nomic-embed OpenAI-compatible API."""
+        trimmed = query.strip()
+        if not trimmed:
+            return []
+        url = f"{self.embed_url.rstrip('/')}/v1/embeddings"
+        payload = {"model": _EMBED_MODEL, "input": trimmed}
         async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(self.embed_url, json={"input": query})
+            resp = await client.post(url, json=payload)
             resp.raise_for_status()
-            data = resp.json()
-            # nomic-embed returns {"data": [{"embedding": [...]}]} or {"embedding": [...]}
-            if "data" in data:
-                return data["data"][0]["embedding"]
-            return data["embedding"]
+            return resp.json()["data"][0]["embedding"]
 
     # -- fact scoring ------------------------------------------------------
 
     async def score_facts(self, query: str) -> list[tuple[int, float]]:
-        """Score all facts against the query using embedding cosine similarity.
+        """Score all facts against the query using precomputed embedding cosine similarity.
+
+        Query is embedded once via HTTP; fact vectors are loaded from memory (index build).
+        Facts without stored embeddings are skipped.
 
         Returns list of (fact_idx, score) sorted by score descending.
         """
@@ -88,17 +94,14 @@ class MemGraphRetriever:
 
         scored: list[tuple[int, float]] = []
         for fi, fact in self.memory.facts.items():
-            # Encode fact text on-the-fly (could be precomputed)
-            fact_text = fact.triple_str
-            try:
-                fact_emb = np.array(await self._embed_query(fact_text), dtype=np.float32)
-                fact_norm = np.linalg.norm(fact_emb)
-                if fact_norm == 0:
-                    continue
-                score = float(np.dot(query_emb, fact_emb) / (query_norm * fact_norm))
-                scored.append((fi, score))
-            except Exception as e:
-                log.debug("Failed to score fact %d: %s", fi, e)
+            if not fact.embedding:
+                continue
+            fact_emb = np.array(fact.embedding, dtype=np.float32)
+            fact_norm = np.linalg.norm(fact_emb)
+            if fact_norm == 0:
+                continue
+            score = float(np.dot(query_emb, fact_emb) / (query_norm * fact_norm))
+            scored.append((fi, score))
 
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored
@@ -115,17 +118,31 @@ class MemGraphRetriever:
         if not fact_indices or not self.reranker_url:
             return list(zip(fact_indices, [1.0] * len(fact_indices)))
 
-        pairs = [[query, text] for text in fact_texts]
+        pairs = [{"query": query, "document": text} for text in fact_texts]
         try:
-            async with httpx.AsyncClient(timeout=settings.rerank_timeout_ms / 1000) as client:
-                resp = await client.post(self.reranker_url, json={"query": query, "passages": fact_texts})
+            timeout = settings.rerank_timeout_ms / 1000.0 + 0.5
+            url = f"{self.reranker_url.rstrip('/')}/rerank"
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(
+                    url,
+                    json={"pairs": pairs, "top_k": len(fact_indices)},
+                )
                 resp.raise_for_status()
-                scores = resp.json().get("scores", [])
-                if len(scores) != len(fact_indices):
-                    log.warning("Reranker returned %d scores for %d facts", len(scores), len(fact_indices))
+                order = resp.json().get("indices", [])
+                if not order:
                     return list(zip(fact_indices, [1.0] * len(fact_indices)))
-                ranked = list(zip(fact_indices, scores))
-                ranked.sort(key=lambda x: x[1], reverse=True)
+                ranked: list[tuple[int, float]] = []
+                for rank, pair_idx in enumerate(order):
+                    if 0 <= pair_idx < len(fact_indices):
+                        fi = fact_indices[pair_idx]
+                        ranked.append((fi, float(len(fact_indices) - rank)))
+                if len(ranked) != len(fact_indices):
+                    log.warning(
+                        "Reranker returned %d indices for %d facts",
+                        len(ranked),
+                        len(fact_indices),
+                    )
+                    return list(zip(fact_indices, [1.0] * len(fact_indices)))
                 return ranked
         except Exception as e:
             log.warning("Reranker failed: %s", e)
@@ -225,7 +242,7 @@ class MemGraphRetriever:
         # Step 1: Score facts
         all_scored = await self.score_facts(query)
         if not all_scored:
-            log.info("No facts scored, falling back to dense")
+            log.info("No facts scored, returning empty")
             return []
 
         # Step 2: Take top facts for reranking

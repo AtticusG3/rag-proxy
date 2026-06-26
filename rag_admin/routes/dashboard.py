@@ -67,7 +67,7 @@ async def fetch_stats(db: Any) -> dict[str, Any]:
     except Exception:
         sparse_status = "down"
 
-    files = db.list_file_states()
+    files = db.ingest.list_file_states()
     pending = sum(1 for f in files if f["status"] in ("pending", "queued", "running"))
     indexed = sum(1 for f in files if f["status"] == "indexed")
     zim_bytes = _dir_size(settings.zim_dir)
@@ -92,7 +92,7 @@ async def fetch_stats(db: Any) -> dict[str, Any]:
 async def dashboard(request: Request) -> HTMLResponse:
     db = request.app.state.db
     stats = await fetch_stats(db)
-    jobs = db.list_jobs(limit=10)
+    jobs = db.ingest.list_jobs(limit=10)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -103,8 +103,8 @@ async def dashboard(request: Request) -> HTMLResponse:
 @router.get("/jobs", response_class=HTMLResponse)
 async def jobs_page(request: Request) -> HTMLResponse:
     db = request.app.state.db
-    files = _enrich_file_rows(db.list_file_states(order="updated_desc"))
-    jobs = db.list_jobs(limit=100)
+    files = _enrich_file_rows(db.ingest.list_file_states(order="updated_desc"))
+    jobs = db.ingest.list_jobs(limit=100)
     stalled_count = sum(1 for row in files if row.get("is_stalled"))
     return templates.TemplateResponse(
         request,

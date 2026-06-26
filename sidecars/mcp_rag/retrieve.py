@@ -3,15 +3,28 @@
 from __future__ import annotations
 
 import os
-from collections import defaultdict
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
 
-from chunk_text import extract_chunk_text
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_root = str(_REPO_ROOT)
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
-DEFAULT_EMBED_MODEL = "nomic-embed-text-v1.5"
+from rag_proxy.chunk_text import extract_chunk_text
+from rag_proxy.clients.retrieve_sync import (
+    RetrieveConfig,
+    dense_search,
+    embed_query,
+    hybrid_retrieve as sync_hybrid_retrieve,
+    rerank_pairs,
+    rrf_merge,
+    sparse_search,
+)
 
 
 @dataclass(frozen=True)
@@ -69,84 +82,24 @@ class RetrievedChunk:
         }
 
 
+def _to_retrieve_config(settings: RetrieveSettings) -> RetrieveConfig:
+    return RetrieveConfig(
+        embed_url=settings.embed_url,
+        qdrant_url=settings.qdrant_url,
+        qdrant_collection=settings.qdrant_collection,
+        sparse_index_url=settings.sparse_index_url,
+        reranker_url=settings.reranker_url,
+        similarity_threshold=settings.similarity_threshold,
+        hybrid_dense_weight=settings.hybrid_dense_weight,
+        embed_max_chars=settings.embed_max_chars,
+        enable_hybrid=settings.enable_hybrid,
+        enable_rerank=settings.enable_rerank,
+        user_agent=settings.user_agent,
+    )
+
+
 def _headers(settings: RetrieveSettings) -> dict[str, str]:
     return {"User-Agent": settings.user_agent}
-
-
-def embed_query(settings: RetrieveSettings, query: str) -> list[float]:
-    trimmed = query.strip()[: settings.embed_max_chars]
-    with httpx.Client(timeout=60.0, headers=_headers(settings)) as client:
-        response = client.post(
-            f"{settings.embed_url.rstrip('/')}/v1/embeddings",
-            json={"model": DEFAULT_EMBED_MODEL, "input": [trimmed]},
-        )
-        response.raise_for_status()
-        return response.json()["data"][0]["embedding"]
-
-
-def dense_search(
-    settings: RetrieveSettings,
-    vector: list[float],
-    *,
-    limit: int,
-    score_threshold: float | None,
-) -> list[dict[str, Any]]:
-    body: dict[str, Any] = {
-        "vector": vector,
-        "limit": limit,
-        "with_payload": True,
-    }
-    if score_threshold is not None and score_threshold > 0:
-        body["score_threshold"] = score_threshold
-    with httpx.Client(timeout=30.0, headers=_headers(settings)) as client:
-        response = client.post(
-            f"{settings.qdrant_url.rstrip('/')}/collections/"
-            f"{settings.qdrant_collection}/points/search",
-            json=body,
-        )
-        response.raise_for_status()
-        return response.json().get("result", [])
-
-
-def sparse_search(
-    settings: RetrieveSettings,
-    query: str,
-    *,
-    limit: int,
-) -> list[dict[str, Any]]:
-    if not settings.sparse_index_url:
-        return []
-    try:
-        with httpx.Client(timeout=15.0, headers=_headers(settings)) as client:
-            response = client.post(
-                f"{settings.sparse_index_url.rstrip('/')}/search",
-                json={
-                    "query": query,
-                    "limit": limit,
-                    "collection": settings.qdrant_collection,
-                },
-            )
-            response.raise_for_status()
-            return response.json().get("results", [])
-    except httpx.HTTPError:
-        return []
-
-
-def rrf_merge(
-    ranked_lists: list[list[tuple[str, float]]],
-    *,
-    limit: int,
-    list_weights: list[float],
-    k: int = 60,
-) -> list[str]:
-    scores: dict[str, float] = defaultdict(float)
-    for weight, ranked in zip(list_weights, ranked_lists):
-        if weight <= 0:
-            continue
-        for rank, (doc_id, _score) in enumerate(ranked):
-            scores[doc_id] += weight * (1.0 / (k + rank + 1))
-    merged = sorted(scores.items(), key=lambda row: row[1], reverse=True)
-    return [doc_id for doc_id, _ in merged[:limit]]
 
 
 def _hit_to_chunk(hit: dict[str, Any], retrieval: str) -> RetrievedChunk | None:
@@ -164,6 +117,61 @@ def _hit_to_chunk(hit: dict[str, Any], retrieval: str) -> RetrievedChunk | None:
     )
 
 
+def _collect_hybrid_hits(
+    config: RetrieveConfig,
+    query: str,
+    *,
+    limit: int,
+    score_threshold: float | None,
+) -> tuple[list[dict[str, Any]], set[str]]:
+    """Single embed+dense+sparse+RRF path; dense id set supports retrieval tagging."""
+    vector = embed_query(config, query)
+    dense_hits: list[dict[str, Any]] = []
+    dense_ids: set[str] = set()
+    if vector is not None:
+        dense_hits = dense_search(
+            config, vector, limit=limit, score_threshold=score_threshold
+        )
+        dense_hits = [h for h in dense_hits if extract_chunk_text(h)]
+        dense_ids = {str(h.get("id", "")) for h in dense_hits if h.get("id")}
+
+    sparse_raw = sparse_search(config, query, limit=limit)
+    if not sparse_raw:
+        return dense_hits, dense_ids
+
+    dense_ranked = [
+        (str(h.get("id", "")), float(h.get("score", 0.0))) for h in dense_hits
+    ]
+    sparse_ranked = [
+        (str(h.get("id", i)), float(h.get("score", 0.0)))
+        for i, h in enumerate(sparse_raw)
+    ]
+    dense_w = config.hybrid_dense_weight
+    sparse_w = max(0.0, 1.0 - dense_w)
+    fused_ids = [
+        doc_id
+        for doc_id, _ in rrf_merge(
+            [dense_ranked, sparse_ranked],
+            limit=limit,
+            list_weights=[dense_w, sparse_w],
+        )
+    ]
+
+    by_id: dict[str, dict[str, Any]] = {
+        str(h.get("id", "")): h for h in dense_hits
+    }
+    for h in sparse_raw:
+        cid = str(h.get("id", ""))
+        if cid and cid not in by_id and extract_chunk_text(h):
+            by_id[cid] = h
+
+    ordered: list[dict[str, Any]] = []
+    for doc_id in fused_ids:
+        if doc_id in by_id:
+            ordered.append(by_id[doc_id])
+    return ordered, dense_ids
+
+
 def hybrid_retrieve(
     settings: RetrieveSettings,
     query: str,
@@ -171,55 +179,33 @@ def hybrid_retrieve(
     top_k: int,
     score_threshold: float | None = None,
 ) -> list[RetrievedChunk]:
+    config = _to_retrieve_config(settings)
     threshold = (
         settings.similarity_threshold
         if score_threshold is None
         else score_threshold
     )
     candidate_k = max(top_k, top_k * 4)
-    vector = embed_query(settings, query)
-    dense_hits = dense_search(
-        settings, vector, limit=candidate_k, score_threshold=threshold
-    )
-    dense_chunks = [
-        c
-        for c in (_hit_to_chunk(h, "dense") for h in dense_hits)
-        if c is not None
-    ]
+    hybrid_on = settings.enable_hybrid and bool(settings.sparse_index_url)
+    limit = candidate_k if hybrid_on else top_k
 
-    if not settings.enable_hybrid or not settings.sparse_index_url:
-        return dense_chunks[:top_k]
-
-    sparse_hits = sparse_search(settings, query, limit=candidate_k)
-    if not sparse_hits:
-        return dense_chunks[:top_k]
-
-    dense_ranked = [(c.chunk_id, c.score) for c in dense_chunks]
-    sparse_ranked = [
-        (str(h.get("id", i)), float(h.get("score", 0.0)))
-        for i, h in enumerate(sparse_hits)
-    ]
-    dense_w = settings.hybrid_dense_weight
-    sparse_w = max(0.0, 1.0 - dense_w)
-    fused_ids = rrf_merge(
-        [dense_ranked, sparse_ranked],
-        limit=candidate_k,
-        list_weights=[dense_w, sparse_w],
-    )
-
-    by_id: dict[str, RetrievedChunk] = {c.chunk_id: c for c in dense_chunks}
-    for hit in sparse_hits:
+    if hybrid_on:
+        hits, dense_ids = _collect_hybrid_hits(
+            config, query, limit=limit, score_threshold=threshold
+        )
+    else:
+        hits = sync_hybrid_retrieve(
+            config, query, limit=limit, score_threshold=threshold
+        )
+        dense_ids = set()
+    chunks: list[RetrievedChunk] = []
+    for hit in hits:
         cid = str(hit.get("id", ""))
-        if cid and cid not in by_id:
-            chunk = _hit_to_chunk(hit, "sparse")
-            if chunk is not None:
-                by_id[cid] = chunk
-
-    ordered: list[RetrievedChunk] = []
-    for doc_id in fused_ids:
-        if doc_id in by_id:
-            ordered.append(by_id[doc_id])
-    return ordered[:candidate_k]
+        retrieval = "dense" if not hybrid_on or cid in dense_ids else "sparse"
+        chunk = _hit_to_chunk(hit, retrieval)
+        if chunk is not None:
+            chunks.append(chunk)
+    return chunks
 
 
 def rerank_chunks(
@@ -229,24 +215,15 @@ def rerank_chunks(
     *,
     top_k: int,
 ) -> list[RetrievedChunk]:
-    if not settings.enable_rerank or not settings.reranker_url or not chunks:
-        return chunks[:top_k]
-    pairs = [{"query": query, "document": c.text[: settings.embed_max_chars]} for c in chunks]
-    try:
-        with httpx.Client(timeout=30.0, headers=_headers(settings)) as client:
-            response = client.post(
-                f"{settings.reranker_url.rstrip('/')}/rerank",
-                json={"pairs": pairs, "top_k": top_k},
-            )
-            response.raise_for_status()
-            indices = response.json().get("indices", [])
-    except httpx.HTTPError:
-        return chunks[:top_k]
-    reranked: list[RetrievedChunk] = []
-    for index in indices:
-        if 0 <= index < len(chunks):
-            reranked.append(chunks[index])
-    return reranked[:top_k]
+    if not chunks:
+        return []
+    config = _to_retrieve_config(settings)
+    pairs = [
+        {"query": query, "document": c.text[: settings.embed_max_chars]}
+        for c in chunks
+    ]
+    indices = rerank_pairs(config, pairs, top_k=top_k)
+    return [chunks[i] for i in indices if 0 <= i < len(chunks)][:top_k]
 
 
 def search_knowledge_base(
