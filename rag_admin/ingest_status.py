@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from ingest.stall import is_stalled
-from rag_admin.config import AdminSettings
 
 
 def enrich_file_rows(
@@ -59,13 +58,15 @@ def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
-def ingest_config_snapshot(settings: AdminSettings) -> dict[str, Any]:
+def ingest_config_snapshot(worker: Any) -> dict[str, Any]:
+    config = worker.config
     return {
-        "batch_size": settings.batch_size,
-        "embed_concurrency": settings.embed_concurrency,
-        "embed_max_chars": settings.embed_max_chars,
-        "embed_url": settings.embed_url,
-        "sparse_reindex_mode": settings.sparse_reindex_mode,
-        "stall_minutes": settings.stall_seconds // 60,
-        "qdrant_collection": settings.qdrant_collection,
+        "batch_size": config.batch_size,
+        "embed_concurrency": config.embed_concurrency,
+        "embed_max_chars": config.embed_max_chars,
+        "embed_url": config.embed_url,
+        "sparse_reindex_mode": config.sparse_reindex_mode,
+        "stall_minutes": config.stall_seconds // 60,
+        "qdrant_collection": config.qdrant_collection,
+        "paused": worker.paused,
     }

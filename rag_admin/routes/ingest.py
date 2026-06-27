@@ -50,7 +50,7 @@ async def ingest_status(request: Request) -> JSONResponse:
             "files": files,
             "jobs": db.ingest.list_jobs(limit=20),
             "stats": ingest_queue_stats(files),
-            "config": ingest_config_snapshot(settings),
+            "config": ingest_config_snapshot(request.app.state.worker),
         }
     )
 

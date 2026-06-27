@@ -113,8 +113,14 @@ Rerank and tools use `RERANK_TIMEOUT_MS` and `TOOL_BUDGET_MS` as their stage min
 | `MEMGRAPHRAG_PPR_DAMPING` | `0.85` | PageRank damping |
 | `MEMGRAPHRAG_PPR_ITERATIONS` | `20` | PPR iterations |
 | `MEMGRAPHRAG_PASSAGE_NODE_WEIGHT` | `0.5` | Passage node weight in graph |
+| `MEMGRAPH_BUILD_LLM_URL` | `http://127.0.0.1:8080/v1` | LLM for offline entity/relation extraction |
+| `MEMGRAPH_BUILD_LLM_MODEL` | `qwen3.5-9b-turbo` | Model name for build script |
+| `MEMGRAPH_BUILD_MAX_CHUNKS` | `1000` | Qdrant sample size / chunk cap |
+| `MEMGRAPH_BUILD_CONCURRENCY` | `3` | Parallel LLM calls during build |
+| `MEMGRAPH_BUILD_EMBED_URL` | *(EMBED_URL)* | Embed endpoint for fact vectors at build time |
+| `MEMGRAPH_BUILD_SKIP_RELATIONS` | `false` | Entity-only extraction (faster) |
 
-Build and rollout: [MemGraphRAG operator guide](memgraphrag.md).
+Build and rollout: [MemGraphRAG operator guide](memgraphrag.md). Rag-admin **Settings → MemGraphRAG index build** uses the same `MEMGRAPH_BUILD_*` keys (stored in admin SQLite; env vars are the fallback).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |

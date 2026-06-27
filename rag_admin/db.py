@@ -56,6 +56,22 @@ class AdminDatabase:
                     created_at TEXT,
                     updated_at TEXT
                 );
+                CREATE TABLE IF NOT EXISTS admin_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS background_jobs (
+                    id TEXT PRIMARY KEY,
+                    job_type TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    message TEXT,
+                    log_path TEXT,
+                    pid INTEGER,
+                    params_json TEXT,
+                    started_at TEXT NOT NULL,
+                    finished_at TEXT
+                );
                 """
             )
             self._ensure_subscription_columns(conn)
@@ -237,3 +253,96 @@ class AdminDatabase:
 
     def set_subscription_auto_update(self, sub_id: int, enabled: bool) -> None:
         self.update_subscription(sub_id, auto_update=1 if enabled else 0)
+
+    def get_setting(self, key: str) -> str | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM admin_settings WHERE key = ?",
+                (key,),
+            ).fetchone()
+        return str(row["value"]) if row else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        now = _utc_now()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO admin_settings (key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (key, value, now),
+            )
+
+    def create_background_job(
+        self,
+        job_id: str,
+        *,
+        job_type: str,
+        status: str,
+        message: str,
+        log_path: str,
+        pid: int,
+        params_json: str,
+    ) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO background_jobs
+                (id, job_type, status, message, log_path, pid, params_json, started_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (job_id, job_type, status, message, log_path, pid, params_json, _utc_now()),
+            )
+
+    def update_background_job(self, job_id: str, **fields: object) -> None:
+        allowed = {"status", "message", "finished_at"}
+        assignments: list[str] = []
+        values: list[object] = []
+        for key, value in fields.items():
+            if key not in allowed:
+                continue
+            assignments.append(f"{key} = ?")
+            values.append(value)
+        if not assignments:
+            return
+        values.append(job_id)
+        with self._conn() as conn:
+            conn.execute(
+                f"UPDATE background_jobs SET {', '.join(assignments)} WHERE id = ?",
+                values,
+            )
+
+    def get_background_job(self, job_id: str) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM background_jobs WHERE id = ?",
+                (job_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_active_background_job(self, job_type: str) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM background_jobs
+                WHERE job_type = ? AND status = 'running'
+                ORDER BY started_at DESC LIMIT 1
+                """,
+                (job_type,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_background_jobs(self, job_type: str, *, limit: int = 10) -> list[dict[str, Any]]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM background_jobs
+                WHERE job_type = ?
+                ORDER BY started_at DESC LIMIT ?
+                """,
+                (job_type, limit),
+            ).fetchall()
+        return [dict(row) for row in rows]

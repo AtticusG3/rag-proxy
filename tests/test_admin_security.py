@@ -38,6 +38,10 @@ def _admin_settings(**overrides: object) -> AdminSettings:
         "session_secret": "secure-secret",
         "password": "secure-password",
         "rag_proxy_url": "http://127.0.0.1:8081",
+        "admin_env_path": "/tmp/rag-admin.env",
+        "proxy_env_path": "/tmp/rag-proxy.env",
+        "repo_root": "/tmp/rag_proxy",
+        "job_log_dir": "/tmp/admin_jobs",
     }
     defaults.update(overrides)
     return AdminSettings(**defaults)

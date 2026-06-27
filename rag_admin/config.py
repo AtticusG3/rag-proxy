@@ -38,6 +38,10 @@ class AdminSettings:
     session_secret: str
     password: str
     rag_proxy_url: str
+    admin_env_path: str
+    proxy_env_path: str
+    repo_root: str
+    job_log_dir: str
 
     @classmethod
     def from_env(cls) -> AdminSettings:
@@ -61,6 +65,19 @@ class AdminSettings:
             session_secret=os.getenv("ADMIN_SESSION_SECRET", DEFAULT_SESSION_SECRET),
             password=os.getenv("ADMIN_PASSWORD", DEFAULT_PASSWORD),
             rag_proxy_url=os.getenv("RAG_PROXY_URL", "http://127.0.0.1:8081"),
+            admin_env_path=os.getenv(
+                "RAG_ADMIN_ENV_FILE",
+                "/opt/ai/config/rag-admin.env",
+            ),
+            proxy_env_path=os.getenv(
+                "RAG_PROXY_ENV_FILE",
+                "/opt/ai/config/rag-proxy.env",
+            ),
+            repo_root=os.getenv("RAG_REPO_ROOT", str(Path(__file__).resolve().parents[1])),
+            job_log_dir=os.getenv(
+                "RAG_ADMIN_JOB_LOG_DIR",
+                "/var/lib/rag_proxy/admin_jobs",
+            ),
         )
 
 

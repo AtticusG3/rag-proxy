@@ -12,8 +12,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from ingest.embed_urls import parse_ingest_embed_urls
-from ingest.worker import IngestConfig, IngestWorker
+from ingest.worker import IngestWorker
 from rag_admin.auth import (
     AuthMiddleware,
     clear_session,
@@ -23,7 +22,9 @@ from rag_admin.auth import (
 from rag_admin.config import settings, validate_settings
 from rag_admin.db import AdminDatabase
 from rag_admin.catalog import CatalogDownloadManager
-from rag_admin.routes import dashboard, explorer, ingest, zim
+from rag_admin.job_runner import BackgroundJobRunner
+from rag_admin.routes import dashboard, explorer, ingest, settings, zim
+from rag_admin.settings_store import SettingsStore
 from rag_admin.templates_env import templates
 
 log = logging.getLogger("rag-admin")
@@ -39,26 +40,27 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     os.makedirs(os.path.dirname(settings.db_path), exist_ok=True)
 
     db = AdminDatabase(settings.db_path)
-    config = IngestConfig(
+    settings_store = SettingsStore(
+        db,
+        admin_env_path=settings.admin_env_path,
+        proxy_env_path=settings.proxy_env_path,
+    )
+    config = settings_store.build_ingest_config(
         zim_dir=settings.zim_dir,
         upload_dir=settings.upload_dir,
-        embed_url=settings.embed_url,
-        embed_urls=parse_ingest_embed_urls(
-            embed_url=settings.embed_url,
-            ingest_embed_urls=settings.ingest_embed_urls or None,
-        ),
-        qdrant_url=settings.qdrant_url,
-        qdrant_collection=settings.qdrant_collection,
-        sparse_index_url=settings.sparse_index_url,
-        batch_size=settings.batch_size,
-        embed_concurrency=settings.embed_concurrency,
-        max_articles=settings.max_articles,
-        embed_max_chars=settings.embed_max_chars,
-        sparse_reindex_mode=settings.sparse_reindex_mode,
-        stall_seconds=settings.stall_seconds,
     )
     worker = IngestWorker(config, db.ingest)
+    settings_store.apply_to_worker(
+        worker,
+        zim_dir=settings.zim_dir,
+        upload_dir=settings.upload_dir,
+    )
     worker.start()
+    job_runner = BackgroundJobRunner(
+        db,
+        repo_root=settings.repo_root,
+        log_dir=settings.job_log_dir,
+    )
     catalog_manager = CatalogDownloadManager(
         db, settings.zim_dir, settings.upload_dir, worker
     )
@@ -66,6 +68,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.db = db
     app.state.worker = worker
+    app.state.settings_store = settings_store
+    app.state.job_runner = job_runner
     app.state.catalog_manager = catalog_manager
     log.info("rag-admin started zim_dir=%s port=%s", settings.zim_dir, settings.port)
     yield
@@ -83,6 +87,7 @@ def create_app() -> FastAPI:
     app.include_router(explorer.router)
     app.include_router(zim.router)
     app.include_router(ingest.router)
+    app.include_router(settings.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

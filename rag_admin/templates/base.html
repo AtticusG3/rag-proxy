@@ -20,6 +20,7 @@
       <a href="/zim" class="{% if request.url.path.startswith('/zim') %}is-active{% endif %}">Local files</a>
       <a href="/upload" class="{% if request.url.path.startswith('/upload') %}is-active{% endif %}">Upload</a>
       <a href="/jobs" class="{% if request.url.path.startswith('/jobs') %}is-active{% endif %}">Jobs</a>
+      <a href="/settings" class="{% if request.url.path.startswith('/settings') %}is-active{% endif %}">Settings</a>
     </nav>
     <form method="post" action="/logout" class="logout">
       <button type="submit" class="btn btn--ghost btn--small">Logout</button>

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% from "_macros.html" import page_header, flash_banner %}
+{% block title %}Settings - RAG Admin{% endblock %}
+{% block content %}
+{{ page_header("Settings", "Persistent overrides for ingest, proxy, MemGraphRAG, and observability.") }}
+{{ flash_banner(request) }}
+
+<nav class="tabs" aria-label="Settings sections">
+  {% for tab in tabs %}
+  <a href="/settings?tab={{ tab }}" class="tab {% if tab == active_tab %}active{% endif %}">{{ tab_labels[tab] }}</a>
+  {% endfor %}
+</nav>
+
+<section class="card card--compact" style="margin-bottom:1rem">
+  <h2 class="section-title">Service health</h2>
+  <div class="grid stats" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+    <div class="stat-card">
+      <div class="stat-card__label">Qdrant</div>
+      <div class="stat-card__value">{% if services.qdrant.ok %}OK{% else %}DOWN{% endif %}</div>
+      <div class="stat-card__meta">{{ services.qdrant.points }} points</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">BM25 sidecar</div>
+      <div class="stat-card__value">{% if services.sparse.ok %}OK{% else %}DOWN{% endif %}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">Embed</div>
+      <div class="stat-card__value">{% if services.embed.ok %}OK{% else %}DOWN{% endif %}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">RAG proxy</div>
+      <div class="stat-card__value">{% if services.proxy.ok %}OK{% else %}DOWN{% endif %}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card__label">MemGraph DB</div>
+      <div class="stat-card__value">{% if services.memgraph_db.exists %}YES{% else %}NO{% endif %}</div>
+      <div class="stat-card__meta">{{ (services.memgraph_db.bytes / 1048576) | round(1) }} MiB</div>
+    </div>
+  </div>
+  <p class="muted" style="margin:0.75rem 0 0">Admin env: <code>{{ admin_env_path }}</code> · Proxy env: <code>{{ proxy_env_path }}</code></p>
+</section>
+
+{% if active_tab == 'ingest' %}
+<section class="card">
+  <div class="section-head">
+    <h2 class="section-title">Ingest controls</h2>
+    <div class="page-header__actions">
+      {% if ingest_paused %}
+      <form method="post" action="/settings/ingest/resume" class="inline"><button type="submit" class="btn">Resume dense ingest</button></form>
+      {% else %}
+      <form method="post" action="/settings/ingest/pause" class="inline"><button type="submit" class="btn btn--ghost">Pause dense ingest</button></form>
+      {% endif %}
+      <form method="post" action="/settings/sparse/reindex" class="inline"><button type="submit" class="btn btn--ghost">Rebuild BM25 now</button></form>
+    </div>
+  </div>
+  <p class="muted">Dense ingest is {% if ingest_paused %}<strong>paused</strong>{% else %}<strong>running</strong>{% endif %}. BM25 mode: <code>{{ ingest_config.sparse_reindex_mode }}</code>.</p>
+</section>
+{% endif %}
+
+{% if active_tab == 'memgraph_build' %}
+<section class="card">
+  <div class="section-head">
+    <h2 class="section-title">MemGraphRAG index build</h2>
+    <div class="page-header__actions">
+      <form method="post" action="/settings/memgraph/build" class="inline"><button type="submit" class="btn" {% if build_job %}disabled{% endif %}>Start build</button></form>
+      <form method="post" action="/settings/memgraph/stop" class="inline"><button type="submit" class="btn btn--ghost" {% if not build_job %}disabled{% endif %}>Stop</button></form>
+    </div>
+  </div>
+  {% if build_job %}
+  <p class="muted">Running job <code>{{ build_job.id[:8] }}</code> since {{ build_job.started_at }} (pid {{ build_job.pid }}).</p>
+  {% else %}
+  <p class="muted">No build running. Save build settings below, then start. After build completes, enable MemGraphRAG in the runtime tab and restart rag-proxy.</p>
+  {% endif %}
+  <pre id="build-log" class="log-tail" aria-live="polite">{{ log_tail }}</pre>
+  {% if build_history %}
+  <table style="margin-top:1rem">
+    <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
+    <tbody>
+      {% for job in build_history %}
+      <tr><td>{{ job.started_at }}</td><td>{{ job.status }}</td><td>{{ job.message or '-' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  <h2 class="section-title">{{ tab_labels[active_tab] }}</h2>
+  <form method="post" action="/settings/save/{{ active_tab }}" class="settings-form">
+    <input type="hidden" name="tab" value="{{ active_tab }}">
+    {% for field in fields %}
+    <label class="field">
+      <span class="field__label">{{ field.label }}</span>
+      {% if field.field_type == 'bool' %}
+      <select name="{{ field.key }}">
+        <option value="true" {% if values[field.key] in ['true','1','yes','on'] %}selected{% endif %}>true</option>
+        <option value="false" {% if values[field.key] not in ['true','1','yes','on'] %}selected{% endif %}>false</option>
+      </select>
+      {% elif field.field_type == 'select' %}
+      <select name="{{ field.key }}">
+        {% for option in field.options %}
+        <option value="{{ option }}" {% if values[field.key] == option %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+      {% elif field.field_type == 'text' %}
+      <textarea name="{{ field.key }}" rows="2">{{ values[field.key] }}</textarea>
+      {% else %}
+      <input type="text" name="{{ field.key }}" value="{{ values[field.key] }}">
+      {% endif %}
+      {% if field.help_text %}<span class="field__hint">{{ field.help_text }}</span>{% endif %}
+    </label>
+    {% endfor %}
+    <div class="form-actions">
+      <button type="submit" class="btn">Save {{ tab_labels[active_tab] }}</button>
+      {% if active_tab in ['proxy_rag', 'cognitive', 'memgraphrag', 'observability'] %}
+      <span class="muted">Proxy env changes need <code>sudo systemctl restart rag-proxy</code>.</span>
+      {% endif %}
+    </div>
+  </form>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/settings.js" defer></script>
+{% endblock %}

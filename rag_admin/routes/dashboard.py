@@ -89,7 +89,7 @@ async def dashboard(request: Request) -> HTMLResponse:
     db = request.app.state.db
     stats = await fetch_stats(db)
     jobs = db.ingest.list_jobs(limit=10)
-    ingest_config = ingest_config_snapshot(settings)
+    ingest_config = ingest_config_snapshot(request.app.state.worker)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -110,7 +110,7 @@ async def jobs_page(request: Request) -> HTMLResponse:
     )
     jobs = db.ingest.list_jobs(limit=100)
     queue = ingest_queue_stats(files)
-    ingest_config = ingest_config_snapshot(settings)
+    ingest_config = ingest_config_snapshot(request.app.state.worker)
     return templates.TemplateResponse(
         request,
         "jobs.html",

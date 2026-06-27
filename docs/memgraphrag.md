@@ -52,19 +52,22 @@ Facts link to schemas and passages. PPR walks fact–fact edges (same schema, sh
 
 Typical service URLs (adjust to your layout):
 
-- LLM: `http://127.0.0.1:8080/v1` (llama-swap) or your OpenAI-compatible proxy
-- Embed: `http://127.0.0.1:8089`
+- LLM: `MEMGRAPH_BUILD_LLM_URL` (default `http://127.0.0.1:8080/v1`) — use a remote endpoint when local GPU is busy with ingest, e.g. `http://192.168.1.202:8081/v1`
+- Model: `MEMGRAPH_BUILD_LLM_MODEL` (default `qwen3.5-9b-turbo`)
+- Embed: `MEMGRAPH_BUILD_EMBED_URL` or `EMBED_URL` (e.g. `http://127.0.0.1:18089`)
 - Reranker: `http://127.0.0.1:8095` (cognitive Docker profile or `sidecars/rerank`)
+
+Set build LLM vars in `rag-proxy.env` or **rag-admin → Settings → MemGraphRAG index build**. The admin UI can start the build job and monitor logs.
 
 Ensure the output directory exists and is writable (e.g. `/var/lib/rag_proxy/`).
 
 ## Build the index
 
-Run from repo root with venv active. The script is **network-heavy** (LLM + embed calls).
+Run from repo root with venv active. The script is **network-heavy** (LLM + embed calls). Env vars `MEMGRAPH_BUILD_*` are read by the CLI and rag-admin job runner (see [Configuration](configuration.md)).
 
 ### From Qdrant (recommended)
 
-Samples chunks stratified by a payload field (default `source`) so the graph reflects your collection mix:
+Samples chunks stratified by a payload field (default `source`) so the graph reflects your collection mix. If your Qdrant build lacks the facet API (HTTP 404), the script **falls back to scroll sampling** automatically.
 
 ```bash
 python -m scripts.build_memgraphrag_index \
@@ -72,11 +75,11 @@ python -m scripts.build_memgraphrag_index \
   --qdrant-url http://127.0.0.1:6333 \
   --collection your_collection \
   --output /var/lib/rag_proxy/memgraphrag.sqlite \
-  --llm-url http://127.0.0.1:8080/v1 \
-  --llm-model your-chat-model \
+  --llm-url http://192.168.1.202:8081/v1 \
+  --llm-model qwen3.5-9b-turbo \
   --max-chunks 1000 \
   --stratify-field source \
-  --embed-url http://127.0.0.1:8089
+  --embed-url http://127.0.0.1:18089
 ```
 
 | Flag | Default | Notes |

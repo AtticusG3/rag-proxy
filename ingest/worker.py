@@ -172,7 +172,20 @@ class IngestWorker:
         self._sparse = SparseReindexScheduler(config)
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._paused = False
         self._thread: threading.Thread | None = None
+
+    @property
+    def paused(self) -> bool:
+        return self._paused
+
+    def set_paused(self, paused: bool) -> None:
+        self._paused = paused
+
+    def update_config(self, config: IngestConfig) -> None:
+        with self._lock:
+            self.config = config
+            self._sparse.config = config
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -277,6 +290,9 @@ class IngestWorker:
 
     def _run_loop(self) -> None:
         while not self._stop.is_set():
+            if self._paused:
+                time.sleep(1.0)
+                continue
             self._fail_stalled_running()
             pending = self.db.list_pending_files(limit=1)
             if not pending:

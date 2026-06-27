@@ -39,7 +39,7 @@ import os
 import random
 import sys
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -99,15 +99,31 @@ async def fetch_qdrant_chunks(
     qdrant_url = qdrant_url.rstrip("/")
     rng = random.Random(seed)
 
-    # Step 1: Get the field value distribution via facet
+    # Step 1: Get the field value distribution via facet (optional on older Qdrant builds)
     log.info("Fetching %s distribution for stratified sampling...", stratify_field)
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            f"{qdrant_url}/collections/{collection}/facet",
-            json={"key": stratify_field, "limit": 200},
-        )
-        resp.raise_for_status()
-        facet = resp.json()["result"]["hits"]
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
+                f"{qdrant_url}/collections/{collection}/facet",
+                json={"key": stratify_field, "limit": 200},
+            )
+            resp.raise_for_status()
+            facet = resp.json()["result"]["hits"]
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code in (404, 405, 501):
+            log.warning(
+                "Qdrant facet API unavailable (HTTP %s); falling back to scroll sampling",
+                exc.response.status_code,
+            )
+            return await fetch_qdrant_chunks_via_scroll(
+                qdrant_url=qdrant_url,
+                collection=collection,
+                target_count=target_count,
+                stratify_field=stratify_field,
+                payload_text_field=payload_text_field,
+                seed=seed,
+            )
+        raise
     log.info("Found %d distinct %s values", len(facet), stratify_field)
 
     # Step 2: Compute sample size per value
@@ -187,6 +203,107 @@ async def fetch_qdrant_chunks(
 
     log.info("Fetched %d chunks total (target was %d)", len(all_chunks), target_count)
     return all_chunks
+
+
+async def fetch_qdrant_chunks_via_scroll(
+    qdrant_url: str,
+    collection: str,
+    target_count: int,
+    stratify_field: str = "source",
+    payload_text_field: str = "text",
+    seed: int = 42,
+    *,
+    max_points_to_scan: int | None = None,
+) -> list[dict]:
+    """Sample chunks via scroll when facet API is unavailable.
+
+    Scrolls up to ``max_points_to_scan`` points (default capped), buckets by
+    ``stratify_field``, then picks up to ``target_count`` chunks with light
+    stratification when multiple sources are seen.
+    """
+    qdrant_url = qdrant_url.rstrip("/")
+    rng = random.Random(seed)
+    scan_cap = max_points_to_scan or min(max(target_count * 200, 10_000), 100_000)
+    buckets: dict[str, list[dict]] = defaultdict(list)
+    scanned = 0
+    offset: str | int | None = None
+
+    log.info(
+        "Scroll-sampling Qdrant %s/%s (target=%d, scan_cap=%d)",
+        qdrant_url,
+        collection,
+        target_count,
+        scan_cap,
+    )
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        while scanned < scan_cap:
+            page_limit = min(256, scan_cap - scanned)
+            params: dict[str, Any] = {
+                "limit": page_limit,
+                "with_payload": True,
+                "with_vectors": False,
+            }
+            if offset is not None:
+                params["offset"] = offset
+            resp = await client.post(
+                f"{qdrant_url}/collections/{collection}/points/scroll",
+                json=params,
+            )
+            resp.raise_for_status()
+            result = resp.json()["result"]
+            points = result.get("points", [])
+            if not points:
+                break
+            for pt in points:
+                scanned += 1
+                payload = pt.get("payload", {})
+                text = payload.get(payload_text_field)
+                if not text:
+                    continue
+                value = str(payload.get(stratify_field, "unknown"))
+                meta = {k: v for k, v in payload.items() if k != payload_text_field}
+                buckets[value].append(
+                    {
+                        "chunk_id": str(pt["id"]),
+                        "text": text,
+                        "source": value,
+                        "meta": meta,
+                    }
+                )
+            offset = result.get("next_page_offset")
+            if offset is None:
+                break
+
+    if not buckets:
+        log.warning("Scroll sampling found no chunks with text in payload[%s]", payload_text_field)
+        return []
+
+    # Stratified pick: at least one per source when possible, then fill randomly.
+    selected: list[dict] = []
+    sources = sorted(buckets.keys(), key=lambda key: len(buckets[key]), reverse=True)
+    for source in sources:
+        if len(selected) >= target_count:
+            break
+        pool = buckets[source][:]
+        rng.shuffle(pool)
+        selected.append(pool[0])
+
+    remaining = target_count - len(selected)
+    if remaining > 0:
+        pool = [chunk for chunks in buckets.values() for chunk in chunks if chunk not in selected]
+        rng.shuffle(pool)
+        selected.extend(pool[:remaining])
+
+    rng.shuffle(selected)
+    selected = selected[:target_count]
+    log.info(
+        "Scroll sample: scanned %d points, %d sources, returning %d chunks",
+        scanned,
+        len(buckets),
+        len(selected),
+    )
+    return selected
 
 # ---------------------------------------------------------------------------
 # LLM client
@@ -413,10 +530,22 @@ async def main() -> None:
                         help="Random seed for stratified sampling (default: 42)")
 
     parser.add_argument("--output", required=True, help="Output SQLite database path")
-    parser.add_argument("--llm-url", default="http://127.0.0.1:8080/v1",
-                        help="LLM API URL (OpenAI-compatible, e.g. llama-swap)")
-    parser.add_argument("--llm-model", default="qwen3.5-9b-turbo",
-                        help="LLM model name (alias for Qwen3.5-9B-Abliterated-Claude-4.6-Opus-Reasoning-Distilled)")
+    parser.add_argument(
+        "--llm-url",
+        default=os.getenv(
+            "MEMGRAPH_BUILD_LLM_URL",
+            os.getenv("MEMGRAPHRAG_BUILD_LLM_URL", "http://127.0.0.1:8080/v1"),
+        ),
+        help="LLM API URL (OpenAI-compatible). Env: MEMGRAPH_BUILD_LLM_URL",
+    )
+    parser.add_argument(
+        "--llm-model",
+        default=os.getenv(
+            "MEMGRAPH_BUILD_LLM_MODEL",
+            os.getenv("MEMGRAPHRAG_BUILD_LLM_MODEL", "qwen3.5-9b-turbo"),
+        ),
+        help="LLM model name. Env: MEMGRAPH_BUILD_LLM_MODEL",
+    )
     parser.add_argument("--api-key", default="sk-llama-cpp", help="LLM API key")
     parser.add_argument("--chunk-size", type=int, default=512, help="Tokens per chunk (file mode only)")
     parser.add_argument("--overlap", type=int, default=64, help="Token overlap between chunks (file mode only)")
@@ -424,14 +553,18 @@ async def main() -> None:
                         help="Minimum schema frequency (thematic denoising)")
     parser.add_argument("--max-chunks", type=int, default=0,
                         help="Max chunks to process (0 = all; for Qdrant this is the stratified sample size)")
-    parser.add_argument("--concurrency", type=int, default=3,
+    parser.add_argument("--concurrency", type=int,
+                        default=int(os.getenv("MEMGRAPH_BUILD_CONCURRENCY", "3")),
                         help="Max concurrent LLM requests")
     parser.add_argument("--max-chars", type=int, default=2000,
                         help="Max characters of chunk text to send to LLM (truncate longer chunks)")
     parser.add_argument("--skip-relations", action="store_true",
                         help="Skip relation extraction (entities only — 50%% faster)")
-    parser.add_argument("--embed-url", default=os.getenv("EMBED_URL", "http://127.0.0.1:8089"),
-                        help="Embedding API URL for fact vectors (default: EMBED_URL or 127.0.0.1:8089)")
+    parser.add_argument(
+        "--embed-url",
+        default=os.getenv("MEMGRAPH_BUILD_EMBED_URL") or os.getenv("EMBED_URL", "http://127.0.0.1:8089"),
+        help="Embedding API URL for fact vectors (MEMGRAPH_BUILD_EMBED_URL or EMBED_URL)",
+    )
     parser.add_argument("--skip-embed", action="store_true",
                         help="Skip fact embedding at build time (online scoring will skip those facts)")
     args = parser.parse_args()

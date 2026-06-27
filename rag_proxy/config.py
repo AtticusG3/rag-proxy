@@ -210,6 +210,32 @@ class Settings:
         default_factory=lambda: _env_float("MEMGRAPHRAG_PASSAGE_NODE_WEIGHT", 0.5)
     )
 
+    # MemGraphRAG offline index build (scripts/build_memgraphrag_index.py, rag-admin)
+    memgraph_build_llm_url: str = field(
+        default_factory=lambda: os.getenv(
+            "MEMGRAPH_BUILD_LLM_URL",
+            os.getenv("MEMGRAPHRAG_BUILD_LLM_URL", "http://127.0.0.1:8080/v1"),
+        )
+    )
+    memgraph_build_llm_model: str = field(
+        default_factory=lambda: os.getenv(
+            "MEMGRAPH_BUILD_LLM_MODEL",
+            os.getenv("MEMGRAPHRAG_BUILD_LLM_MODEL", "qwen3.5-9b-turbo"),
+        )
+    )
+    memgraph_build_max_chunks: int = field(
+        default_factory=lambda: _env_int("MEMGRAPH_BUILD_MAX_CHUNKS", 1000)
+    )
+    memgraph_build_concurrency: int = field(
+        default_factory=lambda: _env_int("MEMGRAPH_BUILD_CONCURRENCY", 3)
+    )
+    memgraph_build_embed_url: str = field(
+        default_factory=lambda: os.getenv("MEMGRAPH_BUILD_EMBED_URL", "")
+    )
+    memgraph_build_skip_relations: bool = field(
+        default_factory=lambda: _env_bool("MEMGRAPH_BUILD_SKIP_RELATIONS", False)
+    )
+
     # Model registry / routing
     model_registry_ttl_sec: int = field(
         default_factory=lambda: _env_int("MODEL_REGISTRY_TTL_SEC", 300)
