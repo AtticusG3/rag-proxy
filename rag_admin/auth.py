@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from rag_admin.config import settings
 
 COOKIE_NAME = "rag_admin_session"
-PUBLIC_PATHS = frozenset({"/health", "/login", "/static"})
+PUBLIC_PATHS = frozenset({"/health", "/login", "/static", "/favicon.ico"})
 
 
 def _sign(value: str) -> str:
