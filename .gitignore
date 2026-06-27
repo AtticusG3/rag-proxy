@@ -14,6 +14,7 @@ docker/config.yaml
 .ruff_cache/
 *.log
 .cursor/hooks/state/
+.agents/
 
 # OS cruft
 Thumbs.db

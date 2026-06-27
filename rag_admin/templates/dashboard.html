@@ -24,7 +24,7 @@
   </div>
   <div class="stat-card">
     <p class="stat-card__label">Disk headroom</p>
-    <p class="stat-card__value">{{ stats.disk_free_gb }}<span style="font-size:1rem;font-weight:500"> GB</span></p>
+    <p class="stat-card__value">{{ stats.disk_free_gb }}<span class="stat-card__unit"> GB</span></p>
     <p class="stat-card__meta">ZIM library {{ (stats.zim_bytes / 1048576)|round(1) }} MB</p>
   </div>
 </div>
@@ -38,7 +38,7 @@
     <a class="btn btn--ghost" href="/explorer">Browse catalogs</a>
     <a class="btn btn--ghost" href="/jobs">View job log</a>
   </div>
-  <p class="muted" style="margin:0.75rem 0 0">Safe scan: only new or failed files are queued. Indexed corpora are not re-embedded. Use scan for files added outside Admin (rsync, manual copy).</p>
+  <p class="muted card-note">Safe scan: only new or failed files are queued. Indexed corpora are not re-embedded. Use scan for files added outside Admin (rsync, manual copy).</p>
 </section>
 
 <section class="card card--compact">
@@ -50,13 +50,14 @@
     <div><dt>Sparse reindex</dt><dd class="mono">{{ ingest_config.sparse_reindex_mode }}</dd></div>
     <div><dt>Stall timeout</dt><dd class="mono">{{ ingest_config.stall_minutes }} min</dd></div>
   </dl>
-  <p class="muted" style="margin:0.75rem 0 0">Change via environment (<code>INGEST_BATCH_SIZE</code>, <code>INGEST_EMBED_CONCURRENCY</code>) and restart admin. See <code>docs/configuration.md</code>.</p>
+  <p class="muted card-note">Change via environment (<code>INGEST_BATCH_SIZE</code>, <code>INGEST_EMBED_CONCURRENCY</code>) and restart admin. See <code>docs/configuration.md</code>.</p>
 </section>
 
 <section class="card card--flush">
-  <div style="padding: var(--space-4) var(--space-5) var(--space-2)">
-    <h2 class="section-title" style="margin:0">Recent jobs</h2>
+  <div class="card-section-head">
+    <h2 class="section-title section-title--flush">Recent jobs</h2>
   </div>
+  <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Message</th><th>Created</th></tr></thead>
     <tbody>
@@ -73,5 +74,6 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </section>
 {% endblock %}

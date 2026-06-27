@@ -11,9 +11,9 @@
   {% endfor %}
 </nav>
 
-<section class="card card--compact" style="margin-bottom:1rem">
+<section class="card card--compact card--spaced">
   <h2 class="section-title">Service health</h2>
-  <div class="grid stats" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+  <div class="grid stats stats--compact">
     <div class="stat-card">
       <div class="stat-card__label">Qdrant</div>
       <div class="stat-card__value">{% if services.qdrant.ok %}OK{% else %}DOWN{% endif %}</div>
@@ -37,7 +37,19 @@
       <div class="stat-card__meta">{{ (services.memgraph_db.bytes / 1048576) | round(1) }} MiB</div>
     </div>
   </div>
-  <p class="muted" style="margin:0.75rem 0 0">Admin env: <code>{{ admin_env_path }}</code> · Proxy env: <code>{{ proxy_env_path }}</code></p>
+  <div class="page-header__actions card-note">
+    {% if can_restart_proxy %}
+    <form method="post" action="/settings/restart/proxy" class="inline">
+      <button type="submit" class="btn">Restart rag-proxy</button>
+    </form>
+    {% endif %}
+    {% if can_restart_admin %}
+    <form method="post" action="/settings/restart/admin" class="inline">
+      <button type="submit" class="btn btn--ghost">Restart rag-admin</button>
+    </form>
+    {% endif %}
+  </div>
+  <p class="muted card-note">Admin env: <code>{{ admin_env_path }}</code> · Proxy env: <code>{{ proxy_env_path }}</code></p>
 </section>
 
 {% if active_tab == 'ingest' %}
@@ -73,7 +85,8 @@
   {% endif %}
   <pre id="build-log" class="log-tail" aria-live="polite">{{ log_tail }}</pre>
   {% if build_history %}
-  <table style="margin-top:1rem">
+  <div class="table-wrap table-wrap--spaced">
+  <table>
     <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
     <tbody>
       {% for job in build_history %}
@@ -81,6 +94,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% endif %}
 </section>
 {% endif %}
@@ -113,11 +127,13 @@
     {% endfor %}
     <div class="form-actions">
       <button type="submit" class="btn">Save {{ tab_labels[active_tab] }}</button>
-      {% if active_tab in ['proxy_rag', 'cognitive', 'memgraphrag', 'observability'] %}
-      <span class="muted">Proxy env changes need <code>sudo systemctl restart rag-proxy</code>.</span>
-      {% endif %}
     </div>
   </form>
+  {% if active_tab in ['proxy_rag', 'cognitive', 'memgraphrag', 'observability'] and can_restart_proxy %}
+  <form method="post" action="/settings/restart/proxy" class="inline" style="margin-top:0.75rem">
+    <button type="submit" class="btn btn--ghost">Restart rag-proxy</button>
+  </form>
+  {% endif %}
 </section>
 {% endblock %}
 

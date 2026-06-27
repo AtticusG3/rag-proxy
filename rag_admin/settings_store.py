@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,6 +11,7 @@ from ingest.worker import IngestConfig, IngestWorker
 from rag_admin.db import AdminDatabase
 from rag_admin.env_file import read_env_file, write_env_file
 from rag_admin.settings_schema import (
+    INGEST_MIRROR_TO_PROXY,
     INGEST_PAUSED_KEY,
     SETTING_FIELDS,
     SettingField,
@@ -149,6 +149,14 @@ class SettingsStore:
 
         if admin_updates:
             write_env_file(self.admin_env_path, admin_updates)
+            mirror = {
+                key: value
+                for key, value in admin_updates.items()
+                if key in INGEST_MIRROR_TO_PROXY
+            }
+            if mirror:
+                write_env_file(self.proxy_env_path, mirror)
+                proxy_updates = {**proxy_updates, **mirror}
         if proxy_updates:
             write_env_file(self.proxy_env_path, proxy_updates)
         for key, value in {**admin_updates, **proxy_updates, **sqlite_updates}.items():

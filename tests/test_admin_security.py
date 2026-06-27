@@ -42,6 +42,8 @@ def _admin_settings(**overrides: object) -> AdminSettings:
         "proxy_env_path": "/tmp/rag-proxy.env",
         "repo_root": "/tmp/rag_proxy",
         "job_log_dir": "/tmp/admin_jobs",
+        "proxy_restart_cmd": "systemctl restart rag-proxy",
+        "admin_restart_cmd": "systemctl restart rag-admin",
     }
     defaults.update(overrides)
     return AdminSettings(**defaults)

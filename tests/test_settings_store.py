@@ -33,6 +33,49 @@ def test_save_group_writes_admin_env_and_hot_applies_worker(tmp_path: Path) -> N
     assert read_env_batch_size(admin_env) == "96"
 
 
+def test_ingest_save_mirrors_shared_keys_to_proxy_env(tmp_path: Path) -> None:
+    from rag_admin.env_file import read_env_file
+
+    db = AdminDatabase(str(tmp_path / "admin.sqlite"))
+    admin_env = tmp_path / "rag-admin.env"
+    proxy_env = tmp_path / "rag-proxy.env"
+    store = SettingsStore(
+        db,
+        admin_env_path=str(admin_env),
+        proxy_env_path=str(proxy_env),
+    )
+    store.save_group(
+        "ingest",
+        {
+            "EMBED_URL": "http://127.0.0.1:18099",
+            "QDRANT_URL": "http://qdrant:6333",
+            "QDRANT_COLLECTION": "test_collection",
+            "SPARSE_INDEX_URL": "http://127.0.0.1:18096",
+        },
+    )
+    proxy = read_env_file(str(proxy_env))
+    assert proxy["EMBED_URL"] == "http://127.0.0.1:18099"
+    assert proxy["QDRANT_URL"] == "http://qdrant:6333"
+    assert proxy["QDRANT_COLLECTION"] == "test_collection"
+    assert proxy["SPARSE_INDEX_URL"] == "http://127.0.0.1:18096"
+
+
+def test_proxy_save_writes_llama_swap_url(tmp_path: Path) -> None:
+    from rag_admin.env_file import read_env_file
+
+    db = AdminDatabase(str(tmp_path / "admin.sqlite"))
+    proxy_env = tmp_path / "rag-proxy.env"
+    store = SettingsStore(
+        db,
+        admin_env_path=str(tmp_path / "rag-admin.env"),
+        proxy_env_path=str(proxy_env),
+    )
+    result = store.save_group("proxy_rag", {"LLAMA_SWAP_URL": "http://127.0.0.1:8787"})
+    assert "LLAMA_SWAP_URL" in result.updated
+    assert read_env_file(str(proxy_env))["LLAMA_SWAP_URL"] == "http://127.0.0.1:8787"
+    assert result.restart_proxy is True
+
+
 def test_ingest_pause_persists_in_sqlite(tmp_path: Path) -> None:
     db_path = tmp_path / "admin.sqlite"
     db = AdminDatabase(str(db_path))

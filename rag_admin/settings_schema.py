@@ -49,12 +49,30 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         hot=True,
         help_text="Comma-separated embed endpoints; blank uses EMBED_URL only.",
     ),
-    SettingField("EMBED_URL", "Primary embed URL", "ingest", "str", "admin", "http://127.0.0.1:18089"),
+    SettingField(
+        "EMBED_URL",
+        "Primary embed URL",
+        "ingest",
+        "str",
+        "admin",
+        "http://127.0.0.1:18089",
+        help_text="Also mirrored to rag-proxy.env when you save this tab.",
+    ),
     SettingField("QDRANT_URL", "Qdrant URL", "ingest", "str", "admin", "http://127.0.0.1:6333"),
     SettingField("QDRANT_COLLECTION", "Qdrant collection", "ingest", "str", "admin", "nomad_knowledge_base"),
     SettingField("SPARSE_INDEX_URL", "Sparse/BM25 sidecar URL", "ingest", "str", "admin", "http://127.0.0.1:18096"),
     SettingField("RAG_PROXY_URL", "RAG proxy URL", "ingest", "str", "admin", "http://127.0.0.1:8081"),
-    # Proxy legacy RAG
+    # Proxy upstream + legacy RAG (rag-proxy.env)
+    SettingField(
+        "LLAMA_SWAP_URL",
+        "llama-swap URL",
+        "proxy_rag",
+        "str",
+        "proxy",
+        "http://127.0.0.1:8080",
+        help_text="Upstream for chat completions and INTENT_MODEL. Model id only in Intent model field.",
+    ),
+    SettingField("EMBED_RETRIES", "Embed retries", "proxy_rag", "int", "proxy", "2"),
     SettingField("TOP_K", "Top K chunks", "proxy_rag", "int", "proxy", "5"),
     SettingField("SIMILARITY_THRESHOLD", "Similarity threshold", "proxy_rag", "float", "proxy", "0.65"),
     SettingField("ENABLE_HYBRID_RETRIEVAL", "Hybrid dense+BM25", "proxy_rag", "bool", "proxy", "false"),
@@ -62,6 +80,11 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
     SettingField("ENABLE_RERANKER", "Cross-encoder rerank", "proxy_rag", "bool", "proxy", "false"),
     SettingField("RERANKER_URL", "Reranker sidecar URL", "proxy_rag", "str", "proxy", "http://127.0.0.1:18095"),
     SettingField("RERANK_TOP_K", "Rerank top K", "proxy_rag", "int", "proxy", "5"),
+    SettingField("RETRIEVAL_CANDIDATE_K", "Retrieval candidate K", "proxy_rag", "int", "proxy", "20"),
+    SettingField("RECENCY_WEIGHT", "Recency weight", "proxy_rag", "float", "proxy", "0.1"),
+    SettingField("RERANK_TIMEOUT_MS", "Rerank timeout (ms)", "proxy_rag", "int", "proxy", "200"),
+    SettingField("ENABLE_SEMANTIC_DEDUPE", "Semantic dedupe", "proxy_rag", "bool", "proxy", "false"),
+    SettingField("ENABLE_EMBED_CACHE", "Embed cache", "proxy_rag", "bool", "proxy", "false"),
     # Cognitive pipeline
     SettingField("ENABLE_COGNITIVE_PIPELINE", "Cognitive pipeline", "cognitive", "bool", "proxy", "false"),
     SettingField("ENABLE_TIER0_HEURISTICS", "Tier-0 heuristics", "cognitive", "bool", "proxy", "false"),
@@ -69,11 +92,43 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
     SettingField("ENABLE_RETRIEVAL_GATING", "Retrieval gating", "cognitive", "bool", "proxy", "false"),
     SettingField("GATING_LOG_ONLY", "Gating log-only (bake-in)", "cognitive", "bool", "proxy", "false"),
     SettingField("ENABLE_QUERY_REWRITE", "Query rewrite", "cognitive", "bool", "proxy", "false"),
+    SettingField("ENABLE_QUERY_REWRITE_LLM", "Query rewrite (LLM)", "cognitive", "bool", "proxy", "false"),
     SettingField("ENABLE_GRAPH_LOOKUP", "Graph lookup", "cognitive", "bool", "proxy", "false"),
     SettingField("ENABLE_TOOLS", "Tool stage", "cognitive", "bool", "proxy", "false"),
     SettingField("ENABLE_ROLLING_MEMORY", "Rolling memory", "cognitive", "bool", "proxy", "false"),
-    SettingField("INTENT_MODEL", "Intent model", "cognitive", "str", "proxy", ""),
+    SettingField(
+        "INTENT_MODEL",
+        "Intent model",
+        "cognitive",
+        "str",
+        "proxy",
+        "",
+        help_text="llama-swap model id (e.g. openrouter/owl-alpha). Uses LLAMA_SWAP_URL, not Build LLM API URL.",
+    ),
+    SettingField("INTENT_CONFIDENCE_THRESHOLD", "Intent confidence threshold", "cognitive", "float", "proxy", "0.55"),
+    SettingField("INTENT_TIMEOUT_MS", "Intent timeout (ms)", "cognitive", "int", "proxy", "150"),
     SettingField("COGNITIVE_LATENCY_BUDGET_MS", "Latency budget (ms)", "cognitive", "int", "proxy", "800"),
+    SettingField("STAGE_BUDGET_RETRIEVE_MS", "Retrieve stage budget (ms)", "cognitive", "int", "proxy", "50"),
+    SettingField("STAGE_BUDGET_GRAPH_MS", "Graph stage budget (ms)", "cognitive", "int", "proxy", "100"),
+    SettingField(
+        "GRAPH_DB_PATH",
+        "Graph SQLite path",
+        "cognitive",
+        "str",
+        "proxy",
+        "/var/lib/rag_proxy/graph.sqlite",
+    ),
+    SettingField("GRAPH_MAX_DEPTH", "Graph max depth", "cognitive", "int", "proxy", "2"),
+    SettingField(
+        "MEMORY_DB_PATH",
+        "Rolling memory DB path",
+        "cognitive",
+        "str",
+        "proxy",
+        "/var/lib/rag_proxy/memory.sqlite",
+    ),
+    SettingField("MEMORY_TTL_HOURS", "Memory TTL (hours)", "cognitive", "int", "proxy", "72"),
+    SettingField("MEMORY_REFRESH_TURNS", "Memory refresh turns", "cognitive", "int", "proxy", "8"),
     # MemGraphRAG runtime (proxy env)
     SettingField("ENABLE_MEMGRAPHRAG", "MemGraphRAG stage", "memgraphrag", "bool", "proxy", "false"),
     SettingField(
@@ -116,7 +171,8 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
     ),
     SettingField("MEMGRAPH_BUILD_MAX_CHUNKS", "Sample chunk count", "memgraph_build", "int", "sqlite", "1000"),
     SettingField("MEMGRAPH_BUILD_CONCURRENCY", "Build LLM concurrency", "memgraph_build", "int", "sqlite", "3"),
-    SettingField("MEMGRAPH_BUILD_EMBED_URL", "Build embed URL", "memgraph_build", "str", "sqlite", ""),
+    SettingField("MEMGRAPH_BUILD_EMBED_URL", "Build embed URL", "memgraph_build", "str", "sqlite", "",
+                 help_text="Blank uses EMBED_URL from ingest/proxy settings."),
     SettingField(
         "MEMGRAPH_BUILD_SKIP_RELATIONS",
         "Skip relation extraction",
@@ -152,3 +208,11 @@ GROUP_LABELS: dict[str, str] = {
 }
 
 INGEST_PAUSED_KEY = "INGEST_PAUSED"
+
+# Shared keys saved on the ingest tab are mirrored into rag-proxy.env.
+INGEST_MIRROR_TO_PROXY: tuple[str, ...] = (
+    "EMBED_URL",
+    "QDRANT_URL",
+    "QDRANT_COLLECTION",
+    "SPARSE_INDEX_URL",
+)

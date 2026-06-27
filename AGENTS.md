@@ -44,6 +44,9 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag-proxy-test` | Tests |
 | `rag-proxy-debug` | Missing/wrong RAG context |
 | `rag-proxy-deploy` | systemd, `.env`, homelab |
+| `bencium-controlled-ux-designer` | rag_admin UI/UX, layout, tokens, accessibility (systematic, ask-first) |
+| `bencium-innovative-ux-designer` | Bold/creative rag_admin surfaces, campaigns, distinctive pages |
+| `bencium-impact-designer` | High-impact production UI with strong aesthetic direction |
 
 ## Upstream pool (`UPSTREAM_*`)
 

@@ -3,32 +3,99 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0e1218">
   <title>{% block title %}RAG Admin{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="{% if request.url.path == '/login' %}page-auth{% endif %}">
   <a class="skip-link" href="#main">Skip to content</a>
-  <header class="topbar">
-    <div class="brand">
-      <strong>RAG Admin</strong>
-      <span>Corpus indexing</span>
+
+  {% if request.url.path != '/login' %}
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar">
+      <div class="sidebar__brand">
+        <a href="/" class="sidebar__brand-link">
+          <span class="sidebar__mark" aria-hidden="true"></span>
+          <span class="sidebar__brand-text">
+            <strong>RAG Admin</strong>
+            <span>Corpus indexing</span>
+          </span>
+        </a>
+      </div>
+
+      <nav class="sidebar__nav" aria-label="Primary">
+        <div class="nav-group">
+          <p class="nav-group__label">Overview</p>
+          <ul class="nav-group__list">
+            <li><a href="/" class="nav-link{% if request.url.path == '/' %} is-active{% endif %}">Dashboard</a></li>
+          </ul>
+        </div>
+        <div class="nav-group">
+          <p class="nav-group__label">Content</p>
+          <ul class="nav-group__list">
+            <li><a href="/explorer" class="nav-link{% if request.url.path.startswith('/explorer') %} is-active{% endif %}">Explorer</a></li>
+            <li><a href="/subscriptions" class="nav-link{% if request.url.path.startswith('/subscriptions') %} is-active{% endif %}">Subscriptions</a></li>
+            <li><a href="/zim" class="nav-link{% if request.url.path.startswith('/zim') %} is-active{% endif %}">Local files</a></li>
+            <li><a href="/upload" class="nav-link{% if request.url.path.startswith('/upload') %} is-active{% endif %}">Upload</a></li>
+          </ul>
+        </div>
+        <div class="nav-group">
+          <p class="nav-group__label">Operations</p>
+          <ul class="nav-group__list">
+            <li><a href="/jobs" class="nav-link{% if request.url.path.startswith('/jobs') %} is-active{% endif %}">Jobs</a></li>
+          </ul>
+        </div>
+        <div class="nav-group">
+          <p class="nav-group__label">System</p>
+          <ul class="nav-group__list">
+            <li><a href="/settings" class="nav-link{% if request.url.path.startswith('/settings') %} is-active{% endif %}">Settings</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <div class="sidebar__footer">
+        <form method="post" action="/logout" class="logout">
+          <button type="submit" class="btn btn--ghost btn--small btn--block">Sign out</button>
+        </form>
+      </div>
+    </aside>
+
+    <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
+    <div class="app-main">
+      <header class="mobile-bar">
+        <button type="button" class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="sidebar">
+          <span class="nav-toggle__icon" aria-hidden="true"></span>
+          <span class="sr-only">Open navigation</span>
+        </button>
+        <div class="mobile-bar__title">
+          <strong>RAG Admin</strong>
+        </div>
+      </header>
+  {% else %}
+  <header class="auth-topbar">
+    <div class="sidebar__brand">
+      <span class="sidebar__mark" aria-hidden="true"></span>
+      <span class="sidebar__brand-text">
+        <strong>RAG Admin</strong>
+        <span>Corpus indexing</span>
+      </span>
     </div>
-    <nav aria-label="Primary">
-      <a href="/" class="{% if request.url.path == '/' %}is-active{% endif %}">Dashboard</a>
-      <a href="/explorer" class="{% if request.url.path.startswith('/explorer') %}is-active{% endif %}">Explorer</a>
-      <a href="/subscriptions" class="{% if request.url.path.startswith('/subscriptions') %}is-active{% endif %}">Subscriptions</a>
-      <a href="/zim" class="{% if request.url.path.startswith('/zim') %}is-active{% endif %}">Local files</a>
-      <a href="/upload" class="{% if request.url.path.startswith('/upload') %}is-active{% endif %}">Upload</a>
-      <a href="/jobs" class="{% if request.url.path.startswith('/jobs') %}is-active{% endif %}">Jobs</a>
-      <a href="/settings" class="{% if request.url.path.startswith('/settings') %}is-active{% endif %}">Settings</a>
-    </nav>
-    <form method="post" action="/logout" class="logout">
-      <button type="submit" class="btn btn--ghost btn--small">Logout</button>
-    </form>
   </header>
-  <main id="main" class="container">
+  {% endif %}
+
+  <main id="main" class="container{% if request.url.path == '/login' %} container--auth{% endif %}">
     {% block content %}{% endblock %}
   </main>
+
+  {% if request.url.path != '/login' %}
+    </div>
+  </div>
+  {% endif %}
+
   {% block scripts %}{% endblock %}
+  {% if request.url.path != '/login' %}
+  <script src="/static/nav.js" defer></script>
+  {% endif %}
 </body>
 </html>

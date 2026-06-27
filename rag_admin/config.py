@@ -42,6 +42,8 @@ class AdminSettings:
     proxy_env_path: str
     repo_root: str
     job_log_dir: str
+    proxy_restart_cmd: str
+    admin_restart_cmd: str
 
     @classmethod
     def from_env(cls) -> AdminSettings:
@@ -78,6 +80,8 @@ class AdminSettings:
                 "RAG_ADMIN_JOB_LOG_DIR",
                 "/var/lib/rag_proxy/admin_jobs",
             ),
+            proxy_restart_cmd=os.getenv("RAG_PROXY_RESTART_CMD", "systemctl restart rag-proxy"),
+            admin_restart_cmd=os.getenv("RAG_ADMIN_RESTART_CMD", "systemctl restart rag-admin"),
         )
 
 

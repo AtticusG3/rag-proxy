@@ -10,11 +10,12 @@
     <form method="post" action="/subscriptions/check-updates">
       <button type="submit">Check for updates now</button>
     </form>
-    <p class="muted" style="margin:0">Re-downloads newer copies, re-ingests, and rebuilds the sparse index.</p>
+    <p class="muted">Re-downloads newer copies, re-ingests, and rebuilds the sparse index.</p>
   </div>
 </section>
 
 <section class="card card--flush">
+  <div class="table-wrap">
   <table>
     <thead>
       <tr>
@@ -60,5 +61,6 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </section>
 {% endblock %}

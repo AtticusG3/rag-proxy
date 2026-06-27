@@ -30,16 +30,17 @@
     </form>
     {% endif %}
   </div>
-  <p class="muted" style="margin:0.75rem 0 0">
+  <p class="muted card-note">
     Uploads and subscriptions queue ingest automatically. Scan only registers files added outside Admin, or re-queues failed ingests.
     Already indexed files are left unchanged. Running jobs with no progress for {{ stall_minutes }}+ minutes are marked <strong>stalled</strong>.
   </p>
 </section>
 
 <section class="card card--flush">
-  <div style="padding: var(--space-4) var(--space-5) var(--space-2)">
-    <h2 class="section-title" style="margin:0">File ingest state</h2>
+  <div class="card-section-head">
+    <h2 class="section-title section-title--flush">File ingest state</h2>
   </div>
+  <div class="table-wrap">
   <table>
     <thead>
       <tr><th>File</th><th>Status</th><th>Chunks</th><th>Error</th><th>Updated</th><th></th></tr>
@@ -68,6 +69,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </section>
 
 <section class="card card--compact">
@@ -82,9 +84,10 @@
 </section>
 
 <section class="card card--flush">
-  <div style="padding: var(--space-4) var(--space-5) var(--space-2)">
-    <h2 class="section-title" style="margin:0">Job log</h2>
+  <div class="card-section-head">
+    <h2 class="section-title section-title--flush">Job log</h2>
   </div>
+  <div class="table-wrap">
   <table>
     <thead><tr><th>ID</th><th>Type</th><th>Status</th><th>Message</th></tr></thead>
     <tbody>
@@ -100,6 +103,7 @@
     {% endfor %}
     </tbody>
   </table>
+  </div>
 </section>
 {% endblock %}
 

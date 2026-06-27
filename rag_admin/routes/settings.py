@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from ingest.worker import trigger_sparse_reindex
 from rag_admin.config import settings
 from rag_admin.flash import flash_redirect
+from rag_admin.service_restart import schedule_restart
 from rag_admin.service_status import service_status
 from rag_admin.settings_schema import GROUP_LABELS, SETTING_FIELDS, SETTING_GROUPS
 from rag_admin.settings_store import SettingsStore
@@ -81,6 +82,8 @@ async def settings_page(request: Request, tab: str = "ingest") -> HTMLResponse:
             "log_tail": log_tail,
             "admin_env_path": store.admin_env_path,
             "proxy_env_path": store.proxy_env_path,
+            "can_restart_proxy": bool(settings.proxy_restart_cmd.strip()),
+            "can_restart_admin": bool(settings.admin_restart_cmd.strip()),
         },
     )
 
@@ -106,9 +109,9 @@ async def settings_save(request: Request, group: str):
 
     message = f"Saved {len(result.updated)} setting(s)."
     if result.restart_proxy:
-        message += " Restart rag-proxy for proxy changes to take effect."
+        message += " Restart rag-proxy to apply proxy env changes."
     if result.restart_admin:
-        message += " Restart rag-admin for bind/path changes to take effect."
+        message += " Restart rag-admin to apply admin env changes."
     return flash_redirect(f"/settings?tab={group}", message)
 
 
@@ -202,9 +205,20 @@ async def settings_status_api(request: Request) -> JSONResponse:
     return JSONResponse(payload)
 
 
-@router.post("/settings/proxy/restart-hint")
-async def proxy_restart_hint(request: Request):
+@router.post("/settings/restart/proxy")
+async def restart_proxy_service(request: Request):
+    ok, msg = schedule_restart(settings.proxy_restart_cmd)
+    if not ok:
+        return flash_redirect("/settings", msg, level="error")
+    return flash_redirect("/settings", f"rag-proxy restart scheduled. {msg}")
+
+
+@router.post("/settings/restart/admin")
+async def restart_admin_service(request: Request):
+    ok, msg = schedule_restart(settings.admin_restart_cmd)
+    if not ok:
+        return flash_redirect("/settings", msg, level="error")
     return flash_redirect(
-        "/settings?tab=proxy_rag",
-        "On the host: sudo systemctl restart rag-proxy",
+        "/settings",
+        f"rag-admin restart scheduled; refresh this page in a few seconds. {msg}",
     )
