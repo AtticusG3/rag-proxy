@@ -123,6 +123,31 @@ Build and rollout: [MemGraphRAG operator guide](memgraphrag.md).
 | `MODEL_CAPABILITIES_JSON` | *(empty)* | JSON overrides for model capabilities |
 | `MODEL_ROUTES_JSON` | *(empty)* | JSON intent → model map |
 
+## Transcript capture
+
+Optional JSONL capture for fine-tuning exports and RAG improvement review. This is separate from observability logs and is disabled by default.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ENABLE_TRANSCRIPT_CAPTURE` | `false` | Master switch for transcript JSONL capture |
+| `FINETUNE_LOG_PATH` | `/var/lib/rag_proxy/capture/finetune.jsonl` | Sanitized request + assistant completion stream |
+| `RAG_IMPROVEMENT_LOG_PATH` | `/var/lib/rag_proxy/capture/rag_improvement.jsonl` | Query, retrieval metadata, hits, and Q&A stream |
+| `TRANSCRIPT_STRIP_PROXY_ARTEFACTS` | `true` | Remove RAG and rolling-memory system prefixes from captured messages |
+| `TRANSCRIPT_HEADER_OPT_IN` | `false` | Require `X-Capture-Log: true` per request when enabled |
+| `TRANSCRIPT_SAMPLE_RATE` | `1.0` | Capture sample rate from `0.0` to `1.0` |
+| `TRANSCRIPT_HIT_PREVIEW_CHARS` | `300` | Max characters of each hit stored in RAG improvement records |
+| `ENABLE_RAG_CORPUS_AUTO_INGEST` | `false` | Promote eligible RAG Q&A pairs to Qdrant after JSONL append |
+| `RAG_CORPUS_COLLECTION` | `nomad_conversation_derived` | Derived Q&A collection; separate from `QDRANT_COLLECTION` by default |
+| `RAG_CORPUS_MIN_ANSWER_CHARS` | `100` | Minimum answer length for auto-ingest promotion |
+| `RAG_CORPUS_REQUIRE_CHUNKS` | `false` | Require at least one injected chunk before promotion |
+
+Offline helpers:
+
+```bash
+python scripts/export_finetune_dataset.py --input /var/lib/rag_proxy/capture/finetune.jsonl --output finetune_messages.jsonl
+python scripts/promote_rag_corpus.py --input /var/lib/rag_proxy/capture/rag_improvement.jsonl --dry-run
+```
+
 ## Observability
 
 | Variable | Default | Purpose |
