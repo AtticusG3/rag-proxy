@@ -1,7 +1,7 @@
-{% macro flash_banner() %}
-{% if request.query_params.get('flash') %}
-<div class="flash flash--{{ request.query_params.get('flash_level', 'info') }}" role="status">
-  {{ request.query_params.get('flash') }}
+{% macro flash_banner(req) %}
+{% if req.query_params.get('flash') %}
+<div class="flash flash--{{ req.query_params.get('flash_level', 'info') }}" role="status">
+  {{ req.query_params.get('flash') }}
 </div>
 {% endif %}
 {% endmacro %}

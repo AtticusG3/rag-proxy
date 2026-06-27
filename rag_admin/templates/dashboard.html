@@ -3,7 +3,7 @@
 {% block title %}Dashboard - RAG Admin{% endblock %}
 {% block content %}
 {{ page_header("Dashboard", "Corpus health, storage, and ingest activity.") }}
-{{ flash_banner() }}
+{{ flash_banner(request) }}
 {{ ingest_active_banner(stats.ingest_queue) }}
 
 <div class="grid stats">

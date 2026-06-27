@@ -9,7 +9,7 @@ from typing import AsyncIterator
 
 import uvicorn
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from ingest.embed_urls import parse_ingest_embed_urls
@@ -87,6 +87,10 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> Response:
+        return Response(status_code=204)
 
     @app.get("/login", response_class=HTMLResponse)
     async def login_page(request: Request) -> HTMLResponse:
