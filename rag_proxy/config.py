@@ -225,6 +225,50 @@ class Settings:
         default_factory=lambda: os.getenv("MODEL_ROUTING_MODE", "suggest")
     )
 
+    # Transcript capture
+    enable_transcript_capture: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_TRANSCRIPT_CAPTURE", False)
+    )
+    finetune_log_path: str = field(
+        default_factory=lambda: os.getenv(
+            "FINETUNE_LOG_PATH",
+            "/var/lib/rag_proxy/capture/finetune.jsonl",
+        )
+    )
+    rag_improvement_log_path: str = field(
+        default_factory=lambda: os.getenv(
+            "RAG_IMPROVEMENT_LOG_PATH",
+            "/var/lib/rag_proxy/capture/rag_improvement.jsonl",
+        )
+    )
+    transcript_strip_proxy_artefacts: bool = field(
+        default_factory=lambda: _env_bool("TRANSCRIPT_STRIP_PROXY_ARTEFACTS", True)
+    )
+    transcript_header_opt_in: bool = field(
+        default_factory=lambda: _env_bool("TRANSCRIPT_HEADER_OPT_IN", False)
+    )
+    transcript_sample_rate: float = field(
+        default_factory=lambda: _env_float("TRANSCRIPT_SAMPLE_RATE", 1.0)
+    )
+    transcript_hit_preview_chars: int = field(
+        default_factory=lambda: _env_int("TRANSCRIPT_HIT_PREVIEW_CHARS", 300)
+    )
+    enable_rag_corpus_auto_ingest: bool = field(
+        default_factory=lambda: _env_bool("ENABLE_RAG_CORPUS_AUTO_INGEST", False)
+    )
+    rag_corpus_collection: str = field(
+        default_factory=lambda: os.getenv(
+            "RAG_CORPUS_COLLECTION",
+            "nomad_conversation_derived",
+        )
+    )
+    rag_corpus_min_answer_chars: int = field(
+        default_factory=lambda: _env_int("RAG_CORPUS_MIN_ANSWER_CHARS", 100)
+    )
+    rag_corpus_require_chunks: bool = field(
+        default_factory=lambda: _env_bool("RAG_CORPUS_REQUIRE_CHUNKS", False)
+    )
+
     # Observability
     enable_metrics: bool = field(
         default_factory=lambda: _env_bool("ENABLE_METRICS", False)
