@@ -218,7 +218,8 @@ class IngestWorker:
             elif row["status"] == "failed":
                 self.db.retry_file_state(path)
                 queued_retry += 1
-        message = f"scan: {queued_new} new, {queued_retry} retries (indexed files unchanged)"
+        pruned = self.prune_missing_files()
+        message = f"scan: {queued_new} new, {queued_retry} retries, {len(pruned)} missing removed"
         self.db.update_job(job_id, status="queued", message=message)
         return job_id
 
@@ -300,6 +301,10 @@ class IngestWorker:
                 time.sleep(1.0)
                 continue
             file_path = pending[0]["file_path"]
+            if not os.path.isfile(file_path):
+                log.warning("ingest file missing, removing state: %s", file_path)
+                self.remove_file_from_index(file_path)
+                continue
             try:
                 self._process_one(file_path)
             except Exception as exc:
@@ -387,3 +392,23 @@ class IngestWorker:
             os.remove(file_path)
         self.db.delete_file_state(file_path)
         trigger_sparse_reindex(self.config)
+
+    def prune_missing_files(self) -> list[str]:
+        """Drop ingest rows whose files no longer exist on disk."""
+        removed: list[str] = []
+        for row in self.db.list_file_states():
+            path = str(row["file_path"])
+            if os.path.isfile(path):
+                continue
+            log.warning("pruning missing ingest file: %s", path)
+            delete_by_source(
+                self.config.qdrant_url,
+                self.config.qdrant_collection,
+                path,
+            )
+            self.db.delete_file_state(path)
+            removed.append(path)
+        return removed
+
+    def dismiss_all_missing_files(self) -> list[str]:
+        return self.prune_missing_files()

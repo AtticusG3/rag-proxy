@@ -110,6 +110,31 @@ def test_enqueue_sync_retries_failed_only() -> None:
         assert bad["last_error"] is None
 
 
+def test_prune_missing_files_removes_orphaned_rows() -> None:
+    with tempfile.TemporaryDirectory() as zim_dir:
+        upload_dir = tempfile.mkdtemp()
+        db_path = os.path.join(zim_dir, "admin.sqlite")
+        db = IngestDatabase(db_path)
+        ghost_path = os.path.join(upload_dir, "gone.md")
+        db.upsert_file_state(
+            ghost_path,
+            status="failed",
+            last_error="[Errno 2] No such file or directory",
+        )
+
+        worker = _worker_with_dirs(db, zim_dir, upload_dir)
+        with patch("ingest.worker.delete_by_source") as delete_mock:
+            removed = worker.prune_missing_files()
+
+        assert removed == [ghost_path]
+        assert db.get_file_state(ghost_path) is None
+        delete_mock.assert_called_once_with(
+            worker.config.qdrant_url,
+            worker.config.qdrant_collection,
+            ghost_path,
+        )
+
+
 def test_enqueue_sync_registers_new_files() -> None:
     with tempfile.TemporaryDirectory() as zim_dir:
         upload_dir = tempfile.mkdtemp()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from ingest.stall import is_stalled
@@ -23,6 +24,8 @@ def enrich_file_rows(
         if not item.get("file_name"):
             path = str(item.get("file_path", ""))
             item["file_name"] = path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+        path = str(item.get("file_path", ""))
+        item["file_missing"] = bool(path) and not os.path.isfile(path)
         enriched.append(item)
     return enriched
 
@@ -33,11 +36,14 @@ def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int]:
     stalled = 0
     indexed = 0
     total_chunks = 0
+    missing = 0
     for row in files:
         status = row.get("status", "")
         display = row.get("display_status", status)
         chunks = int(row.get("chunks_embedded") or 0)
         total_chunks += chunks
+        if row.get("file_missing"):
+            missing += 1
         if status in ("pending", "queued"):
             pending += 1
         elif status == "running":
@@ -53,6 +59,7 @@ def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int]:
         "running": running,
         "stalled": stalled,
         "indexed": indexed,
+        "missing": missing,
         "active": pending + running,
         "total_chunks": total_chunks,
     }

@@ -29,6 +29,11 @@
       <button type="submit" class="btn btn--ghost">Restart stalled ({{ stalled_count }})</button>
     </form>
     {% endif %}
+    {% if ingest_queue.missing %}
+    <form method="post" action="/api/ingest/dismiss-missing-form">
+      <button type="submit" class="btn btn--ghost">Remove missing ({{ ingest_queue.missing }})</button>
+    </form>
+    {% endif %}
   </div>
   <p class="muted card-note">
     Uploads and subscriptions queue ingest automatically. Scan only registers files added outside Admin, or re-queues failed ingests.
@@ -48,12 +53,15 @@
     <tbody id="ingest-files-body">
     {% for f in files %}
       <tr>
-        <td><span class="file-chip">{{ f.file_name }}</span></td>
+        <td>
+          <span class="file-chip">{{ f.file_name }}</span>
+          {% if f.file_missing %}<span class="pill pill--failed" title="File no longer on disk">missing</span>{% endif %}
+        </td>
         <td>{{ status_pill(f.display_status) }}</td>
         <td class="mono">{{ f.chunks_embedded }}</td>
         <td class="error">{{ f.last_error or '' }}</td>
         <td class="faint">{{ f.updated_at | format_dt }}</td>
-        <td>
+        <td class="actions-cell">
           {% if f.status == 'failed' or f.is_stalled %}
           <form method="post" action="/api/ingest/retry-form" class="inline">
             <input type="hidden" name="file_path" value="{{ f.file_path }}">
@@ -62,6 +70,10 @@
             </button>
           </form>
           {% endif %}
+          <form method="post" action="/api/ingest/dismiss-form" class="inline">
+            <input type="hidden" name="file_path" value="{{ f.file_path }}">
+            <button type="submit" class="btn btn--ghost btn--small">Remove</button>
+          </form>
         </td>
       </tr>
     {% else %}

@@ -74,19 +74,27 @@
   }
 
   function actionCell(file) {
-    if (file.status !== "failed" && !file.is_stalled) {
-      return "<td></td>";
+    var parts = [];
+    if (file.status === "failed" || file.is_stalled) {
+      var label = file.is_stalled ? "Restart" : "Retry";
+      parts.push(
+        '<form method="post" action="/api/ingest/retry-form" class="inline">' +
+          '<input type="hidden" name="file_path" value="' +
+          escapeHtml(file.file_path) +
+          '">' +
+          '<button type="submit" class="btn btn--ghost btn--small">' +
+          label +
+          "</button></form>"
+      );
     }
-    var label = file.is_stalled ? "Restart" : "Retry";
-    return (
-      '<td><form method="post" action="/api/ingest/retry-form" class="inline">' +
-      '<input type="hidden" name="file_path" value="' +
-      escapeHtml(file.file_path) +
-      '">' +
-      '<button type="submit" class="btn btn--ghost btn--small">' +
-      label +
-      "</button></form></td>"
+    parts.push(
+      '<form method="post" action="/api/ingest/dismiss-form" class="inline">' +
+        '<input type="hidden" name="file_path" value="' +
+        escapeHtml(file.file_path) +
+        '">' +
+        '<button type="submit" class="btn btn--ghost btn--small">Remove</button></form>'
     );
+    return '<td class="actions-cell">' + parts.join("") + "</td>";
   }
 
   function renderRows(files) {
@@ -105,7 +113,11 @@
           "<tr>" +
           '<td><span class="file-chip">' +
           escapeHtml(file.file_name || "") +
-          "</span></td>" +
+          "</span>" +
+          (file.file_missing
+            ? ' <span class="pill pill--failed" title="File no longer on disk">missing</span>'
+            : "") +
+          "</td>" +
           "<td>" +
           statusPill(file.display_status || file.status || "pending") +
           "</td>" +

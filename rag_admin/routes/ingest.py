@@ -94,3 +94,27 @@ async def sync_form(request: Request):
     worker = request.app.state.worker
     worker.enqueue_sync()
     return flash_redirect("/jobs", "Storage scan complete. New and failed files were queued.")
+
+
+@router.post("/dismiss-form")
+async def dismiss_file_form(
+    request: Request,
+    file_path: str = Form(...),
+):
+    file_path = validated_ingest_file_path(file_path)
+    worker = request.app.state.worker
+    worker.remove_file_from_index(file_path)
+    name = file_path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    return flash_redirect("/jobs", f"Removed {name} from ingest queue and index.")
+
+
+@router.post("/dismiss-missing-form")
+async def dismiss_missing_form(request: Request):
+    worker = request.app.state.worker
+    removed = worker.dismiss_all_missing_files()
+    if not removed:
+        return flash_redirect("/jobs", "No missing files in ingest queue.")
+    return flash_redirect(
+        "/jobs",
+        f"Removed {len(removed)} missing file(s) from ingest queue.",
+    )

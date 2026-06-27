@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+
 from ingest.worker import IngestConfig
 from rag_admin.flash import flash_redirect
 from rag_admin.ingest_status import (
@@ -42,6 +45,23 @@ def test_enrich_file_rows_marks_stalled_running() -> None:
     )
     assert rows[0]["display_status"] == "stalled"
     assert rows[0]["is_stalled"] is True
+
+
+def test_enrich_file_rows_flags_missing_files() -> None:
+    with tempfile.NamedTemporaryFile(delete=False) as handle:
+        present = handle.name
+    try:
+        rows = enrich_file_rows(
+            [
+                {"file_path": present, "status": "indexed"},
+                {"file_path": "/tmp/definitely-missing-ingest-file.md", "status": "failed"},
+            ],
+            stall_seconds=60,
+        )
+        assert rows[0]["file_missing"] is False
+        assert rows[1]["file_missing"] is True
+    finally:
+        os.unlink(present)
 
 
 def test_ingest_queue_stats_counts_active_files() -> None:
