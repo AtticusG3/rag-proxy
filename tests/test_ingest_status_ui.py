@@ -49,6 +49,7 @@ def test_ingest_config_snapshot_exposes_tuning_knobs() -> None:
         zim_dir="/tmp/zim",
         upload_dir="/tmp/uploads",
         embed_url="http://127.0.0.1:8089",
+        ingest_embed_urls="",
         qdrant_url="http://127.0.0.1:6333",
         qdrant_collection="test",
         sparse_index_url="",

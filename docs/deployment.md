@@ -32,9 +32,12 @@ set -a; . ./.env; set +a
 Repository ships example units:
 
 - `rag-proxy.service` — FastAPI proxy
-- `nomic-embed.service` — llama-server with nomic-embed only
+- `nomic-embed.service` — llama-server with nomic-embed on GPU (`-ngl 99`, ~1 GiB VRAM)
+- `nomic-embed@.service` — template for bulk-ingest pool (`nomic-embed@18089.service`, …)
+- `nomic-embed-scale.service` — oneshot pool sizing via `scripts/scale_nomic_embed_pool.py`
+- `nomic-embed.env.example` / `nomic-embed-scale.env.example` — copy to `/opt/ai/config/`
 
-**Edit paths before install** — `User`, `WorkingDirectory`, model path, and `ExecStart` are placeholders.
+**Edit paths before install** — `User`, `WorkingDirectory`, `LLAMA_SERVER_BIN`, model path, and `ExecStart` are placeholders.
 
 `rag-proxy.service` essentials (adjust paths):
 
@@ -108,6 +111,24 @@ Details: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIVE_RAG_PLAN.md]
 | `EMBED_MAX_CHARS` | `2000` |
 
 Align `nomic-embed.service` `-ub 2048` with embed batch limits for large inputs.
+
+### GPU embed (recommended on CUDA hosts)
+
+Default units use **full GPU offload** (`NOMIC_GPU_LAYERS=99`). nomic-embed is small (~1 GiB VRAM per instance).
+
+```bash
+sudo cp nomic-embed.env.example /opt/ai/config/nomic-embed.env
+sudo cp nomic-embed-scale.env.example /opt/ai/config/nomic-embed-scale.env
+# edit LLAMA_SERVER_BIN and NOMIC_EMBED_MODEL for your host
+sudo cp nomic-embed.service nomic-embed@.service nomic-embed-scale.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now nomic-embed
+# bulk ingest pool (optional):
+sudo systemctl enable --now nomic-embed-scale.service
+sudo systemctl restart rag-admin.service   # picks up INGEST_EMBED_URLS from pool env
+```
+
+Query RAG uses `:8089` (`nomic-embed.service`). Bulk ingest uses the pool on `18089+` (`nomic-embed@PORT`). Raise `NOMIC_POOL_VRAM_RESERVE_MIB` if chat models need more headroom on the same GPU.
 
 ## Optional admin / ingest
 

@@ -11,7 +11,7 @@ Optional content management stack for indexing ZIM archives, PDFs, and text into
 
 Admin upserts vectors to Qdrant; the proxy reads the same `QDRANT_URL` / `QDRANT_COLLECTION`. Nothing requires co-location — only reachable URLs and paths matter.
 
-This repository ships `rag-proxy.service` and `nomic-embed.service` examples only. Provide your own systemd unit (or process manager) for `python -m rag_admin` if needed. `scripts/catalog_weekly_update.py` accepts `RAG_ADMIN_ENV` (default `/opt/ai/config/rag-admin.env`) for cron on whichever host runs admin.
+This repository ships `rag-proxy.service`, `nomic-embed.service`, `nomic-embed@.service`, and `nomic-embed-scale.service` examples only. Provide your own systemd unit (or process manager) for `python -m rag_admin` if needed. `scripts/catalog_weekly_update.py` accepts `RAG_ADMIN_ENV` (default `/opt/ai/config/rag-admin.env`) for cron on whichever host runs admin.
 
 ## Components
 
@@ -95,7 +95,7 @@ For bulk ingest on a GPU host, run several `llama-server` embed instances (syste
 instances = clamp((gpu_free_mib - NOMIC_POOL_VRAM_RESERVE_MIB) / NOMIC_POOL_VRAM_PER_INSTANCE_MIB)
 ```
 
-It writes `/opt/ai/config/nomic-embed-pool.env` with `INGEST_EMBED_URLS` and `INGEST_EMBED_CONCURRENCY` (`instances * --parallel` per unit). Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example` in infra). Default hard cap: `NOMIC_POOL_MAX_INSTANCES=12` (raise only if you need more throughput and stable VRAM headroom).
+It writes `/opt/ai/config/nomic-embed-pool.env` with `INGEST_EMBED_URLS` and `INGEST_EMBED_CONCURRENCY` (`instances * --parallel` per unit). Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example` in the repo). Default hard cap: `NOMIC_POOL_MAX_INSTANCES=12` (raise only if you need more throughput and stable VRAM headroom).
 
 ```bash
 # Dry-run plan
@@ -120,7 +120,7 @@ Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `documen
 | --- | --- | --- |
 | Batch size | `INGEST_BATCH_SIZE` | Raise (e.g. `256`) when embed server supports large batches |
 | Parallel embeds | `INGEST_EMBED_CONCURRENCY` | Default `4`; raise if embed server keeps up |
-| GPU embed | `nomic-embed` `-ngl` | CPU embed is the usual bottleneck; see [Deployment](deployment.md) |
+| GPU embed | `nomic-embed` `-ngl 99` | Default in shipped units; see [Deployment](deployment.md) |
 | Sparse rebuild | `INGEST_SPARSE_REINDEX=off` | Disable during bulk; reindex once at end |
 
 Effective values appear read-only on the Dashboard and Jobs pages. Restart admin after changing env vars.

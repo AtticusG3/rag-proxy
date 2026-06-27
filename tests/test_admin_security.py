@@ -25,6 +25,7 @@ def _admin_settings(**overrides: object) -> AdminSettings:
         "upload_dir": "/tmp/uploads",
         "embed_url": "http://127.0.0.1:18089",
         "ingest_embed_urls": "",
+        "ingest_embed_urls": "",
         "qdrant_url": "http://127.0.0.1:6333",
         "qdrant_collection": "test",
         "sparse_index_url": "http://127.0.0.1:18096",

@@ -14,7 +14,7 @@ class EmbedPoolConfig:
     port_base: int = 18089
     max_instances: int = 12
     min_instances: int = 1
-    parallel_per_instance: int = 32
+    parallel_per_instance: int = 16
     gpu_index: int = 0
 
 
@@ -44,7 +44,7 @@ def load_embed_pool_config() -> EmbedPoolConfig:
         port_base=_env_int("NOMIC_POOL_PORT_BASE", 18089),
         max_instances=_env_int("NOMIC_POOL_MAX_INSTANCES", 12),
         min_instances=_env_int("NOMIC_POOL_MIN_INSTANCES", 1),
-        parallel_per_instance=_env_int("NOMIC_POOL_PARALLEL_PER_INSTANCE", 32),
+        parallel_per_instance=_env_int("NOMIC_POOL_PARALLEL_PER_INSTANCE", 16),
         gpu_index=_env_int("NOMIC_POOL_GPU_INDEX", 0),
     )
 

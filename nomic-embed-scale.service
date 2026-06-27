@@ -1,0 +1,17 @@
+[Unit]
+Description=Scale nomic-embed GPU pool to fit free VRAM
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=kevyn
+WorkingDirectory=/opt/ai/rag_proxy
+EnvironmentFile=-/opt/ai/config/nomic-embed-scale.env
+ExecStart=/opt/ai/rag_proxy/.venv/bin/python scripts/scale_nomic_embed_pool.py --apply
+RemainAfterExit=yes
+
+# Edit WorkingDirectory and ExecStart if repo lives elsewhere (e.g. /home/kevyn/rag_proxy).
+
+[Install]
+WantedBy=multi-user.target

@@ -148,9 +148,9 @@ models:
       --host 127.0.0.1
       --port ${PORT}
 
-  # Proxy model — points to the always-on standalone CPU server (nomic-embed.service)
+  # Proxy model — points to the always-on standalone GPU server (nomic-embed.service)
   # llama-swap never spawns or kills this; it's managed independently
-  # Zero VRAM impact, always available regardless of which chat model is loaded
+  # ~1 GiB VRAM; always available regardless of which chat model is loaded
   "nomic-embed":
     name: "Nomic Embed v1.5 — Embeddings"
     proxy: "http://127.0.0.1:8089"

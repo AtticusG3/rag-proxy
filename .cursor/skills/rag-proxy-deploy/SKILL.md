@@ -20,7 +20,7 @@ description: >-
 ## Stack order
 
 1. Qdrant (vector DB) — collection exists with expected payload fields
-2. `nomic-embed` on :8089 (CPU embed server)
+2. `nomic-embed` on :8089 (CUDA llama-server, `-ngl 99`, ~1 GiB VRAM)
 3. llama-swap on :8080
 4. `rag_proxy.py` on :8088
 

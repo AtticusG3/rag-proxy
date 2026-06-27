@@ -43,9 +43,9 @@ services:
     networks:
       - rag_stack
 
-  # CPU-only embed sidecar; rag_proxy calls EMBED_URL directly (not via llama-swap).
+  # GPU embed sidecar; rag_proxy calls EMBED_URL directly (not via llama-swap).
   nomic-embed:
-    image: ${NOMIC_EMBED_IMAGE:-ghcr.io/mostlygeek/llama-swap:cpu}
+    image: ${NOMIC_EMBED_IMAGE:-ghcr.io/mostlygeek/llama-swap:cuda}
     restart: unless-stopped
     entrypoint: ["/app/llama-server"]
     command:
@@ -55,9 +55,11 @@ services:
       - "--pooling"
       - "mean"
       - "-ngl"
-      - "0"
+      - "99"
       - "-c"
-      - "2048"
+      - "8096"
+      - "--parallel"
+      - "4"
       - "-b"
       - "2048"
       - "-ub"
@@ -69,6 +71,15 @@ services:
       - "--log-disable"
     volumes:
       - ${MODELS_DIR}:/models:ro
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8089/health || exit 1"]
       interval: 30s

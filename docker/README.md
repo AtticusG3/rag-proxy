@@ -59,7 +59,7 @@ Use the same API key and paths as llama-swap; only the base URL changes to `http
 |---------|---------|-------|------|------|
 | `rag-proxy` | default | build `Dockerfile` | 8088 | RAG injection, client entry |
 | `llama-swap` | default | `llama-swap:cuda` | 8080 | GPU chat model router |
-| `nomic-embed` | default | `llama-swap:cpu` | 8089 | Query embeddings (CPU) |
+| `nomic-embed` | default | `llama-swap:cuda` | 8089 | Query embeddings (GPU, `-ngl 99`) |
 | `qdrant` | `qdrant` | `qdrant/qdrant` | 6333 | Vector DB |
 | `reranker` | `cognitive` | `sidecars/rerank` | 8095 | Cross-encoder rerank |
 | `sparse-index` | `cognitive` | `sidecars/sparse` | 8096 | BM25 hybrid retrieval |

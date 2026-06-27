@@ -44,4 +44,4 @@ def test_plan_embed_pool_scales_with_free_vram(monkeypatch):
   assert plan.instance_count == 10
   assert plan.ports[0] == 18089
   assert plan.ports[-1] == 18098
-  assert plan.ingest_embed_concurrency == 10 * 32
+  assert plan.ingest_embed_concurrency == 10 * 16
