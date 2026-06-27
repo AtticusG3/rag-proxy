@@ -98,10 +98,19 @@ async def augment_chat_payload(
     headers: dict[str, str] | None = None,
 ) -> dict:
     """Augment messages in chat payload; fail-open at HTTP boundary."""
+    data, _ctx = await augment_chat_payload_with_context(data, headers)
+    return data
+
+
+async def augment_chat_payload_with_context(
+    data: dict,
+    headers: dict[str, str] | None = None,
+) -> tuple[dict, RequestContext]:
+    """Augment messages and return the context used for capture/observability."""
     ctx = build_request_context_from_http(data, headers)
     if _needs_model_registry_refresh():
         await _clients.model_registry.refresh()
     await run_cognitive_pipeline(ctx)
     data = apply_context_to_payload(data, ctx)
     log_rag_request(ctx)
-    return data
+    return data, ctx

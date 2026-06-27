@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import AsyncGenerator
 
 import httpx
@@ -148,6 +149,34 @@ async def unregister_stream(key: int) -> None:
 
 
 async def relay_upstream(
+    request: Request,
+    upstream: httpx.Response,
+) -> AsyncGenerator[bytes, None]:
+    async for chunk in _relay_upstream_chunks(request, upstream):
+        yield chunk
+
+
+async def relay_upstream_capture(
+    request: Request,
+    upstream: httpx.Response,
+    on_complete: Callable[[bytes], Awaitable[None] | None],
+) -> AsyncGenerator[bytes, None]:
+    """Relay upstream bytes and report the complete stream body when finished."""
+    captured = bytearray()
+    try:
+        async for chunk in _relay_upstream_chunks(request, upstream):
+            captured.extend(chunk)
+            yield chunk
+    finally:
+        try:
+            result = on_complete(bytes(captured))
+            if result is not None:
+                await result
+        except Exception:
+            log.warning("stream capture callback failed", exc_info=True)
+
+
+async def _relay_upstream_chunks(
     request: Request,
     upstream: httpx.Response,
 ) -> AsyncGenerator[bytes, None]:

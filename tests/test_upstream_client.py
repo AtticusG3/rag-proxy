@@ -175,6 +175,34 @@ def test_relay_upstream_throttles_stream_registry_touch():
     asyncio.run(_run())
 
 
+def test_relay_upstream_capture_reports_complete_body_and_closes():
+    """Capture tee must not change streamed bytes or leak the upstream response."""
+
+    async def _run() -> None:
+        chunks = [b"data: a\n\n", b"data: b\n\n"]
+        upstream = AsyncMock()
+        upstream.aiter_bytes = MagicMock(return_value=_async_iter(chunks))
+
+        request = AsyncMock()
+        request.is_disconnected = AsyncMock(return_value=False)
+
+        captured = []
+
+        async def on_complete(body: bytes) -> None:
+            captured.append(body)
+
+        out = []
+        async for part in uc.relay_upstream_capture(request, upstream, on_complete):
+            out.append(part)
+
+        assert out == chunks
+        assert captured == [b"".join(chunks)]
+        upstream.aclose.assert_awaited_once()
+        assert not uc._stream_registry
+
+    asyncio.run(_run())
+
+
 async def _async_iter(items):
     for item in items:
         yield item

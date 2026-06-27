@@ -24,7 +24,7 @@ def test_chat_post_fail_open_forwards_original_body_on_augment_error():
 
     with patch("rag_proxy.upstream_client.httpx.AsyncClient", return_value=mock_client):
         with patch(
-            "rag_proxy.app.augment_chat_payload",
+            "rag_proxy.app.augment_chat_payload_with_context",
             AsyncMock(side_effect=RuntimeError("rag boom")),
         ):
             with TestClient(app) as client:
