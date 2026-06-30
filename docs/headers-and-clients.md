@@ -1,6 +1,22 @@
 # Headers and clients
 
-rag_proxy is a drop-in OpenAI-compatible proxy. Clients use the same API paths and credentials as llama-swap; only the **base URL** changes.
+rag_proxy is a drop-in OpenAI-compatible proxy. Clients use the same API paths and credentials as your **upstream chat API**; only the **client base URL** changes to rag_proxy.
+
+```mermaid
+flowchart LR
+  subgraph clients["Clients — unchanged API key and paths"]
+    OW[Open WebUI]
+    CO[Continue / Cursor]
+    SDK[curl / OpenAI SDK]
+  end
+
+  RP["rag_proxy\n:8088/v1"]
+  UP["Upstream API\nLLAMA_SWAP_URL"]
+
+  OW & CO & SDK -->|"same Bearer token"| RP
+  RP -->|"passthrough auth"| UP
+  RP -.->|"chat POST only"| RAG["RAG inject"]
+```
 
 ## Base URL
 
@@ -28,7 +44,29 @@ curl -s -X POST "http://127.0.0.1:8088/v1/chat/completions" \
   -d '{"model":"your-model","messages":[{"role":"user","content":"hello"}],"stream":false}'
 ```
 
-Use the same `Authorization` header (or lack thereof) that works against llama-swap `:8080` directly.
+Use the same `Authorization` header (or lack thereof) that works against your upstream (`LLAMA_SWAP_URL`) directly.
+
+## Internal token (`PROXY_INTERNAL_TOKEN`)
+
+Optional shared secret when the proxy listens on `0.0.0.0` (LAN or Tailscale). When `PROXY_INTERNAL_TOKEN` is set in `.env`, every request to the proxy — including passthrough routes and `GET /metrics` — must include:
+
+| Header | Value |
+| --- | --- |
+| `X-Internal-Token` | Same string as `PROXY_INTERNAL_TOKEN` |
+
+When the env var is empty (default), the header is not required and behavior is unchanged.
+
+Example with token:
+
+```bash
+curl -s -X POST "http://127.0.0.1:8088/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_KEY" \
+  -H "X-Internal-Token: YOUR_PROXY_TOKEN" \
+  -d '{"model":"your-model","messages":[{"role":"user","content":"hello"}],"stream":false}'
+```
+
+Open WebUI and other clients may not support custom headers on the connection profile — prefer network ACLs or a reverse proxy in that case. See [Deployment — Trust boundary](deployment.md#trust-boundary).
 
 ## Which routes get RAG
 
@@ -38,7 +76,7 @@ Use the same `Authorization` header (or lack thereof) that works against llama-s
 | `POST` | `/api/chat` | Yes |
 | * | `/v1/models`, `/v1/embeddings`, health, etc. | No — passthrough |
 
-Streaming (`"stream": true`) is supported; the proxy relays SSE from llama-swap unchanged.
+Streaming (`"stream": true`) is supported; the proxy relays SSE from the upstream unchanged.
 
 ## Per-request headers (cognitive mode)
 
@@ -91,7 +129,7 @@ With `ENABLE_COGNITIVE_PIPELINE=false`, `X-RAG-Mode: off` and `force` still appl
 
 ## Auth
 
-rag_proxy does not validate API keys. Headers pass through to llama-swap. If auth fails, test the same request against `LLAMA_SWAP_URL` directly.
+rag_proxy does not validate API keys. Headers pass through to the upstream. If auth fails, test the same request against `LLAMA_SWAP_URL` directly.
 
 ## Troubleshooting client issues
 
@@ -100,6 +138,6 @@ rag_proxy does not validate API keys. Headers pass through to llama-swap. If aut
 | 404 on `/v1` | Base URL must include `/v1` suffix for OpenAI clients |
 | Works on `:8080`, fails on `:8088` | Proxy down or wrong port; `curl http://host:8088/v1/models` |
 | No RAG in UI but curl works | UI may use a different connection URL or cached settings |
-| Streaming broken | Test same stream against llama-swap; proxy relays SSE as-is |
+| Streaming broken | Test same stream against upstream (`LLAMA_SWAP_URL`); proxy relays SSE as-is |
 
 More: [Troubleshooting](troubleshooting.md).

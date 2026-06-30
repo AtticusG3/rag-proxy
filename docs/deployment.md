@@ -2,6 +2,32 @@
 
 Production patterns for **rag_proxy** on any Linux host or via Docker. Components are node-agnostic — set URLs in `.env` to match where each service actually runs.
 
+```mermaid
+flowchart TB
+  subgraph lan["Typical homelab layout"]
+    CL["Clients\nLAN / Tailscale"]
+    RP["rag_proxy :8088"]
+    LS["upstream :8080\nLLAMA_SWAP_URL"]
+    EM["nomic-embed :8089"]
+    QD["Qdrant :6333"]
+    AD["rag_admin :8087\noptional"]
+  end
+
+  subgraph cognitive["Cognitive sidecars — optional"]
+    RR["reranker :8095"]
+    SP["sparse BM25 :8096"]
+  end
+
+  CL --> RP
+  RP --> LS
+  RP <--> EM
+  RP <--> QD
+  RP -.-> RR
+  RP -.-> SP
+  AD -.->|"ingest upsert"| QD
+  AD -.-> EM
+```
+
 ## Typical port layout
 
 Default ports from `.env.example` (all overridable):
@@ -10,7 +36,7 @@ Default ports from `.env.example` (all overridable):
 | --- | --- | --- |
 | rag-proxy | `8088` | `PROXY_PORT` |
 | rag-proxy (second instance) | `8087` | Side-by-side dev with `PROXY_PORT=8087` |
-| llama-swap | `8080` | `LLAMA_SWAP_URL` |
+| Upstream chat API | `8080` | `LLAMA_SWAP_URL` (llama-swap typical) |
 | nomic-embed | `8089` | `EMBED_URL` — usually localhost; not served on the proxy port |
 | Qdrant | `6333` | `QDRANT_URL` — same host or remote |
 | Reranker (optional) | `8095` | Cognitive sidecar |
@@ -81,7 +107,7 @@ Run one checkout on `PROXY_PORT=8088`. Clone a second checkout, set `PROXY_PORT=
 
 ## Docker
 
-Docker Compose bundles rag-proxy, llama-swap:cuda, nomic-embed, and optional Qdrant + cognitive sidecars.
+Docker Compose bundles rag-proxy with **llama-swap:cuda** as one homelab option, plus nomic-embed and optional Qdrant + cognitive sidecars. You can also run rag_proxy against any external OpenAI-compatible API by setting `LLAMA_SWAP_URL` alone.
 
 ```bash
 # Legacy only
@@ -113,6 +139,19 @@ Details: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIVE_RAG_PLAN.md]
 | `EMBED_MAX_CHARS` | `2000` |
 
 Align `nomic-embed.service` `-ub 2048` with embed batch limits for large inputs.
+
+## Trust boundary
+
+Default `PROXY_HOST=0.0.0.0` binds on all interfaces so LAN clients and Tailscale peers can reach the proxy without SSH tunnels. That is convenient for homelab use but means anyone who can reach the port can forward chat traffic to your upstream (rag_proxy does not validate upstream API keys).
+
+Mitigations:
+
+| Layer | Approach |
+| --- | --- |
+| Network | Firewall or Tailscale ACLs so only trusted hosts reach `PROXY_PORT` |
+| Application | Set `PROXY_INTERNAL_TOKEN` and configure clients to send `X-Internal-Token: <value>` on every request (including `GET /metrics`) |
+
+`PROXY_INTERNAL_TOKEN` is opt-in. When unset, behavior is unchanged. When set, missing or wrong tokens receive HTTP 401 before any upstream relay. Header details: [Headers and clients — Internal token](headers-and-clients.md#internal-token-proxy_internal_token).
 
 ### GPU embed (recommended on CUDA hosts)
 

@@ -18,17 +18,26 @@ MemGraphRAG **supplements** Qdrant hits — the stage appends `source="memgraphr
 
 ## Architecture
 
-```text
-Offline (build_memgraphrag_index.py)
-  chunks  -->  LLM entity/relation extraction  -->  ontology filter
-           -->  ThreeLayerMemory (SQLite)  -->  fact embeddings (nomic-embed)
+```mermaid
+flowchart TB
+  subgraph offline["Offline — build_memgraphrag_index.py"]
+    CH["Chunks from corpus\nor Qdrant sample"] --> LLM["LLM entity/relation extraction"]
+    LLM --> ONTO["Ontology filter"]
+    ONTO --> MEM["ThreeLayerMemory SQLite"]
+    MEM --> FE["Fact embeddings\nnomic-embed"]
+  end
 
-Online (tier3_memgraphrag stage, after graph, before tools)
-  query  -->  embed query
-        -->  score facts (cosine vs stored fact embeddings)
-        -->  rerank top facts (optional cross-encoder)
-        -->  PPR on fact graph
-        -->  aggregate passage scores  -->  append ChunkHits
+  subgraph online["Online — tier3_memgraphrag stage"]
+    Q["Query"] --> IDX["Load index\nmtime cache"]
+    IDX --> EQ["Embed query"]
+    EQ --> SC["Score facts\ncosine vs fact matrix"]
+    SC --> RR["Rerank top facts\noptional"]
+    RR --> PPR["PPR on fact graph"]
+    PPR --> PASS["Aggregate passage scores"]
+    PASS --> HIT["Append ChunkHits\nsource=memgraphrag"]
+  end
+
+  MEM -.->|"MEMGRAPHRAG_DB_PATH"| IDX
 ```
 
 ### Three layers
@@ -40,6 +49,13 @@ Online (tier3_memgraphrag stage, after graph, before tools)
 | Passage | Original chunk text + `chunk_id` | What gets injected into context |
 
 Facts link to schemas and passages. PPR walks fact–fact edges (same schema, shared passages).
+
+```mermaid
+flowchart TB
+  SCH["Schema layer\nrelation patterns"] --> FAC["Fact layer\nentity triples"]
+  FAC --> PAS["Passage layer\nchunk text"]
+  FAC <-->|"PPR graph walk"| FAC
+```
 
 ## Prerequisites
 
@@ -148,6 +164,16 @@ Without `RERANKER_URL`, fact reranking uses uniform scores (still works, weaker 
 
 Restart the proxy after changes: `sudo systemctl restart rag-proxy`.
 
+## Runtime index cache
+
+The proxy keeps a **process-local** `MemoryIndex` per `MEMGRAPHRAG_DB_PATH`:
+
+- First request (or after SQLite **mtime** change) loads memory, builds fact adjacency, and row-normalizes fact embeddings for fast scoring.
+- Subsequent requests reuse the cached index until the file is replaced or touched.
+- Rebuild the index offline, then restart the proxy (or wait for mtime to change on save) so workers pick up the new graph.
+
+`invalidate_memory_index()` exists for tests and in-process rebuild hooks; normal operators rely on mtime invalidation.
+
 ## Verify
 
 ### 1. Offline retrieval tests
@@ -201,6 +227,7 @@ MemGraphRAG does **not** dense-fallback inside the stage. If no facts score, it 
 | Sparse / wrong passages | Small or biased sample | Increase `--max-chunks`; check `--stratify-field` |
 | No `memgraphrag` in trace | Budget skip or stage disabled | Raise `COGNITIVE_LATENCY_BUDGET_MS`; grep `MemGraphRAG` in logs |
 | Reranker warnings | Sidecar down or wrong URL | Start reranker or leave `RERANKER_URL` unset (degraded mode) |
+| Stale graph after rebuild | Index cache keyed on SQLite mtime | Restart proxy after rebuild, or ensure the saved file mtime updates |
 
 ## Operational notes
 

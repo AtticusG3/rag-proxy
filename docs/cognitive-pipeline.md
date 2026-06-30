@@ -21,9 +21,24 @@ Do **not** enable cognitive flags until [Getting started — Verify the stack](g
 
 ## Pipeline stages (summary)
 
-```text
-tier0 -> intent -> gating -> routing -> rewrite -> retrieve -> rerank
-  -> graph -> memgraphrag -> tools -> memory -> context
+```mermaid
+flowchart LR
+  subgraph T0["Tier 0"]
+    tier0
+  end
+  subgraph T1["Tier 1"]
+    intent --> gating --> routing
+  end
+  subgraph T2["Tier 2"]
+    rewrite --> retrieve --> rerank
+  end
+  subgraph T3["Tier 3"]
+    graph --> memgraphrag --> tools --> memory
+  end
+  tier0 --> intent
+  routing --> rewrite
+  rerank --> graph
+  memory --> context[context]
 ```
 
 | Stage | Flag | Purpose |
@@ -48,6 +63,13 @@ Related flags not tied to a single stage: `GATING_LOG_ONLY` (gating observe-only
 ## Recommended rollout
 
 Do not enable everything at once. Suggested sequence:
+
+```mermaid
+flowchart TD
+  B["1. Baseline\nENABLE_COGNITIVE_PIPELINE=false"] --> O["2. Pipeline on, observe\ntier0 + GATING_LOG_ONLY"]
+  O --> G["3. Gating live\nENABLE_RETRIEVAL_GATING=true"]
+  G --> W["4. One flag per week\nintent, rewrite, hybrid, rerank, tier 3"]
+```
 
 1. **Baseline** — `ENABLE_COGNITIVE_PIPELINE=false`; confirm inject logs.
 2. **Pipeline on, observe** — `ENABLE_COGNITIVE_PIPELINE=true`, `ENABLE_TIER0_HEURISTICS=true`, `GATING_LOG_ONLY=true`, `ENABLE_RETRIEVAL_GATING=false`.
@@ -95,7 +117,7 @@ Cognitive requests emit `trace=...` summary lines when `ENABLE_REQUEST_TRACE=tru
 | --- | --- |
 | Intent | Qwen2.5-0.5B / Phi-3.5-mini Q4 |
 | Rerank | bge-reranker-base (CPU sidecar) |
-| Main chat | Existing llama-swap stack |
+| Main chat | Your upstream stack (`LLAMA_SWAP_URL`) |
 
 ## Related configuration
 

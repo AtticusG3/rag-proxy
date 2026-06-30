@@ -2,6 +2,19 @@
 
 Common symptoms when operating rag_proxy. Start with [Getting started — Verify the stack](getting-started.md#verify-the-stack) if you have not already.
 
+```mermaid
+flowchart TD
+  START["Chat returns 200 but\ncontext feels wrong?"] --> EMBED{"Embed server\nresponds?"}
+  EMBED -->|no| FIXE["Fix EMBED_URL / nomic-embed service"]
+  EMBED -->|yes| QD{"Qdrant collection\nhas points?"}
+  QD -->|no| FIXQ["Index content via ingest\nor fix QDRANT_COLLECTION"]
+  QD -->|yes| TH{"Logs show\nno chunks above threshold?"}
+  TH -->|yes| LOW["Lower SIMILARITY_THRESHOLD\nor rephrase query"]
+  TH -->|no| GATE{"Cognitive mode +\nretrieval=skip in trace?"}
+  GATE -->|yes| FORCE["Try X-RAG-Mode: force\nor tune gating flags"]
+  GATE -->|no| LOGS["Raise LOG_LEVEL=DEBUG\nread WARNING lines"]
+```
+
 ## Chat works but no knowledge-base context
 
 | Check | Action |
@@ -27,7 +40,7 @@ Open WebUI "follow-up" / `### Task:` prompts may be skipped by design. Send a no
 
 ## Streaming broken or truncated
 
-Usually upstream llama-swap or model issue. Test the same `stream: true` request against `LLAMA_SWAP_URL` (`:8080`) directly. Proxy relays SSE as-is.
+Usually an upstream or model issue. Test the same `stream: true` request against `LLAMA_SWAP_URL` directly. Proxy relays SSE as-is.
 
 Abandoned upstream streams are closed after `UPSTREAM_STREAM_ABANDON_SEC` with no relayed bytes — increase if clients pause consumption for long periods.
 
@@ -41,6 +54,16 @@ Abandoned upstream streams are closed after `UPSTREAM_STREAM_ABANDON_SEC` with n
 | Budget skips stages | Compare total `latency_ms` to `COGNITIVE_LATENCY_BUDGET_MS`; raise `STAGE_BUDGET_*` |
 
 See [COGNITIVE_RAG_PLAN.md — Failure modes](COGNITIVE_RAG_PLAN.md#failure-modes).
+
+## MemGraphRAG index looks stale
+
+| Check | Action |
+| --- | --- |
+| Rebuilt index, old passages | Proxy caches `MemoryIndex` by SQLite mtime — restart `rag-proxy` after rebuild |
+| Same file path, in-place edit | Touch or re-save the DB so mtime advances; or restart workers |
+| Multi-worker deploy | Each process has its own cache; all pick up changes after mtime change or restart |
+
+See [MemGraphRAG — Runtime index cache](memgraphrag.md#runtime-index-cache).
 
 ## Request succeeds when RAG fails
 

@@ -6,11 +6,33 @@ Install rag_proxy, configure `.env`, run the proxy, and confirm RAG injection wo
 
 | Service | Role | Default URL |
 | --- | --- | --- |
-| llama-swap | Model router | `http://127.0.0.1:8080` |
+| Upstream chat API | Any OpenAI-compatible provider (`LLAMA_SWAP_URL`) | `http://127.0.0.1:8080` — [llama-swap](https://github.com/mostlygeek/llama-swap) is typical locally; OpenRouter, OpenAI, vLLM, and llama-server also work |
 | nomic-embed | Query embeddings (`llama-server --embedding`) | `http://127.0.0.1:8089` |
 | Qdrant | Vector store | set `QDRANT_URL` in `.env` |
 
 Optional (cognitive mode): sparse BM25 sidecar (`SPARSE_INDEX_URL`), reranker (`RERANKER_URL`). See [Configuration](configuration.md) and [docker/README.md](../docker/README.md).
+
+```mermaid
+flowchart TB
+  subgraph clients["Your clients"]
+    OW[Open WebUI]
+    CU[Cursor / Continue]
+    API[curl / SDKs]
+  end
+
+  subgraph core["Core stack — legacy RAG"]
+    RP["rag_proxy :8088"]
+    LS["upstream :8080\nLLAMA_SWAP_URL"]
+    EM["nomic-embed :8089"]
+    QD["Qdrant :6333"]
+  end
+
+  OW & CU & API -->|"OpenAI API\n/v1"| RP
+  RP --> LS
+  RP <-->|"query vectors"| EM
+  RP <-->|"chunk search"| QD
+  LS --> MODEL["chat models\nlocal or hosted"]
+```
 
 ## Install
 
@@ -43,7 +65,7 @@ Production deploy targets Linux systemd. See [Deployment](deployment.md).
 
 ### Docker
 
-For a bundled stack with llama-swap:cuda and optional Qdrant + cognitive sidecars:
+For an optional **Docker homelab stack** (llama-swap:cuda bundled) with Qdrant + cognitive sidecars:
 
 ```bash
 cp docker/.env.example docker/.env
@@ -61,7 +83,7 @@ Minimum checklist:
 | --- | --- | --- |
 | `QDRANT_URL` | Yes | `http://<qdrant-host>:6333` |
 | `QDRANT_COLLECTION` | If not default | value from `.env.example` |
-| `LLAMA_SWAP_URL` | If llama-swap is not local | `http://127.0.0.1:8080` |
+| `LLAMA_SWAP_URL` | Yes — OpenAI-compatible upstream | `http://127.0.0.1:8080` (llama-swap typical) |
 | `EMBED_URL` | If embed server is not local | `http://127.0.0.1:8089` |
 
 Leave `ENABLE_COGNITIVE_PIPELINE=false` until legacy RAG injects chunks reliably. All other variables have safe defaults in [.env.example](../.env.example). Full reference: [Configuration](configuration.md).
@@ -70,7 +92,7 @@ Startup logs list embed URL, Qdrant URL/collection, and whether cognitive mode i
 
 ## Point your client
 
-Use the **same paths and API key** as llama-swap; only the base URL changes to `http://<host>:8088/v1`.
+Use the **same paths and API key** as your upstream; only the client base URL changes to `http://<host>:8088/v1`.
 
 | Client | Setting |
 | --- | --- |
@@ -93,7 +115,7 @@ curl -s -X POST "http://127.0.0.1:8089/v1/embeddings" \
 # 2. Qdrant collection exists
 curl -s "http://127.0.0.1:6333/collections/$QDRANT_COLLECTION"
 
-# 3. Proxy forwards to llama-swap (no RAG required)
+# 3. Proxy forwards to upstream (no RAG required)
 curl -s "http://127.0.0.1:8088/v1/models"
 
 # 4. RAG path — question that should match your knowledge base
@@ -118,6 +140,15 @@ For cognitive mode, look for `trace=...` lines — [Observability](observability
 ## Legacy RAG behavior
 
 On chat `POST` requests (when cognitive mode is off):
+
+```mermaid
+flowchart LR
+  U["Last user message"] --> E["Embed via nomic-embed"]
+  E --> Q["Qdrant search\nTOP_K + threshold"]
+  Q --> P["Extract chunk text\nfrom payload fields"]
+  P --> I["Prepend to system message"]
+  I --> F["Forward to upstream API"]
+```
 
 1. Last user message text is embedded via `nomic-embed-text-v1.5`.
 2. Qdrant vector search returns up to `TOP_K` hits above `SIMILARITY_THRESHOLD`.

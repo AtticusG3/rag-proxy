@@ -6,10 +6,37 @@ Optional content management stack for indexing ZIM archives, PDFs, and text into
 
 | Component | Typical placement |
 | --- | --- |
-| `rag_proxy` | Any host with network access to Qdrant, embed, and llama-swap |
+| `rag_proxy` | Any host with network access to Qdrant, embed, and the upstream chat API (`LLAMA_SWAP_URL`) |
 | `rag_admin` + ingest | Optional; same host or a dedicated indexing machine |
 
 Admin upserts vectors to Qdrant; the proxy reads the same `QDRANT_URL` / `QDRANT_COLLECTION`. Nothing requires co-location — only reachable URLs and paths matter.
+
+```mermaid
+flowchart TB
+  subgraph optional["Optional — indexing host"]
+    ADMIN["rag_admin UI"]
+    WORKER["IngestWorker"]
+    SRC["ZIM / PDF / text uploads"]
+  end
+
+  subgraph shared["Shared infrastructure"]
+    QD["Qdrant collection"]
+    EM["nomic-embed pool"]
+    SP["Sparse index\noptional BM25"]
+  end
+
+  subgraph runtime["Any host — chat runtime"]
+    RP["rag_proxy"]
+    LS["upstream API"]
+  end
+
+  SRC --> ADMIN --> WORKER
+  WORKER -->|"chunk, embed, upsert"| QD
+  WORKER --> EM
+  WORKER -.->|"reindex sparse"| SP
+  RP -->|"read chunks"| QD
+  RP --> LS
+```
 
 This repository ships `rag-proxy.service`, `nomic-embed.service`, `nomic-embed@.service`, and `nomic-embed-scale.service` examples only. Provide your own systemd unit (or process manager) for `python -m rag_admin` if needed. Cron helpers load admin env via `RAG_ADMIN_ENV_FILE` (default `/opt/ai/config/rag-admin.env`); `catalog_weekly_update.py` also accepts legacy alias `RAG_ADMIN_ENV`.
 
@@ -191,6 +218,7 @@ Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `documen
 
 | Lever | Variable | Notes |
 | --- | --- | --- |
+| Parallel files | `INGEST_FILE_CONCURRENCY` | Default `max(1, min(4, embed pool size))`; one thread per file |
 | Batch size | `INGEST_BATCH_SIZE` | Raise (e.g. `256`) when embed server supports large batches |
 | Parallel embeds | `INGEST_EMBED_CONCURRENCY` | Default `4`; raise if embed server keeps up |
 | GPU embed | `nomic-embed` `-ngl 99` | Default in shipped units; see [Deployment](deployment.md) |

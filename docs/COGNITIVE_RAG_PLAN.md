@@ -217,7 +217,7 @@ Full reference: [Configuration — Transcript capture](configuration.md#transcri
 |------|-------|
 | Intent | Qwen2.5-0.5B / Phi-3.5-mini Q4 |
 | Rerank | bge-reranker-base (CPU sidecar) |
-| Main chat/reasoning | Existing llama-swap stack |
+| Main chat/reasoning | Your upstream stack (`LLAMA_SWAP_URL`) |
 
 ## Failure modes
 

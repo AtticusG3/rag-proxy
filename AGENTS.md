@@ -1,6 +1,6 @@
 # rag_proxy — Agent Guide
 
-Transparent RAG middleware: optional tiered cognitive pipeline, then forward to llama-swap. Default remains embed → Qdrant dense search → inject (fail-open).
+Transparent RAG middleware: optional tiered cognitive pipeline, then forward to any OpenAI-compatible upstream (`LLAMA_SWAP_URL`). Default remains embed → Qdrant dense search → inject (fail-open).
 
 ## Engineering principles
 

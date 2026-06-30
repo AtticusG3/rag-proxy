@@ -1,8 +1,10 @@
 # rag_proxy documentation
 
-Operator and integrator guides for transparent RAG middleware in front of [llama-swap](https://github.com/mostlygeek/llama-swap).
+Operator and integrator guides for transparent RAG middleware in front of any **OpenAI-compatible upstream** (`LLAMA_SWAP_URL`). [llama-swap](https://github.com/mostlygeek/llama-swap) is the usual homelab example; see [Architecture](architecture.md).
 
 **New here?** Read the [repository README](../README.md) for a plain-English overview, then [Getting started](getting-started.md) and [Verify the stack](getting-started.md#verify-the-stack).
+
+Diagrams in these guides use [Mermaid](https://mermaid.js.org/) (rendered on GitHub, Gitea, and many Markdown viewers).
 
 ## Guides
 
@@ -26,7 +28,7 @@ Operator and integrator guides for transparent RAG middleware in front of [llama
 | Topic | Default / typical |
 | --- | --- |
 | Proxy port (prod) | `8088` (`PROXY_PORT`) |
-| llama-swap | `http://127.0.0.1:8080` |
+| Upstream chat API | `http://127.0.0.1:8080` (`LLAMA_SWAP_URL`; llama-swap typical) |
 | nomic-embed | `http://127.0.0.1:8089` (localhost only) |
 | Qdrant | set `QDRANT_URL` (e.g. `http://127.0.0.1:6333`) |
 | Cognitive pipeline | off (`ENABLE_COGNITIVE_PIPELINE=false`) |
