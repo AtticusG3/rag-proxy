@@ -67,13 +67,20 @@ def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int]:
 
 def ingest_config_snapshot(worker: Any) -> dict[str, Any]:
     config = worker.config
+    pool_urls = config.embed_urls or []
+    chunk = config.chunk_config
     return {
         "batch_size": config.batch_size,
         "embed_concurrency": config.embed_concurrency,
+        "file_concurrency": config.file_concurrency,
         "embed_max_chars": config.embed_max_chars,
         "embed_url": config.embed_url,
+        "embed_pool_count": len(pool_urls) if pool_urls else 1,
         "sparse_reindex_mode": config.sparse_reindex_mode,
         "stall_minutes": config.stall_seconds // 60,
         "qdrant_collection": config.qdrant_collection,
+        "chunk_size_tokens": chunk.chunk_size,
+        "chunk_overlap_tokens": chunk.chunk_overlap,
+        "chunk_semantic": "on" if chunk.semantic_enabled else "off",
         "paused": worker.paused,
     }

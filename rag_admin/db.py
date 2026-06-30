@@ -283,6 +283,10 @@ class AdminDatabase:
                 (key, value, now),
             )
 
+    def delete_setting(self, key: str) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM admin_settings WHERE key = ?", (key,))
+
     def create_background_job(
         self,
         job_id: str,

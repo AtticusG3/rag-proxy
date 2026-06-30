@@ -2,32 +2,37 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from ingest.worker import trigger_sparse_reindex
+from rag_admin.job_runner import JOB_EMBED_POOL_SCALE, JOB_MEMGRAPH_BUILD
 from rag_admin.config import settings
 from rag_admin.helpers import flash_redirect
 from rag_admin.service_restart import schedule_restart
 from rag_admin.service_status import service_status
+from rag_admin.settings_guides import GROUP_TUNING, field_placeholder
 from rag_admin.settings_schema import GROUP_LABELS, SETTING_FIELDS, SETTING_GROUPS
 from rag_admin.settings_store import SettingsStore
 from rag_admin.helpers import templates
 
 router = APIRouter()
+log = logging.getLogger("rag-admin")
 
 
 def _store(request: Request) -> SettingsStore:
     return request.app.state.settings_store
 
 
-def _fields_for_group(group: str) -> list[dict[str, Any]]:
+def _fields_for_group(store: SettingsStore, group: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for field in SETTING_FIELDS:
         if field.group != group:
             continue
+        effective = store.get_value(field.key, field.default)
         rows.append(
             {
                 "key": field.key,
@@ -35,6 +40,12 @@ def _fields_for_group(group: str) -> list[dict[str, Any]]:
                 "field_type": field.field_type,
                 "options": field.options,
                 "help_text": field.help_text,
+                "default": field.default,
+                "placeholder": field_placeholder(field),
+                "display_value": store.get_form_value(field),
+                "effective_value": effective,
+                "has_override": store.has_override(field),
+                "hot": field.hot,
             }
         )
     return rows
@@ -59,11 +70,16 @@ async def settings_page(request: Request, tab: str = "ingest") -> HTMLResponse:
             "/var/lib/rag_proxy/memgraphrag.sqlite",
         ),
     )
-    build_job = job_runner.active_job()
-    build_history = request.app.state.db.list_background_jobs("memgraph_build", limit=5)
+    build_job = job_runner.active_job(JOB_MEMGRAPH_BUILD)
+    pool_scale_job = job_runner.active_job(JOB_EMBED_POOL_SCALE)
+    build_history = request.app.state.db.list_background_jobs(JOB_MEMGRAPH_BUILD, limit=5)
+    pool_scale_history = request.app.state.db.list_background_jobs(JOB_EMBED_POOL_SCALE, limit=5)
     log_tail = ""
     if build_job:
         log_tail = job_runner.tail_log(build_job["id"])
+    pool_scale_log_tail = ""
+    if pool_scale_job:
+        pool_scale_log_tail = job_runner.tail_log(pool_scale_job["id"])
 
     return templates.TemplateResponse(
         request,
@@ -72,16 +88,21 @@ async def settings_page(request: Request, tab: str = "ingest") -> HTMLResponse:
             "tabs": SETTING_GROUPS,
             "tab_labels": GROUP_LABELS,
             "active_tab": active_tab,
-            "fields": _fields_for_group(active_tab),
+            "fields": _fields_for_group(store, active_tab),
             "values": values,
+            "group_tuning": GROUP_TUNING.get(active_tab, ()),
             "services": services,
             "ingest_paused": worker.paused,
             "ingest_config": worker.config,
             "build_job": build_job,
             "build_history": build_history,
             "log_tail": log_tail,
+            "pool_scale_job": pool_scale_job,
+            "pool_scale_history": pool_scale_history,
+            "pool_scale_log_tail": pool_scale_log_tail,
             "admin_env_path": store.admin_env_path,
             "proxy_env_path": store.proxy_env_path,
+            "pool_env": store.pool_env_snapshot(),
             "can_restart_proxy": bool(settings.proxy_restart_cmd.strip()),
             "can_restart_admin": bool(settings.admin_restart_cmd.strip()),
         },
@@ -108,6 +129,8 @@ async def settings_save(request: Request, group: str):
         )
 
     message = f"Saved {len(result.updated)} setting(s)."
+    if result.pool_scale_updated:
+        message += " Use Scale embed pool on the ingest tab, or save and click Scale embed pool."
     if result.restart_proxy:
         message += " Restart rag-proxy to apply proxy env changes."
     if result.restart_admin:
@@ -144,6 +167,43 @@ async def sparse_reindex_now(request: Request):
     return flash_redirect("/settings?tab=ingest", f"BM25 reindex complete ({docs} docs).")
 
 
+@router.post("/settings/embed-pool/scale")
+async def embed_pool_scale_start(request: Request):
+    store = _store(request)
+    job_runner = request.app.state.job_runner
+    worker = request.app.state.worker
+
+    def on_success() -> None:
+        synced = store.sync_pool_ingest_from_pool_env()
+        store.apply_to_worker(
+            worker,
+            zim_dir=settings.zim_dir,
+            upload_dir=settings.upload_dir,
+        )
+        if synced:
+            log.info("embed pool scale synced ingest keys: %s", ", ".join(synced))
+
+    try:
+        job_id = job_runner.start_embed_pool_scale(
+            store.embed_pool_scale_params(),
+            on_success=on_success,
+        )
+    except RuntimeError as exc:
+        return flash_redirect("/settings?tab=ingest", str(exc), level="error")
+    return flash_redirect(
+        "/settings?tab=ingest",
+        f"Embed pool scale started (job {job_id[:8]}). This may restart nomic-embed units.",
+    )
+
+
+@router.post("/settings/embed-pool/stop")
+async def embed_pool_scale_stop(request: Request):
+    stopped = request.app.state.job_runner.stop_active(JOB_EMBED_POOL_SCALE)
+    if not stopped:
+        return flash_redirect("/settings?tab=ingest", "No running pool scale job to stop.", level="error")
+    return flash_redirect("/settings?tab=ingest", "Embed pool scale stopped.")
+
+
 @router.post("/settings/memgraph/build")
 async def memgraph_build_start(request: Request):
     store = _store(request)
@@ -167,7 +227,7 @@ async def memgraph_build_start(request: Request):
 
 @router.post("/settings/memgraph/stop")
 async def memgraph_build_stop(request: Request):
-    stopped = request.app.state.job_runner.stop_active()
+    stopped = request.app.state.job_runner.stop_active(JOB_MEMGRAPH_BUILD)
     if not stopped:
         return flash_redirect("/settings?tab=memgraph_build", "No running build to stop.", level="error")
     return flash_redirect("/settings?tab=memgraph_build", "MemGraphRAG build stopped.")
@@ -178,16 +238,21 @@ async def settings_status_api(request: Request) -> JSONResponse:
     store = _store(request)
     worker = request.app.state.worker
     job_runner = request.app.state.job_runner
-    build_job = job_runner.active_job()
+    build_job = job_runner.active_job(JOB_MEMGRAPH_BUILD)
+    pool_scale_job = job_runner.active_job(JOB_EMBED_POOL_SCALE)
     payload: dict[str, Any] = {
         "ingest_paused": worker.paused,
         "ingest_config": {
             "batch_size": worker.config.batch_size,
             "embed_concurrency": worker.config.embed_concurrency,
+            "file_concurrency": worker.config.file_concurrency,
             "sparse_reindex_mode": worker.config.sparse_reindex_mode,
         },
         "build_job": build_job,
+        "pool_scale_job": pool_scale_job,
         "log_tail": job_runner.tail_log(build_job["id"]) if build_job else "",
+        "pool_scale_log_tail": job_runner.tail_log(pool_scale_job["id"]) if pool_scale_job else "",
+        "pool_env": store.pool_env_snapshot(),
     }
     services = await service_status(
         qdrant_url=store.get_value("QDRANT_URL", settings.qdrant_url),

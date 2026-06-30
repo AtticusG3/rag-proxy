@@ -6,6 +6,8 @@ from pathlib import Path
 
 from ingest.worker import IngestWorker
 from rag_admin.db import AdminDatabase
+from rag_admin.env_file import read_env_file
+from rag_admin.settings_schema import SETTING_FIELDS
 from rag_admin.settings_store import SettingsStore
 
 
@@ -87,6 +89,51 @@ def test_memgraph_build_params_use_schema_defaults(tmp_path: Path) -> None:
     assert params["llm_url"] == "http://192.168.1.202:8081/v1"
     assert params["llm_model"] == "qwen3.5-9b-turbo"
     assert "8787" not in params["llm_url"]
+
+
+def test_clear_override_reverts_to_schema_default(tmp_path: Path) -> None:
+    admin_env = tmp_path / "rag-admin.env"
+    admin_env.write_text("INGEST_BATCH_SIZE=96\n", encoding="utf-8")
+    store = SettingsStore(
+        AdminDatabase(str(tmp_path / "admin.sqlite")),
+        admin_env_path=str(admin_env),
+        proxy_env_path=str(tmp_path / "rag-proxy.env"),
+    )
+    field = next(f for f in SETTING_FIELDS if f.key == "INGEST_BATCH_SIZE")
+    assert store.get_form_value(field) == "96"
+    store.save_group("ingest", {"INGEST_BATCH_SIZE": ""})
+    assert store.get_value("INGEST_BATCH_SIZE") == "64"
+    assert store.get_form_value(field) == ""
+    assert "INGEST_BATCH_SIZE" not in read_env_file(str(admin_env))
+
+
+def test_save_ingest_file_concurrency(tmp_path: Path) -> None:
+    store = SettingsStore(
+        AdminDatabase(str(tmp_path / "admin.sqlite")),
+        admin_env_path=str(tmp_path / "admin.env"),
+        proxy_env_path=str(tmp_path / "proxy.env"),
+    )
+    store.save_group("ingest", {"INGEST_FILE_CONCURRENCY": "3"})
+    config = store.build_ingest_config(zim_dir=str(tmp_path), upload_dir=str(tmp_path))
+    assert config.file_concurrency == 3
+    store.save_group("ingest", {"INGEST_FILE_CONCURRENCY": ""})
+    config = store.build_ingest_config(zim_dir=str(tmp_path), upload_dir=str(tmp_path))
+    assert config.file_concurrency is None
+
+
+def test_save_pool_scale_fields_writes_scale_env(tmp_path: Path) -> None:
+    scale_env = tmp_path / "nomic-embed-scale.env"
+    store = SettingsStore(
+        AdminDatabase(str(tmp_path / "admin.sqlite")),
+        admin_env_path=str(tmp_path / "admin.env"),
+        proxy_env_path=str(tmp_path / "proxy.env"),
+        pool_scale_env_path=str(scale_env),
+        pool_env_path=str(tmp_path / "pool.env"),
+    )
+    store.save_group("ingest", {"NOMIC_POOL_MAX_INSTANCES": "8", "NOMIC_POOL_PARALLEL": "12"})
+    written = read_env_file(str(scale_env))
+    assert written["NOMIC_POOL_MAX_INSTANCES"] == "8"
+    assert written["NOMIC_POOL_PARALLEL"] == "12"
 
 
 def test_save_ingest_chunk_settings_updates_config(tmp_path: Path) -> None:

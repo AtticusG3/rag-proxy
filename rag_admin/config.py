@@ -47,6 +47,8 @@ class AdminSettings:
     job_log_dir: str
     proxy_restart_cmd: str
     admin_restart_cmd: str
+    pool_scale_env_path: str
+    pool_env_path: str
 
     @classmethod
     def from_env(cls) -> AdminSettings:
@@ -88,6 +90,14 @@ class AdminSettings:
             ),
             proxy_restart_cmd=os.getenv("RAG_PROXY_RESTART_CMD", "systemctl restart rag-proxy"),
             admin_restart_cmd=os.getenv("RAG_ADMIN_RESTART_CMD", "systemctl restart rag-admin"),
+            pool_scale_env_path=os.getenv(
+                "NOMIC_EMBED_SCALE_ENV_FILE",
+                "/opt/ai/config/nomic-embed-scale.env",
+            ),
+            pool_env_path=os.getenv(
+                "NOMIC_EMBED_POOL_ENV_FILE",
+                "/opt/ai/config/nomic-embed-pool.env",
+            ),
         )
 
 

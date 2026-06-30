@@ -64,3 +64,29 @@ def write_env_file(path: str, updates: dict[str, str], *, create: bool = True) -
     tmp_path.write_text(content, encoding="utf-8")
     os.chmod(tmp_path, 0o600)
     os.replace(tmp_path, file_path)
+
+
+def remove_env_file_keys(path: str, keys: set[str]) -> None:
+    """Drop keys from an env file if present."""
+    if not keys:
+        return
+    file_path = Path(path)
+    if not file_path.is_file():
+        return
+    out_lines: list[str] = []
+    for raw_line in file_path.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            out_lines.append(raw_line)
+            continue
+        match = _ENV_LINE.match(stripped)
+        if match and match.group(1) in keys:
+            continue
+        out_lines.append(raw_line)
+    content = "\n".join(out_lines).rstrip()
+    if content:
+        content += "\n"
+    tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
+    tmp_path.write_text(content, encoding="utf-8")
+    os.chmod(tmp_path, 0o600)
+    os.replace(tmp_path, file_path)

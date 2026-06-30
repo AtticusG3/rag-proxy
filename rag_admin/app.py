@@ -47,6 +47,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db,
         admin_env_path=settings.admin_env_path,
         proxy_env_path=settings.proxy_env_path,
+        pool_scale_env_path=settings.pool_scale_env_path,
+        pool_env_path=settings.pool_env_path,
     )
     config = settings_store.build_ingest_config(
         zim_dir=settings.zim_dir,
