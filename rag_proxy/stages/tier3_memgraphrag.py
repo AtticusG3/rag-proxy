@@ -16,7 +16,7 @@ import logging
 
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit, RequestContext
-from rag_proxy.memgraphrag.memory import load_memory
+from rag_proxy.memgraphrag.cache import get_memory_index
 from rag_proxy.memgraphrag.retrieval import MemGraphRetriever
 
 log = logging.getLogger("rag-proxy.stage.memgraphrag")
@@ -33,13 +33,13 @@ async def run_memgraphrag(ctx: RequestContext) -> None:
         return
 
     try:
-        memory = load_memory(db_path)
-        if not memory.facts:
+        index = get_memory_index(db_path)
+        if not index.memory.facts:
             log.info("MemGraphRAG memory is empty, skipping")
             return
 
         retriever = MemGraphRetriever(
-            memory=memory,
+            index=index,
             top_k=settings.top_k,
             fact_top_k=settings.memgraphrag_fact_top_k,
             ppr_damping=settings.memgraphrag_ppr_damping,
