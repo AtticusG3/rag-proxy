@@ -1,9 +1,4 @@
 (function () {
-  var logEl = document.getElementById("build-log");
-  if (!logEl) {
-    return;
-  }
-
   function poll() {
     fetch("/api/settings/status", { credentials: "same-origin" })
       .then(function (response) {
@@ -16,13 +11,23 @@
         if (!data) {
           return;
         }
-        if (data.log_tail) {
-          logEl.textContent = data.log_tail;
+        var buildLog = document.getElementById("build-log");
+        if (buildLog && data.log_tail) {
+          buildLog.textContent = data.log_tail;
+        }
+        var poolLog = document.getElementById("pool-scale-log");
+        if (poolLog && data.pool_scale_log_tail) {
+          poolLog.textContent = data.pool_scale_log_tail;
         }
       })
       .catch(function () {});
   }
 
-  setInterval(poll, 4000);
-  poll();
+  if (
+    document.getElementById("build-log") ||
+    document.getElementById("pool-scale-log")
+  ) {
+    setInterval(poll, 4000);
+    poll();
+  }
 })();

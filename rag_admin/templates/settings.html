@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, flash_banner %}
+{% from "_macros.html" import page_header, flash_banner, setting_field %}
 {% block title %}Settings - RAG Admin{% endblock %}
 {% block content %}
 {{ page_header("Settings", "Persistent overrides for ingest, proxy, MemGraphRAG, and observability.") }}
@@ -53,6 +53,46 @@
 </section>
 
 {% if active_tab == 'ingest' %}
+<section class="card card--compact">
+  <div class="section-head">
+    <h2 class="section-title">Embed pool (planner output)</h2>
+    <div class="page-header__actions">
+      <form method="post" action="/settings/embed-pool/scale" class="inline">
+        <button type="submit" class="btn" {% if pool_scale_job %}disabled{% endif %}>Scale embed pool</button>
+      </form>
+      <form method="post" action="/settings/embed-pool/stop" class="inline">
+        <button type="submit" class="btn btn--ghost" {% if not pool_scale_job %}disabled{% endif %}>Stop scale</button>
+      </form>
+    </div>
+  </div>
+  {% if pool_scale_job %}
+  <p class="muted">Scaling job <code>{{ pool_scale_job.id[:8] }}</code> since {{ pool_scale_job.started_at }} (pid {{ pool_scale_job.pid }}).</p>
+  <pre id="pool-scale-log" class="log-tail" aria-live="polite">{{ pool_scale_log_tail }}</pre>
+  {% elif pool_env.exists %}
+  <dl class="config-dl">
+    <div><dt>Instances</dt><dd class="mono">{{ pool_env.instance_count or '?' }}</dd></div>
+    <div><dt>Ports</dt><dd class="mono">{{ pool_env.ports or '-' }}</dd></div>
+    <div><dt>Pool concurrency</dt><dd class="mono">{{ pool_env.embed_concurrency or '-' }}</dd></div>
+    {% if pool_env.gpu_free_mib %}<div><dt>GPU free (last scale)</dt><dd class="mono">{{ pool_env.gpu_free_mib }} MiB</dd></div>{% endif %}
+    <div><dt>URLs</dt><dd class="mono">{{ pool_env.embed_urls or '-' }}</dd></div>
+  </dl>
+  {% else %}
+  <p class="muted">No pool env file yet at <code>{{ pool_env.path }}</code>. Save pool planner fields below, then click <strong>Scale embed pool</strong>.</p>
+  {% endif %}
+  {% if pool_scale_history and not pool_scale_job %}
+  <div class="table-wrap table-wrap--spaced">
+  <table>
+    <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
+    <tbody>
+      {% for job in pool_scale_history %}
+      <tr><td>{{ job.started_at }}</td><td>{{ job.status }}</td><td>{{ job.message or '-' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+  <p class="muted card-note">Planner inputs: <code>{{ pool_env.scale_path }}</code> · Output: <code>{{ pool_env.path }}</code></p>
+</section>
 <section class="card">
   <div class="section-head">
     <h2 class="section-title">Ingest controls</h2>
@@ -101,29 +141,29 @@
 
 <section class="card">
   <h2 class="section-title">{{ tab_labels[active_tab] }}</h2>
+  {% if group_tuning %}
+  <details class="tuning-guide" open>
+    <summary class="tuning-guide__summary">How these settings relate</summary>
+    {% for section in group_tuning %}
+    <div class="tuning-guide__section">
+      <h3 class="tuning-guide__title">{{ section.title }}</h3>
+      <p class="muted tuning-guide__intro">{{ section.intro }}</p>
+      {% if section.items %}
+      <dl class="tuning-guide__map">
+        {% for item in section.items %}
+        <div><dt><code>{{ item.key }}</code></dt><dd>{{ item.note }}</dd></div>
+        {% endfor %}
+      </dl>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </details>
+  {% endif %}
+  <p class="muted card-note">Empty fields use the default shown as placeholder text. Clear a field and save to revert to default.</p>
   <form method="post" action="/settings/save/{{ active_tab }}" class="settings-form">
     <input type="hidden" name="tab" value="{{ active_tab }}">
     {% for field in fields %}
-    <label class="field">
-      <span class="field__label">{{ field.label }}</span>
-      {% if field.field_type == 'bool' %}
-      <select name="{{ field.key }}">
-        <option value="true" {% if values[field.key] in ['true','1','yes','on'] %}selected{% endif %}>true</option>
-        <option value="false" {% if values[field.key] not in ['true','1','yes','on'] %}selected{% endif %}>false</option>
-      </select>
-      {% elif field.field_type == 'select' %}
-      <select name="{{ field.key }}">
-        {% for option in field.options %}
-        <option value="{{ option }}" {% if values[field.key] == option %}selected{% endif %}>{{ option }}</option>
-        {% endfor %}
-      </select>
-      {% elif field.field_type == 'text' %}
-      <textarea name="{{ field.key }}" rows="2">{{ values[field.key] }}</textarea>
-      {% else %}
-      <input type="text" name="{{ field.key }}" value="{{ values[field.key] }}">
-      {% endif %}
-      {% if field.help_text %}<span class="field__hint">{{ field.help_text }}</span>{% endif %}
-    </label>
+    {{ setting_field(field) }}
     {% endfor %}
     <div class="form-actions">
       <button type="submit" class="btn">Save {{ tab_labels[active_tab] }}</button>

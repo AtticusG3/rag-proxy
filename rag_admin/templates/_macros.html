@@ -45,3 +45,51 @@
   {% if kind == 'folder' %}DIR{% elif kind == 'zim' %}ZIM{% elif kind == 'pdf' %}PDF{% elif kind == 'paper' %}PDF{% elif kind == 'text' %}TXT{% elif kind == 'collection' %}COL{% elif kind == 'category' %}CAT{% elif kind == 'external' %}URL{% elif kind == 'pagination' %}···{% else %}FILE{% endif %}
 </span>
 {% endmacro %}
+
+{% macro setting_field(field) %}
+<label class="field">
+  <span class="field__label-row">
+    <span class="field__label">{{ field.label }}</span>
+    <code class="field__key mono">{{ field.key }}</code>
+    {% if field.help_text %}
+    <button type="button" class="field__help" aria-label="Help for {{ field.label }}" data-tip="{{ field.help_text }}">?</button>
+    {% endif %}
+    {% if not field.has_override %}
+    <span class="field__using-default">using default{% if field.default %} ({{ field.placeholder }}){% endif %}</span>
+    {% endif %}
+    {% if field.hot %}<span class="field__hot">hot</span>{% endif %}
+  </span>
+  {% if field.field_type == 'bool' %}
+  <select name="{{ field.key }}">
+    <option value="true" {% if field.effective_value in ['true','1','yes','on'] %}selected{% endif %}>true</option>
+    <option value="false" {% if field.effective_value not in ['true','1','yes','on'] %}selected{% endif %}>false</option>
+  </select>
+  {% elif field.field_type == 'select' %}
+  <select name="{{ field.key }}">
+    {% for option in field.options %}
+    <option value="{{ option }}" {% if field.effective_value == option %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
+  {% elif field.field_type == 'text' %}
+  <textarea name="{{ field.key }}" rows="2" placeholder="{{ field.placeholder }}">{{ field.display_value }}</textarea>
+  {% else %}
+  <input type="text" name="{{ field.key }}" value="{{ field.display_value }}" placeholder="{{ field.placeholder }}">
+  {% endif %}
+  {% if field.help_text %}<span class="field__hint">{{ field.help_text }}</span>{% endif %}
+</label>
+{% endmacro %}
+
+{% macro ingest_tuning_snapshot(config) %}
+<dl class="config-dl">
+  <div><dt>Parallel files</dt><dd class="mono">{% if config.file_concurrency %}{{ config.file_concurrency }}{% else %}auto{% endif %}</dd></div>
+  <div><dt>Batch size</dt><dd class="mono">{{ config.batch_size }}</dd></div>
+  <div><dt>Embed concurrency</dt><dd class="mono">{{ config.embed_concurrency }}</dd></div>
+  <div><dt>Chunk size</dt><dd class="mono">{{ config.chunk_size_tokens }} tok / {{ config.chunk_overlap_tokens }} overlap</dd></div>
+  <div><dt>Semantic chunking</dt><dd class="mono">{{ config.chunk_semantic }}</dd></div>
+  <div><dt>Embed URL</dt><dd class="mono">{{ config.embed_url }}</dd></div>
+  <div><dt>Pool URLs</dt><dd class="mono">{{ config.embed_pool_count }}</dd></div>
+  <div><dt>Sparse reindex</dt><dd class="mono">{{ config.sparse_reindex_mode }}</dd></div>
+  <div><dt>Stall timeout</dt><dd class="mono">{{ config.stall_minutes }} min</dd></div>
+  <div><dt>Collection</dt><dd class="mono">{{ config.qdrant_collection }}</dd></div>
+</dl>
+{% endmacro %}

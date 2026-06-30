@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner %}
+{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner, ingest_tuning_snapshot %}
 {% block title %}Jobs - RAG Admin{% endblock %}
 {% block content %}
 {{ page_header("Ingest jobs", "Per-file embedding state and background job history.") }}
@@ -85,14 +85,11 @@
 </section>
 
 <section class="card card--compact">
-  <h2 class="section-title">Ingest tuning (read-only)</h2>
-  <dl class="config-dl">
-    <div><dt>Batch size</dt><dd class="mono">{{ ingest_config.batch_size }}</dd></div>
-    <div><dt>Embed concurrency</dt><dd class="mono">{{ ingest_config.embed_concurrency }}</dd></div>
-    <div><dt>Embed URL</dt><dd class="mono">{{ ingest_config.embed_url }}</dd></div>
-    <div><dt>Sparse reindex</dt><dd class="mono">{{ ingest_config.sparse_reindex_mode }}</dd></div>
-    <div><dt>Collection</dt><dd class="mono">{{ ingest_config.qdrant_collection }}</dd></div>
-  </dl>
+  <div class="section-head">
+    <h2 class="section-title">Ingest tuning (live)</h2>
+    <a class="btn btn--ghost btn--small" href="/settings?tab=ingest">Edit in Settings</a>
+  </div>
+  {{ ingest_tuning_snapshot(ingest_config) }}
 </section>
 
 <section class="card card--flush">
