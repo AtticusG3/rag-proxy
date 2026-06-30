@@ -42,7 +42,7 @@ def _fields_for_group(store: SettingsStore, group: str) -> list[dict[str, Any]]:
                 "help_text": field.help_text,
                 "default": field.default,
                 "placeholder": field_placeholder(field),
-                "display_value": store.get_form_value(field),
+                "display_value": store.get_override_value(field.key, target=field.target) or "",
                 "effective_value": effective,
                 "has_override": store.has_override(field),
                 "hot": field.hot,

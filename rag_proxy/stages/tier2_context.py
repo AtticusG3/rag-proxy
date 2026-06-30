@@ -55,45 +55,35 @@ def estimate_message_tokens(messages: list[dict]) -> int:
     return total
 
 
-def _estimate_existing_messages(messages: list[dict]) -> int:
-    if uses_tokenizer():
-        return estimate_message_tokens(messages)
-    return estimate_message_chars(messages)
-
-
 def apply_context_budget(hits: list[ChunkHit], budget: int) -> list[ChunkHit]:
     """Fit hits into budget (tokens when ENABLE_TOKENIZER_ESTIMATE=true, else chars)."""
     if budget <= 0:
         return []
     if uses_tokenizer():
-        return _apply_context_budget_tokens(hits, budget)
-    return _apply_context_budget_chars(hits, budget)
+        return _apply_context_budget(
+            hits,
+            budget,
+            measure=count_tokens,
+            truncate=truncate_to_tokens,
+            separator_cost=_CHUNK_SEPARATOR_TOKENS,
+        )
+    return _apply_context_budget(
+        hits,
+        budget,
+        measure=len,
+        truncate=lambda text, max_units: text[: max(0, max_units)],
+        separator_cost=8,
+    )
 
 
-def _apply_context_budget_chars(hits: list[ChunkHit], budget_chars: int) -> list[ChunkHit]:
-    kept: list[ChunkHit] = []
-    used = 0
-    sorted_hits = sorted(hits, key=lambda h: h.score, reverse=True)
-    for h in sorted_hits:
-        lines = h.text.splitlines()
-        priority = [ln for ln in lines if _CONSTRAINT.search(ln)]
-        body = h.text
-        piece = body
-        if used + len(piece) > budget_chars:
-            if priority:
-                piece = "\n".join(priority)
-            if used + len(piece) > budget_chars:
-                piece = piece[: max(0, budget_chars - used)]
-        if not piece.strip():
-            continue
-        if used + len(piece) > budget_chars:
-            break
-        kept.append(ChunkHit(id=h.id, text=piece, score=h.score, source=h.source, metadata=h.metadata))
-        used += len(piece) + 8
-    return kept
-
-
-def _apply_context_budget_tokens(hits: list[ChunkHit], budget_tokens: int) -> list[ChunkHit]:
+def _apply_context_budget(
+    hits: list[ChunkHit],
+    budget: int,
+    *,
+    measure,
+    truncate,
+    separator_cost: int,
+) -> list[ChunkHit]:
     kept: list[ChunkHit] = []
     used = 0
     sorted_hits = sorted(hits, key=lambda h: h.score, reverse=True)
@@ -101,21 +91,21 @@ def _apply_context_budget_tokens(hits: list[ChunkHit], budget_tokens: int) -> li
         lines = h.text.splitlines()
         priority = [ln for ln in lines if _CONSTRAINT.search(ln)]
         piece = h.text
-        piece_tokens = count_tokens(piece)
-        if used + piece_tokens > budget_tokens:
+        piece_units = measure(piece)
+        if used + piece_units > budget:
             if priority:
                 piece = "\n".join(priority)
-                piece_tokens = count_tokens(piece)
-            if used + piece_tokens > budget_tokens:
-                remaining = max(0, budget_tokens - used)
-                piece = truncate_to_tokens(piece, remaining)
-                piece_tokens = count_tokens(piece)
+                piece_units = measure(piece)
+            if used + piece_units > budget:
+                remaining = max(0, budget - used)
+                piece = truncate(piece, remaining)
+                piece_units = measure(piece)
         if not piece.strip():
             continue
-        if used + piece_tokens > budget_tokens:
+        if used + piece_units > budget:
             break
         kept.append(ChunkHit(id=h.id, text=piece, score=h.score, source=h.source, metadata=h.metadata))
-        used += piece_tokens + _CHUNK_SEPARATOR_TOKENS
+        used += piece_units + separator_cost
     return kept
 
 
@@ -123,7 +113,7 @@ def resolve_inject_budget_chars(ctx: RequestContext, registry: ModelRegistry) ->
     """Return inject budget in chars (legacy) or tokens when estimate mode is on."""
     model_id = ctx.requested_model or None
     context_tokens = registry.resolve_context_tokens(model_id)
-    existing = _estimate_existing_messages(ctx.messages)
+    existing = estimate_message_tokens(ctx.messages) if uses_tokenizer() else estimate_message_chars(ctx.messages)
     reserve = settings.default_completion_reserve
 
     if uses_tokenizer():

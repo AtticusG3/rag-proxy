@@ -99,12 +99,6 @@ class SettingsStore:
     def has_override(self, field: SettingField) -> bool:
         return self.get_override_value(field.key, target=field.target) is not None
 
-    def get_form_value(self, field: SettingField) -> str:
-        override = self.get_override_value(field.key, target=field.target)
-        if override is None:
-            return ""
-        return override
-
     def get_value(self, key: str, default: str = "") -> str:
         stored = self.db.get_setting(key)
         if stored is not None:

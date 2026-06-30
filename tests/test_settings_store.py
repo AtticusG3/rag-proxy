@@ -100,10 +100,10 @@ def test_clear_override_reverts_to_schema_default(tmp_path: Path) -> None:
         proxy_env_path=str(tmp_path / "rag-proxy.env"),
     )
     field = next(f for f in SETTING_FIELDS if f.key == "INGEST_BATCH_SIZE")
-    assert store.get_form_value(field) == "96"
+    assert store.get_override_value(field.key, target=field.target) == "96"
     store.save_group("ingest", {"INGEST_BATCH_SIZE": ""})
     assert store.get_value("INGEST_BATCH_SIZE") == "64"
-    assert store.get_form_value(field) == ""
+    assert store.get_override_value(field.key, target=field.target) is None
     assert "INGEST_BATCH_SIZE" not in read_env_file(str(admin_env))
 
 

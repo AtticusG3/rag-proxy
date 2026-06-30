@@ -85,13 +85,6 @@ def record_rag_outcome(ctx: RequestContext) -> None:
         RAG_CHUNKS_INJECTED.inc(chunks)
 
 
-def record_rag_outcome_legacy(chunks_injected: int, outcome: str = "miss") -> None:
-    """Test helper and backward-compatible counter bump."""
-    RAG_REQUESTS.labels(outcome=outcome).inc()
-    if chunks_injected > 0:
-        RAG_CHUNKS_INJECTED.inc(chunks_injected)
-
-
 def record_augment_error() -> None:
     RAG_AUGMENT_ERRORS.inc()
 

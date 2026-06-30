@@ -15,15 +15,10 @@ from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.stages.tier2_context import apply_context_budget, dedupe_chunks
 
 
-def _skip_unless_benchmark_only(request: pytest.FixtureRequest) -> None:
-    # Keep default unit-test runs fast/noisy-free; run benchmarks explicitly.
-    if hasattr(request.config.option, "benchmark_only") and not request.config.option.benchmark_only:
-        pytest.skip("benchmarks run only with --benchmark-only")
-
-
 @pytest.mark.benchmark(group="context-assembly")
 def test_benchmark_context_assembly_budget(benchmark, request: pytest.FixtureRequest):
-    _skip_unless_benchmark_only(request)
+    if hasattr(request.config.option, "benchmark_only") and not request.config.option.benchmark_only:
+        pytest.skip("benchmarks run only with --benchmark-only")
     old_estimate = settings.enable_tokenizer_estimate
     settings.enable_tokenizer_estimate = False
     try:
@@ -45,7 +40,8 @@ def test_benchmark_context_assembly_budget(benchmark, request: pytest.FixtureReq
 
 @pytest.mark.benchmark(group="hybrid-merge")
 def test_benchmark_hybrid_merge_reserve(benchmark, request: pytest.FixtureRequest):
-    _skip_unless_benchmark_only(request)
+    if hasattr(request.config.option, "benchmark_only") and not request.config.option.benchmark_only:
+        pytest.skip("benchmarks run only with --benchmark-only")
     fused_ids = [f"dense-{i}" for i in range(400)]
     sparse_only = [f"sparse-{i}" for i in range(120)]
 
@@ -67,7 +63,8 @@ async def _burn_budget_stage(_ctx: RequestContext, _registry: ModelRegistry) -> 
 
 @pytest.mark.benchmark(group="orchestrator-budget")
 def test_benchmark_orchestrator_budget_skip(benchmark, request: pytest.FixtureRequest, monkeypatch):
-    _skip_unless_benchmark_only(request)
+    if hasattr(request.config.option, "benchmark_only") and not request.config.option.benchmark_only:
+        pytest.skip("benchmarks run only with --benchmark-only")
     monkeypatch.setattr(settings, "stage_exec_timeout_ms", 1000)
     monkeypatch.setattr(settings, "cognitive_latency_budget_ms", 1)
     monkeypatch.setattr("rag_proxy.orchestrator.log_pipeline_summary", lambda _ctx: None)

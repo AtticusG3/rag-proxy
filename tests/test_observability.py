@@ -1,10 +1,9 @@
 """Metrics enablement and RAG outcome counters."""
 
-from rag_proxy.context import RequestContext, RetrievalDecision
+from rag_proxy.context import ChunkHit, RequestContext, RetrievalDecision
 from rag_proxy.observability import (
     metrics_enabled,
     record_rag_outcome,
-    record_rag_outcome_legacy,
     render_metrics_text,
 )
 
@@ -23,7 +22,8 @@ def test_metrics_enabled_uses_enable_metrics_flag(monkeypatch):
 
 def test_record_rag_outcome_counts_attempt_without_chunks():
     before = render_metrics_text()
-    record_rag_outcome_legacy(0, outcome="miss")
+    ctx = RequestContext(retrieval=RetrievalDecision.FULL, hits=[])
+    record_rag_outcome(ctx)
     after = render_metrics_text()
     assert (
         _metric_value(after, 'rag_requests_total{outcome="miss"}')
@@ -36,7 +36,14 @@ def test_record_rag_outcome_counts_attempt_without_chunks():
 
 def test_record_rag_outcome_increments_counters():
     before = render_metrics_text()
-    record_rag_outcome_legacy(2, outcome="hit")
+    ctx = RequestContext(
+        retrieval=RetrievalDecision.FULL,
+        hits=[
+            ChunkHit(id="h1", text="chunk one", score=0.9),
+            ChunkHit(id="h2", text="chunk two", score=0.8),
+        ],
+    )
+    record_rag_outcome(ctx)
     after = render_metrics_text()
     assert (
         _metric_value(after, 'rag_requests_total{outcome="hit"}')
