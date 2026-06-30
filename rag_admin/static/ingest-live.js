@@ -3,6 +3,9 @@
 
   var POLL_ACTIVE_MS = 8000;
   var POLL_IDLE_MS = 30000;
+  var WINDOW_5_MS = 5 * 60 * 1000;
+  var WINDOW_15_MS = 15 * 60 * 1000;
+  var MIN_ELAPSED_MS = 4800;
 
   var tbody = document.getElementById("ingest-files-body");
   if (!tbody) {
@@ -11,8 +14,7 @@
 
   var velocityEl = document.getElementById("ingest-velocity");
   var liveBadge = document.getElementById("ingest-live-badge");
-  var lastTotal = null;
-  var lastTime = null;
+  var chunkSamples = [];
   var timerId = null;
 
   function escapeHtml(value) {
@@ -137,7 +139,63 @@
       .join("");
   }
 
-  function updateVelocity(stats, files) {
+  function recordChunkSample(total, now) {
+    chunkSamples.push({ t: now, total: total });
+    var cutoff = now - WINDOW_15_MS;
+    while (chunkSamples.length > 1 && chunkSamples[0].t < cutoff) {
+      chunkSamples.shift();
+    }
+  }
+
+  function rateBetween(baseline, current) {
+    var elapsedMs = current.t - baseline.t;
+    if (elapsedMs < MIN_ELAPSED_MS) {
+      return null;
+    }
+    var delta = current.total - baseline.total;
+    if (delta < 0) {
+      return null;
+    }
+    return Math.round(delta / (elapsedMs / 60000));
+  }
+
+  function baselineForWindow(samples, windowMs) {
+    if (!samples.length) {
+      return null;
+    }
+    var current = samples[samples.length - 1];
+    var targetT = current.t - windowMs;
+    var baseline = samples[0];
+    for (var i = 0; i < samples.length; i++) {
+      if (samples[i].t <= targetT) {
+        baseline = samples[i];
+      } else {
+        break;
+      }
+    }
+    return baseline;
+  }
+
+  function rateOverWindow(samples, windowMs) {
+    if (samples.length < 2) {
+      return null;
+    }
+    var current = samples[samples.length - 1];
+    var baseline = baselineForWindow(samples, windowMs);
+    if (!baseline || baseline.t === current.t) {
+      return null;
+    }
+    return rateBetween(baseline, current);
+  }
+
+  function formatRate(value) {
+    if (value === null) {
+      return "measuring...";
+    }
+    return value + " chunks/min";
+  }
+
+  function updateVelocity(stats) {
     if (!velocityEl) {
       return;
     }
@@ -145,26 +203,31 @@
     var total = stats.total_chunks || 0;
     var active = stats.active || 0;
     var now = Date.now();
-    var rateText = "idle";
 
     if (active > 0) {
-      if (lastTotal !== null && lastTime !== null) {
-        var minutes = (now - lastTime) / 60000;
-        if (minutes >= 0.08) {
-          var delta = total - lastTotal;
-          if (delta >= 0) {
-            rateText = Math.round(delta / minutes) + " chunks/min";
-          }
-        }
+      recordChunkSample(total, now);
+      var nowRate = null;
+      if (chunkSamples.length >= 2) {
+        nowRate = rateBetween(
+          chunkSamples[chunkSamples.length - 2],
+          chunkSamples[chunkSamples.length - 1]
+        );
       }
+      var rate5m = rateOverWindow(chunkSamples, WINDOW_5_MS);
+      var rate15m = rateOverWindow(chunkSamples, WINDOW_15_MS);
       velocityEl.textContent =
         active +
         " file(s) in queue · " +
         total.toLocaleString() +
-        " chunks embedded · " +
-        rateText;
+        " chunks embedded · now " +
+        formatRate(nowRate) +
+        " · 5m " +
+        formatRate(rate5m) +
+        " · 15m " +
+        formatRate(rate15m);
       velocityEl.hidden = false;
     } else {
+      chunkSamples = [];
       velocityEl.textContent =
         (stats.indexed || 0) +
         " indexed · " +
@@ -177,9 +240,6 @@
       liveBadge.hidden = active === 0;
       liveBadge.textContent = active > 0 ? "Live" : "";
     }
-
-    lastTotal = total;
-    lastTime = now;
   }
 
   function scheduleNext(active) {
@@ -201,7 +261,7 @@
         var files = payload.files || [];
         var stats = payload.stats || {};
         renderRows(files);
-        updateVelocity(stats, files);
+        updateVelocity(stats);
         scheduleNext(stats.active || 0);
       })
       .catch(function () {

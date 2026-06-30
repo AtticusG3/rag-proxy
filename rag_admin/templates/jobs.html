@@ -12,7 +12,7 @@
   </div>
   <p id="ingest-velocity" class="ingest-velocity" aria-live="polite">
     {% if ingest_queue.active > 0 %}
-      {{ ingest_queue.active }} file(s) in queue · {{ ingest_queue.total_chunks }} chunks embedded · measuring rate…
+      {{ ingest_queue.active }} file(s) in queue · {{ ingest_queue.total_chunks }} chunks embedded · now measuring... · 5m measuring... · 15m measuring...
     {% else %}
       {{ ingest_queue.indexed }} indexed · {{ ingest_queue.total_chunks }} total chunks
     {% endif %}
