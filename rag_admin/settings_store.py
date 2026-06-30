@@ -17,6 +17,7 @@ from rag_admin.settings_schema import (
     SETTING_FIELDS,
     SettingField,
 )
+from rag_proxy.env_parse import parse_bool
 
 
 @dataclass
@@ -48,7 +49,7 @@ def _coerce_value(field: SettingField, raw: str) -> str:
 
 
 def _parse_bool(raw: str | None) -> bool:
-    return (raw or "").strip().lower() in ("1", "true", "yes", "on")
+    return parse_bool(raw, False)
 
 
 class SettingsStore:

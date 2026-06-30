@@ -12,6 +12,7 @@ from chonkie import Pipeline, RecursiveChunker, SentenceChunker, TokenChunker
 
 from ingest.chunking_strategy import ChunkContext, ChunkStrategy, select_chunk_strategy
 from ingest.scrape_cleanup import strip_scrape_boilerplate
+from rag_proxy.env_parse import parse_bool
 
 log = logging.getLogger("ingest.chunking")
 
@@ -24,12 +25,6 @@ DEFAULT_MIN_CHUNK_TOKENS = 100
 TOKENIZER_FALLBACKS = ("gpt2", "word")
 
 _PROBE_TEXT = "tokenizer probe text."
-
-
-def _env_bool_from_str(raw: str | None, default: bool) -> bool:
-    if raw is None or not raw.strip():
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -51,7 +46,7 @@ def chunk_config_from_values(values: dict[str, str]) -> ChunkConfig:
         ),
         tokenizer=values.get("INGEST_CHUNK_TOKENIZER", DEFAULT_CHUNK_TOKENIZER),
         semantic_model=values.get("INGEST_CHUNK_SEMANTIC_MODEL", DEFAULT_SEMANTIC_MODEL),
-        semantic_enabled=_env_bool_from_str(values.get("INGEST_CHUNK_SEMANTIC"), True),
+        semantic_enabled=parse_bool(values.get("INGEST_CHUNK_SEMANTIC"), True),
         min_chunk_tokens=int(
             values.get("INGEST_CHUNK_MIN_TOKENS", str(DEFAULT_MIN_CHUNK_TOKENS))
         ),

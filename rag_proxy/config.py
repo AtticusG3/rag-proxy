@@ -7,13 +7,14 @@ import logging
 import os
 from dataclasses import dataclass, field
 
+from rag_proxy.env_parse import parse_bool
+
 log = logging.getLogger("rag-proxy")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
     """Parse a boolean environment variable."""
-    val = os.getenv(name, str(default).lower())
-    return val.strip().lower() in ("1", "true", "yes", "on")
+    return parse_bool(os.getenv(name), default)
 
 
 def _env_int(name: str, default: int) -> int:
@@ -321,17 +322,5 @@ class Settings:
 
 
 settings = Settings()
-
-# Legacy module-level aliases (tests / backward compat)
-LLAMA_SWAP_URL = settings.llama_swap_url
-EMBED_URL = settings.embed_url
-QDRANT_URL = settings.qdrant_url
-QDRANT_COLLECTION = settings.qdrant_collection
-TOP_K = settings.top_k
-SIMILARITY_THRESHOLD = settings.similarity_threshold
-PROXY_HOST = settings.proxy_host
-PROXY_PORT = settings.proxy_port
-EMBED_MAX_CHARS = settings.embed_max_chars
-EMBED_RETRIES = settings.embed_retries
 
 CHAT_PATHS = {"v1/chat/completions", "api/chat"}
