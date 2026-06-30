@@ -3,11 +3,13 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from copy import deepcopy
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
@@ -22,6 +24,8 @@ from rag_proxy.orchestrator import (
     augment_chat_payload_with_context,
     build_request_context_from_http,
 )
+from rag_proxy.sidecar_client import shutdown_sidecar_clients, startup_sidecar_clients
+from rag_proxy.stages.tier3_graph import _ensure_schema as ensure_graph_schema
 from rag_proxy.upstream_client import (
     close_upstream_response,
     ensure_upstream_client,
@@ -39,14 +43,40 @@ logging.basicConfig(
 log = logging.getLogger("rag-proxy")
 
 
+def _internal_token_ok(request: Request) -> bool:
+    expected = settings.proxy_internal_token
+    if not expected:
+        return True
+    provided = request.headers.get("x-internal-token", "")
+    return hmac.compare_digest(provided, expected)
+
+
+def _warm_memgraph_cache() -> None:
+    try:
+        from rag_proxy.memgraphrag.cache import get_memory_index
+    except ImportError:
+        return
+    try:
+        get_memory_index(settings.memgraphrag_db_path)
+        log.info("memgraphrag memory index warmed path=%s", settings.memgraphrag_db_path)
+    except Exception:
+        log.warning("memgraphrag cache warm failed", exc_info=True)
+
+
 @asynccontextmanager
 async def _app_lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await startup_upstream_client()
+    await startup_sidecar_clients()
+    if settings.enable_graph_lookup:
+        ensure_graph_schema(Path(settings.graph_db_path))
+    if settings.enable_memgraphrag:
+        _warm_memgraph_cache()
     await startup_capture_writer()
     try:
         yield
     finally:
         await shutdown_capture_writer()
+        await shutdown_sidecar_clients()
         await shutdown_upstream_client()
 
 
@@ -54,7 +84,9 @@ app = FastAPI(title="RAG Proxy", docs_url=None, redoc_url=None, lifespan=_app_li
 
 
 @app.get("/metrics")
-async def prometheus_metrics() -> PlainTextResponse:
+async def prometheus_metrics(request: Request) -> PlainTextResponse:
+    if not _internal_token_ok(request):
+        return PlainTextResponse("unauthorized\n", status_code=401)
     if not metrics_enabled():
         return PlainTextResponse("metrics disabled\n", status_code=404)
     return PlainTextResponse(
@@ -65,6 +97,9 @@ async def prometheus_metrics() -> PlainTextResponse:
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
 async def proxy(request: Request, path: str):
+    if not _internal_token_ok(request):
+        return PlainTextResponse("unauthorized\n", status_code=401)
+
     body = await request.body()
 
     skip_headers = {"host", "content-length", "transfer-encoding", "connection"}

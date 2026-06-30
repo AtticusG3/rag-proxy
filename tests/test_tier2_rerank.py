@@ -40,7 +40,7 @@ def test_run_rerank_fail_open_preserves_hits_on_sidecar_error(monkeypatch):
     )
 
     with patch(
-        "rag_proxy.stages.tier2_rerank.httpx.AsyncClient",
+        "rag_proxy.stages.tier2_rerank.get_reranker_client",
         return_value=FakeAsyncClient(post),
     ):
         asyncio.run(run_rerank(ctx))

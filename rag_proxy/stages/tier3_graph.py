@@ -109,7 +109,6 @@ async def run_graph(ctx: RequestContext) -> None:
 
     db_path = Path(settings.graph_db_path)
     try:
-        _ensure_schema(db_path)
         lines = _query_graph(db_path, seeds, settings.graph_max_depth)
         if lines:
             text = "Infrastructure graph context:\n" + "\n".join(lines)
