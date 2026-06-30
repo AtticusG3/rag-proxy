@@ -89,6 +89,31 @@ def delete_by_source(qdrant_url: str, collection: str, source: str) -> None:
         response.raise_for_status()
 
 
+def clear_collection(
+    qdrant_url: str,
+    collection: str,
+    vector_size: int = DEFAULT_VECTOR_SIZE,
+) -> int:
+    """Drop and recreate a collection; returns the prior point count (0 if missing)."""
+    base = qdrant_url.rstrip("/")
+    with httpx.Client(timeout=120.0) as client:
+        prior = 0
+        info = client.get(f"{base}/collections/{collection}")
+        if info.status_code == 200:
+            prior = int(info.json()["result"]["points_count"])
+        elif info.status_code != 404:
+            info.raise_for_status()
+        delete = client.delete(f"{base}/collections/{collection}")
+        if delete.status_code not in (200, 404):
+            delete.raise_for_status()
+        response = client.put(
+            f"{base}/collections/{collection}",
+            json={"vectors": {"size": vector_size, "distance": "Cosine"}},
+        )
+        response.raise_for_status()
+        return prior
+
+
 def build_point(
     *,
     text: str,

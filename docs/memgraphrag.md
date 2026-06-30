@@ -54,7 +54,7 @@ Typical service URLs (adjust to your layout):
 
 - LLM: `MEMGRAPH_BUILD_LLM_URL` (default `http://127.0.0.1:8080/v1`) — use a remote endpoint when local GPU is busy with ingest, e.g. `http://192.168.1.202:8081/v1`
 - Model: `MEMGRAPH_BUILD_LLM_MODEL` (default `qwen3.5-9b-turbo`)
-- Embed: `MEMGRAPH_BUILD_EMBED_URL` or `EMBED_URL` (e.g. `http://127.0.0.1:18089`)
+- Embed: `MEMGRAPH_BUILD_EMBED_URL` or `EMBED_URL` (query embed `:8089`; bulk pool `:18089+`)
 - Reranker: `http://127.0.0.1:8095` (cognitive Docker profile or `sidecars/rerank`)
 
 Set build LLM vars in `rag-proxy.env` or **rag-admin → Settings → MemGraphRAG index build**. The admin UI can start the build job and monitor logs.
@@ -70,7 +70,7 @@ Run from repo root with venv active. The script is **network-heavy** (LLM + embe
 Samples chunks stratified by a payload field (default `source`) so the graph reflects your collection mix. If your Qdrant build lacks the facet API (HTTP 404), the script **falls back to scroll sampling** automatically.
 
 ```bash
-python -m scripts.build_memgraphrag_index \
+python scripts/build_memgraphrag_index.py \
   --source qdrant \
   --qdrant-url http://127.0.0.1:6333 \
   --collection your_collection \
@@ -79,7 +79,7 @@ python -m scripts.build_memgraphrag_index \
   --llm-model qwen3.5-9b-turbo \
   --max-chunks 1000 \
   --stratify-field source \
-  --embed-url http://127.0.0.1:18089
+  --embed-url http://127.0.0.1:8089
 ```
 
 | Flag | Default | Notes |
@@ -96,7 +96,7 @@ python -m scripts.build_memgraphrag_index \
 ### From a text file or directory
 
 ```bash
-python -m scripts.build_memgraphrag_index \
+python scripts/build_memgraphrag_index.py \
   --input /path/to/corpus.txt \
   --output /var/lib/rag_proxy/memgraphrag.sqlite \
   --llm-url http://127.0.0.1:8080/v1 \

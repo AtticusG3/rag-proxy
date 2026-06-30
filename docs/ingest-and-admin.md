@@ -11,7 +11,7 @@ Optional content management stack for indexing ZIM archives, PDFs, and text into
 
 Admin upserts vectors to Qdrant; the proxy reads the same `QDRANT_URL` / `QDRANT_COLLECTION`. Nothing requires co-location — only reachable URLs and paths matter.
 
-This repository ships `rag-proxy.service`, `nomic-embed.service`, `nomic-embed@.service`, and `nomic-embed-scale.service` examples only. Provide your own systemd unit (or process manager) for `python -m rag_admin` if needed. `scripts/catalog_weekly_update.py` accepts `RAG_ADMIN_ENV` (default `/opt/ai/config/rag-admin.env`) for cron on whichever host runs admin.
+This repository ships `rag-proxy.service`, `nomic-embed.service`, `nomic-embed@.service`, and `nomic-embed-scale.service` examples only. Provide your own systemd unit (or process manager) for `python -m rag_admin` if needed. Cron helpers load admin env via `RAG_ADMIN_ENV_FILE` (default `/opt/ai/config/rag-admin.env`); `catalog_weekly_update.py` also accepts legacy alias `RAG_ADMIN_ENV`.
 
 ## Components
 
@@ -41,12 +41,34 @@ Uses uvicorn; bind and paths from environment (see below).
 - PDF/text upload queue
 - Content explorer for indexed material
 - arXiv and archive catalog providers (`rag_admin/catalog/`)
+- **Settings** (`/settings`) — persist ingest, proxy, cognitive, MemGraphRAG, and observability knobs to env files (see below)
+
+### Settings UI
+
+The admin UI writes overrides to env files on disk — it does **not** hot-reload `rag_proxy` in memory. After saving proxy or cognitive groups, restart the proxy (or use **Restart proxy** when `RAG_PROXY_RESTART_CMD` is set).
+
+| Tab | Env file target | Hot-reload in admin |
+| --- | --- | --- |
+| Dense ingest & BM25 | `RAG_ADMIN_ENV_FILE` | Yes — ingest worker picks up batch size, pool URLs, pause |
+| Proxy RAG retrieval | `RAG_PROXY_ENV_FILE` | No — restart proxy |
+| Cognitive pipeline | `RAG_PROXY_ENV_FILE` | No — restart proxy |
+| MemGraphRAG runtime | `RAG_PROXY_ENV_FILE` | No — restart proxy |
+| MemGraphRAG index build | admin SQLite + env fallback | Build jobs via **Start build** |
+| Logging & metrics | `RAG_PROXY_ENV_FILE` | No — restart proxy |
+
+Paths default to `/opt/ai/config/rag-admin.env` and `/opt/ai/config/rag-proxy.env` (`RAG_ADMIN_ENV_FILE`, `RAG_PROXY_ENV_FILE`). Shared keys on the ingest tab (`EMBED_URL`, `QDRANT_URL`, `QDRANT_COLLECTION`, `SPARSE_INDEX_URL`) are mirrored into both files.
+
+**Env-only (not in Settings UI):** `UPSTREAM_*`, model registry JSON, transcript capture (except `ENABLE_TRANSCRIPT_CAPTURE`), and most latency-budget knobs — set in env and restart. Chunk size changes require `python scripts/requeue_all_ingest.py` for existing files.
+
+**Port topology:** Settings defaults **Primary embed URL** to `http://127.0.0.1:8089` (query RAG; mirrored to `rag-proxy.env`). Bulk GPU ingest uses **Ingest embed pool URLs** on ports `18089+` (`INGEST_EMBED_URLS`); the pool planner writes those via `scripts/scale_nomic_embed_pool.py`.
+
+Status API: `GET /api/settings/status` (service reachability for the Settings page).
 
 ### Security
 
 Startup **refuses** default `ADMIN_SESSION_SECRET` and `ADMIN_PASSWORD` unless `ADMIN_ALLOW_INSECURE_DEFAULTS=true` (local dev only). Set strong secrets before exposing beyond localhost.
 
-Default bind: `127.0.0.1:8087`. `rag_admin/config.py` defaults `EMBED_URL` to `http://127.0.0.1:18089` when unset — set `EMBED_URL` explicitly if your embed server uses a different port.
+Default bind: `127.0.0.1:8087`. Primary embed defaults to `:8089`; set **Ingest embed pool URLs** for bulk pool hosts (`18089+`).
 
 ## Environment variables
 
@@ -76,7 +98,7 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 
 1. **Queue** — jobs created from UI (ZIM path, upload, catalog subscription).
 2. **Read** — ZIM (`ingest/zim_reader.py`), PDF (`ingest/pdf_reader.py`), or plain text.
-3. **Chunk** — `ingest/chunking.py` selects a Chonkie strategy per document (see below), default **512 tokens / 64 overlap** (~12.5%) using the nomic-embed tokenizer when available.
+3. **Chunk** — `ingest/chunking_strategy.py` picks a Chonkie strategy per document; `ingest/chunk_config.py` loads token size/overlap from env; `ingest/chunking.py` runs the chunker with strategy-specific fallbacks. Default **512 tokens / 64 overlap** (~12.5%) using the nomic-embed tokenizer when available.
 4. **Embed** — `ingest/embedder.py` calls `EMBED_URL` (same nomic-embed as proxy).
 5. **Write** — `ingest/qdrant_writer.py` upserts to `QDRANT_COLLECTION`.
 6. **Sparse reindex** — optional POST to `SPARSE_INDEX_URL` when `INGEST_SPARSE_REINDEX` triggers (hybrid cognitive mode).
@@ -91,7 +113,37 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 | `token` | Unstructured scrapes / OCR dumps | Long single-line text, weak paragraph breaks |
 | `code` | Source-heavy content | Scripts, playbooks (requires `chonkie[code]`) |
 
-Fallback order is strategy-specific; failures fall back to `recursive`, then `token`. Tokenizer resolution tries `INGEST_CHUNK_TOKENIZER` (default `nomic-ai/nomic-embed-text-v1.5`), then `gpt2`, then `word`.
+**Evaluation order** (`select_chunk_strategy` in `ingest/chunking_strategy.py`) — first match wins:
+
+1. `code` — fenced blocks or >=25% code-like lines in the first 120 lines
+2. `token` — unstructured/OCR dumps (long lines, few paragraph breaks)
+3. `recursive` — `.md` suffix or markdown structure (headers, frontmatter, tables) on any file type
+4. `semantic` — arXiv path/stem or >=2 academic markers in the first 4k chars (when `INGEST_CHUNK_SEMANTIC=true`)
+5. `sentence` — `file_type` is `pdf`, then `zim`, then `text`
+6. `recursive` — default
+
+Code-heavy academic PDFs can match step 1 before step 4; they will not use semantic chunking unless code detection fails.
+
+On failure or empty output, each primary strategy walks its own fallback chain (`ingest/chunking.py`):
+
+| Primary | Fallback chain |
+| --- | --- |
+| `semantic` | `sentence` → `recursive` → `token` |
+| `code` | `recursive` → `token` |
+| `sentence` | `recursive` → `token` |
+| `recursive` | `sentence` → `token` |
+| `token` | `recursive` |
+
+Tokenizer resolution tries `INGEST_CHUNK_TOKENIZER` (default `nomic-ai/nomic-embed-text-v1.5`), then `gpt2`, then `word`. On startup, rag-admin logs **`ingest chunking ready`** with the active tokenizer; a **`FALLBACK`** warning means chunk sizes may not match nomic-embed. Set `INGEST_CHUNK_SEMANTIC=false` to skip semantic selection even when `chonkie[semantic]` is installed.
+
+The `token` strategy (scraped/unstructured text) strips cookie banners and nav fluff before chunking. Semantic chunks log a distribution summary; adjacent pieces below `INGEST_CHUNK_MIN_TOKENS` are merged before embed.
+
+Optional Chonkie extras (after `pip install -r requirements-admin.txt`):
+
+```bash
+pip install 'chonkie[semantic]'   # semantic strategy (arXiv / dense PDFs)
+pip install 'chonkie[code]'       # code strategy; otherwise falls back to recursive
+```
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -100,6 +152,7 @@ Fallback order is strategy-specific; failures fall back to `recursive`, then `to
 | `INGEST_CHUNK_TOKENIZER` | `nomic-ai/nomic-embed-text-v1.5` | Tokenizer aligned with embed model |
 | `INGEST_CHUNK_SEMANTIC` | `true` | Enable semantic strategy when deps installed |
 | `INGEST_CHUNK_SEMANTIC_MODEL` | `minishlab/potion-base-32M` | Local model for semantic boundary detection |
+| `INGEST_CHUNK_MIN_TOKENS` | `100` | Merge adjacent undersized chunks before embed |
 
 Bulk ZIM ingest uses `ingest/pipeline.py`: multiple embed batches run concurrently (`INGEST_EMBED_CONCURRENCY`) while Qdrant upserts stay in chunk order. Set `llama-server --parallel` on the embed endpoint to at least the same value (e.g. `16` on a dedicated nomic-embed GPU). Smaller `INGEST_BATCH_SIZE` (e.g. `32`) with higher concurrency often beats one huge batch per request.
 
@@ -154,6 +207,16 @@ If you do not control the Qdrant collection schema, coordinate index params and 
 MemGraphRAG builds a separate SQLite graph index from your Qdrant chunks (or text files). It is not part of the ingest worker — run the offline build after content is in Qdrant.
 
 Full operator guide: [MemGraphRAG](memgraphrag.md).
+
+## Re-chunk after strategy or size change
+
+After changing `INGEST_CHUNK_*` vars or upgrading chunking logic, re-index all tracked files:
+
+```bash
+python scripts/requeue_all_ingest.py
+```
+
+Loads `RAG_ADMIN_ENV_FILE` (default `/opt/ai/config/rag-admin.env`). For each on-disk file in admin SQLite, deletes existing Qdrant points for that source and resets chunk progress to `pending`. Run with `rag_admin` (ingest worker) active so the queue is processed; missing files on disk are skipped.
 
 ## Catalog weekly updates
 

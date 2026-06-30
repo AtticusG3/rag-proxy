@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from ingest.chunk_config import chunk_config_from_values
 from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.worker import IngestConfig, IngestWorker
 from rag_admin.db import AdminDatabase
@@ -100,7 +101,7 @@ class SettingsStore:
 
     def build_ingest_config(self, *, zim_dir: str, upload_dir: str) -> IngestConfig:
         values = self.all_field_values()
-        embed_url = values.get("EMBED_URL", "http://127.0.0.1:18089")
+        embed_url = values.get("EMBED_URL", "http://127.0.0.1:8089")
         ingest_urls_raw = values.get("INGEST_EMBED_URLS", "").strip()
         return IngestConfig(
             zim_dir=zim_dir,
@@ -119,6 +120,7 @@ class SettingsStore:
             embed_max_chars=int(values.get("EMBED_MAX_CHARS", "2000")),
             sparse_reindex_mode=values.get("INGEST_SPARSE_REINDEX", "idle").lower(),
             stall_seconds=int(values.get("INGEST_STALL_MINUTES", "15")) * 60,
+            chunk_config=chunk_config_from_values(values),
         )
 
     def apply_to_worker(self, worker: IngestWorker, *, zim_dir: str, upload_dir: str) -> None:
@@ -184,8 +186,8 @@ class SettingsStore:
             "qdrant_url": self.get_value("QDRANT_URL", "http://127.0.0.1:6333"),
             "collection": self.get_value("QDRANT_COLLECTION", "nomad_knowledge_base"),
             "output": output,
-            "llm_url": build.get("MEMGRAPH_BUILD_LLM_URL", "http://127.0.0.1:8787/v1"),
-            "llm_model": build.get("MEMGRAPH_BUILD_LLM_MODEL", ""),
+            "llm_url": self.get_value("MEMGRAPH_BUILD_LLM_URL"),
+            "llm_model": self.get_value("MEMGRAPH_BUILD_LLM_MODEL"),
             "max_chunks": int(build.get("MEMGRAPH_BUILD_MAX_CHUNKS", "1000")),
             "concurrency": int(build.get("MEMGRAPH_BUILD_CONCURRENCY", "3")),
             "embed_url": embed,

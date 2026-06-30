@@ -17,6 +17,8 @@ Default ports from `.env.example` (all overridable):
 | Sparse index (optional) | `8096` | BM25 sidecar |
 | RAG admin UI (optional) | `8087` | `ADMIN_PORT` — only if `rag_admin` runs on this host |
 
+**Port collision:** default `ADMIN_PORT` and the documented second proxy instance both use `8087`. On one host, set `ADMIN_PORT` or `PROXY_PORT` to different values before running both.
+
 Embedding is called directly at `EMBED_URL` — not proxied through `PROXY_PORT`.
 
 When running smoke scripts in a shell, `.env` is not auto-loaded:
@@ -130,9 +132,15 @@ sudo systemctl restart rag-admin.service   # picks up INGEST_EMBED_URLS from poo
 
 Query RAG uses `:8089` (`nomic-embed.service`). Bulk ingest uses the pool on `18089+` (`nomic-embed@PORT`). Raise `NOMIC_POOL_VRAM_RESERVE_MIB` if chat models need more headroom on the same GPU.
 
+On `/opt/ai` hosts, `scripts/update-buster-embed-gpu.sh` pulls the repo, installs nomic-embed units and scale env, starts the GPU pool, and smoke-checks `:8089` (override `REPO_ROOT` / `CONFIG_DIR` as needed).
+
 ## Optional admin / ingest
 
 `rag_admin` and the ingest worker are separate from the proxy — same machine or another host. See [Ingest and admin](ingest-and-admin.md). This repository does not ship a `rag-admin.service` unit.
+
+## Dev / host-specific scripts
+
+Internal homelab helpers — see [scripts/README.md](../scripts/README.md#dev--homelab-scripts).
 
 ## Config changes
 

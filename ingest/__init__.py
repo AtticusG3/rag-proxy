@@ -4,6 +4,7 @@ from ingest.chunking import chunk_text
 from ingest.embedder import embed_texts
 from ingest.qdrant_writer import (
     build_point,
+    clear_collection,
     delete_by_source,
     get_collection_count,
     upsert_points,
@@ -18,6 +19,7 @@ __all__ = [
     "IngestWorker",
     "build_point",
     "chunk_text",
+    "clear_collection",
     "delete_by_source",
     "determine_file_type",
     "embed_texts",

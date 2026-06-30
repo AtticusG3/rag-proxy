@@ -76,6 +76,45 @@ def test_proxy_save_writes_llama_swap_url(tmp_path: Path) -> None:
     assert result.restart_proxy is True
 
 
+def test_memgraph_build_params_use_schema_defaults(tmp_path: Path) -> None:
+    db = AdminDatabase(str(tmp_path / "admin.sqlite"))
+    store = SettingsStore(
+        db,
+        admin_env_path=str(tmp_path / "admin.env"),
+        proxy_env_path=str(tmp_path / "proxy.env"),
+    )
+    params = store.memgraph_build_params()
+    assert params["llm_url"] == "http://192.168.1.202:8081/v1"
+    assert params["llm_model"] == "qwen3.5-9b-turbo"
+    assert "8787" not in params["llm_url"]
+
+
+def test_save_ingest_chunk_settings_updates_config(tmp_path: Path) -> None:
+    db = AdminDatabase(str(tmp_path / "admin.sqlite"))
+    store = SettingsStore(
+        db,
+        admin_env_path=str(tmp_path / "admin.env"),
+        proxy_env_path=str(tmp_path / "proxy.env"),
+    )
+    store.save_group(
+        "ingest",
+        {
+            "INGEST_CHUNK_SIZE_TOKENS": "256",
+            "INGEST_CHUNK_OVERLAP_TOKENS": "32",
+            "INGEST_CHUNK_TOKENIZER": "gpt2",
+            "INGEST_CHUNK_SEMANTIC": "false",
+            "INGEST_CHUNK_SEMANTIC_MODEL": "minishlab/potion-base-32M",
+            "INGEST_CHUNK_MIN_TOKENS": "50",
+        },
+    )
+    config = store.build_ingest_config(zim_dir=str(tmp_path), upload_dir=str(tmp_path))
+    assert config.chunk_config.chunk_size == 256
+    assert config.chunk_config.chunk_overlap == 32
+    assert config.chunk_config.tokenizer == "gpt2"
+    assert config.chunk_config.semantic_enabled is False
+    assert config.chunk_config.min_chunk_tokens == 50
+
+
 def test_ingest_pause_persists_in_sqlite(tmp_path: Path) -> None:
     db_path = tmp_path / "admin.sqlite"
     db = AdminDatabase(str(db_path))

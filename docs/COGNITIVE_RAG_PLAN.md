@@ -132,6 +132,8 @@ Registered in `pipeline_stages.py`; orchestrator runs in order, skipping disable
 
 Tier0 bypass and gating skip/light/full decisions live in `retrieval_policy.py`.
 
+The `tier0` stage is always registered when the cognitive pipeline is on (`enabled=True` in `pipeline_stages.py`). `ENABLE_TIER0_HEURISTICS` gates heuristic logic inside the stage; when false, tier0 no-ops except `X-RAG-Mode: off|force` header overrides.
+
 ## Feature flag matrix
 
 | Flag | Default | Purpose |
@@ -158,6 +160,33 @@ Tier0 bypass and gating skip/light/full decisions live in `retrieval_policy.py`.
 | `ENABLE_METRICS` | false | `GET /metrics` on proxy port |
 
 Legacy: `METRICS_PORT` > 0 also enables metrics when `ENABLE_METRICS` is unset/false. Not a separate listener.
+
+## Transcript capture
+
+Optional JSONL capture for fine-tuning exports and RAG corpus promotion. Separate from pipeline observability; disabled by default. Not part of the cognitive stage list — runs in the proxy route after the pipeline.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ENABLE_TRANSCRIPT_CAPTURE` | false | Master switch |
+| `FINETUNE_LOG_PATH` | `/var/lib/rag_proxy/capture/finetune.jsonl` | Sanitized request + assistant completion |
+| `RAG_IMPROVEMENT_LOG_PATH` | `/var/lib/rag_proxy/capture/rag_improvement.jsonl` | Query, retrieval metadata, hits, Q&A |
+| `TRANSCRIPT_STRIP_PROXY_ARTEFACTS` | true | Strip RAG/memory prefixes from captured messages |
+| `TRANSCRIPT_HEADER_OPT_IN` | false | Require `X-Capture-Log: true` per request |
+| `TRANSCRIPT_SAMPLE_RATE` | 1.0 | Sample rate 0.0–1.0 |
+| `TRANSCRIPT_HIT_PREVIEW_CHARS` | 300 | Hit preview length in RAG improvement records |
+| `ENABLE_RAG_CORPUS_AUTO_INGEST` | false | Promote eligible Q&A pairs to Qdrant after append |
+| `RAG_CORPUS_COLLECTION` | `nomad_conversation_derived` | Derived collection (separate from main KB) |
+| `RAG_CORPUS_MIN_ANSWER_CHARS` | 100 | Minimum answer length for promotion |
+| `RAG_CORPUS_REQUIRE_CHUNKS` | false | Require injected chunks before promotion |
+
+Offline helpers:
+
+```bash
+python scripts/export_finetune_dataset.py --input /var/lib/rag_proxy/capture/finetune.jsonl --output finetune_messages.jsonl
+python scripts/promote_rag_corpus.py --input /var/lib/rag_proxy/capture/rag_improvement.jsonl --dry-run
+```
+
+Full reference: [Configuration — Transcript capture](configuration.md#transcript-capture).
 
 ## Latency budgets
 

@@ -10,12 +10,12 @@ DEFAULT_CHUNK_SIZE_TOKENS = 512
 DEFAULT_CHUNK_OVERLAP_TOKENS = 64
 DEFAULT_CHUNK_TOKENIZER = "nomic-ai/nomic-embed-text-v1.5"
 DEFAULT_SEMANTIC_MODEL = "minishlab/potion-base-32M"
+DEFAULT_MIN_CHUNK_TOKENS = 100
 TOKENIZER_FALLBACKS = ("gpt2", "word")
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
+def _env_bool_from_str(raw: str | None, default: bool) -> bool:
+    if raw is None or not raw.strip():
         return default
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
@@ -27,16 +27,42 @@ class ChunkConfig:
     tokenizer: str = DEFAULT_CHUNK_TOKENIZER
     semantic_model: str = DEFAULT_SEMANTIC_MODEL
     semantic_enabled: bool = True
+    min_chunk_tokens: int = DEFAULT_MIN_CHUNK_TOKENS
+
+
+def chunk_config_from_values(values: dict[str, str]) -> ChunkConfig:
+    """Build chunk config from settings/env key-value map."""
+    return ChunkConfig(
+        chunk_size=int(values.get("INGEST_CHUNK_SIZE_TOKENS", str(DEFAULT_CHUNK_SIZE_TOKENS))),
+        chunk_overlap=int(
+            values.get("INGEST_CHUNK_OVERLAP_TOKENS", str(DEFAULT_CHUNK_OVERLAP_TOKENS))
+        ),
+        tokenizer=values.get("INGEST_CHUNK_TOKENIZER", DEFAULT_CHUNK_TOKENIZER),
+        semantic_model=values.get("INGEST_CHUNK_SEMANTIC_MODEL", DEFAULT_SEMANTIC_MODEL),
+        semantic_enabled=_env_bool_from_str(values.get("INGEST_CHUNK_SEMANTIC"), True),
+        min_chunk_tokens=int(
+            values.get("INGEST_CHUNK_MIN_TOKENS", str(DEFAULT_MIN_CHUNK_TOKENS))
+        ),
+    )
 
 
 def load_chunk_config() -> ChunkConfig:
     """Load chunk settings from environment."""
-    return ChunkConfig(
-        chunk_size=int(os.getenv("INGEST_CHUNK_SIZE_TOKENS", str(DEFAULT_CHUNK_SIZE_TOKENS))),
-        chunk_overlap=int(
-            os.getenv("INGEST_CHUNK_OVERLAP_TOKENS", str(DEFAULT_CHUNK_OVERLAP_TOKENS))
-        ),
-        tokenizer=os.getenv("INGEST_CHUNK_TOKENIZER", DEFAULT_CHUNK_TOKENIZER),
-        semantic_model=os.getenv("INGEST_CHUNK_SEMANTIC_MODEL", DEFAULT_SEMANTIC_MODEL),
-        semantic_enabled=_env_bool("INGEST_CHUNK_SEMANTIC", True),
+    return chunk_config_from_values(
+        {
+            "INGEST_CHUNK_SIZE_TOKENS": os.getenv(
+                "INGEST_CHUNK_SIZE_TOKENS", str(DEFAULT_CHUNK_SIZE_TOKENS)
+            ),
+            "INGEST_CHUNK_OVERLAP_TOKENS": os.getenv(
+                "INGEST_CHUNK_OVERLAP_TOKENS", str(DEFAULT_CHUNK_OVERLAP_TOKENS)
+            ),
+            "INGEST_CHUNK_TOKENIZER": os.getenv("INGEST_CHUNK_TOKENIZER", DEFAULT_CHUNK_TOKENIZER),
+            "INGEST_CHUNK_SEMANTIC_MODEL": os.getenv(
+                "INGEST_CHUNK_SEMANTIC_MODEL", DEFAULT_SEMANTIC_MODEL
+            ),
+            "INGEST_CHUNK_SEMANTIC": os.getenv("INGEST_CHUNK_SEMANTIC"),
+            "INGEST_CHUNK_MIN_TOKENS": os.getenv(
+                "INGEST_CHUNK_MIN_TOKENS", str(DEFAULT_MIN_CHUNK_TOKENS)
+            ),
+        }
     )

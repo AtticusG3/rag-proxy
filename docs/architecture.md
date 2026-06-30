@@ -77,7 +77,7 @@ Registered order in `pipeline_stages.py`:
 
 | Tier | Typical latency | Examples |
 | --- | --- | --- |
-| 0 | 1–15 ms | Heuristic bypass (`ENABLE_TIER0_HEURISTICS`) |
+| 0 | 1–15 ms | Heuristic bypass (`ENABLE_TIER0_HEURISTICS`; stage always runs, flag gates logic) |
 | 1 | 20–100 ms | Intent, gating (`ENABLE_INTENT_ROUTER`, `ENABLE_RETRIEVAL_GATING`) |
 | 2 | 100–500 ms | Hybrid retrieval, rerank |
 | 3 | 1–3 s | Graph, MemGraphRAG, tools, rolling memory |

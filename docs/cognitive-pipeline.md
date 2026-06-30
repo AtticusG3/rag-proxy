@@ -28,18 +28,22 @@ tier0 -> intent -> gating -> routing -> rewrite -> retrieve -> rerank
 
 | Stage | Flag | Purpose |
 | --- | --- | --- |
-| tier0 | `ENABLE_TIER0_HEURISTICS` | Fast regex path; may skip embed/Qdrant |
+| tier0 | `ENABLE_TIER0_HEURISTICS` | Fast regex path; may skip embed/Qdrant. Stage is always registered when cognitive pipeline is on; when the flag is false the stage no-ops except `X-RAG-Mode: off` or `force` header overrides. |
 | intent | `ENABLE_INTENT_ROUTER` | Classify query intent |
 | gating | `ENABLE_RETRIEVAL_GATING` | Skip/light/full retrieval |
 | routing | `ENABLE_MODEL_ROUTING` | Suggest or force model by intent |
-| rewrite | `ENABLE_QUERY_REWRITE` | Normalize/expand query |
-| retrieve | *(always when retrieval active)* | Embed + Qdrant (hybrid if enabled) |
+| rewrite | `ENABLE_QUERY_REWRITE` (+ optional `ENABLE_QUERY_REWRITE_LLM` + `INTENT_MODEL`) | Normalize/expand query |
+| retrieve | *(always when retrieval active)* | Embed + Qdrant; hybrid when `ENABLE_HYBRID_RETRIEVAL` |
 | rerank | `ENABLE_RERANKER` | Cross-encoder reorder |
 | graph | `ENABLE_GRAPH_LOOKUP` | Infra graph SQLite lookup |
 | memgraphrag | `ENABLE_MEMGRAPHRAG` | Fact scoring + PPR + passages |
 | tools | `ENABLE_TOOLS` | Whitelisted file reads |
 | memory | `ENABLE_ROLLING_MEMORY` | Session summaries (`X-Conversation-Id`) |
-| context | *(always when hits exist)* | Assemble and inject |
+| context | *(always when hits exist)* | Assemble and inject; `ENABLE_TOKENIZER_ESTIMATE`, `ENABLE_SEMANTIC_DEDUPE`, `ENABLE_EMBED_CACHE` affect assembly |
+
+Related flags not tied to a single stage: `GATING_LOG_ONLY` (gating observe-only), `ENABLE_REQUEST_TRACE` / `ENABLE_JSON_LOGS` / `ENABLE_METRICS` (observability).
+
+**Stage registration vs flags:** `pipeline_stages.py` always registers `tier0`, `retrieve`, and `context` when the cognitive pipeline runs. Per-stage `ENABLE_*` flags (and budgets) control behavior inside the stage — e.g. `tier0` appears in traces but skips heuristics when `ENABLE_TIER0_HEURISTICS=false`.
 
 ## Recommended rollout
 

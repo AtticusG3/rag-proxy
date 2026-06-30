@@ -19,6 +19,7 @@ Operator and integrator guides for transparent RAG middleware in front of [llama
 | [Troubleshooting](troubleshooting.md) | Symptom → fix table and diagnostic commands |
 | [Ingest and admin](ingest-and-admin.md) | RAG admin UI, ingest worker |
 | [MemGraphRAG](memgraphrag.md) | Offline index build, runtime enable, verify |
+| [Scripts](../scripts/README.md) | Operator and dev script index |
 
 ## Quick reference
 

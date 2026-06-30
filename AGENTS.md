@@ -30,8 +30,17 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `sidecars/` | CPU rerank + BM25 sparse HTTP sidecars (Docker `cognitive` profile) |
 | `sidecars/mcp_rag/` | MCP retrieval tools (`search_knowledge_base`) over hybrid stack |
 | `rag_admin/` | Content Explorer UI, catalog subscriptions, ingest queue |
+| `rag_admin/settings_schema.py` | Settings UI field groups and defaults |
+| `rag_admin/settings_store.py` | Persist Settings to env files + admin SQLite |
+| `ingest/worker.py` | Ingest queue worker (`IngestWorker`) |
+| `ingest/embed_pool.py` | VRAM-aware nomic-embed pool planner |
+| `docker/` | Compose profiles (proxy, cognitive sidecars) |
 | `ingest/` | ZIM/PDF/text ingest worker (Qdrant + sparse reindex) |
+| `ingest/chunk_config.py` | Ingest chunk size/overlap/tokenizer env (`INGEST_CHUNK_*`) |
+| `ingest/chunking_strategy.py` | Per-document Chonkie strategy selection (recursive, sentence, semantic, token, code) |
+| `ingest/chunking.py` | Chonkie chunk execution and strategy fallbacks |
 | `scripts/catalog_weekly_update.py` | Cron helper for subscription update checks |
+| `scripts/requeue_all_ingest.py` | Re-queue all ingest files after chunk strategy/size change |
 | `rag_proxy/chunk_text.py` | Shared Qdrant payload text extraction (dense + sparse) |
 | `.env.example` | Env template |
 | `docs/COGNITIVE_RAG_PLAN.md` | Operator architecture reference |
@@ -44,9 +53,16 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag-proxy-test` | Tests |
 | `rag-proxy-debug` | Missing/wrong RAG context |
 | `rag-proxy-deploy` | systemd, `.env`, homelab |
+
+## Skills (user — `~/.cursor/skills/`)
+
+| Skill | Use when |
+| --- | --- |
 | `bencium-controlled-ux-designer` | rag_admin UI/UX, layout, tokens, accessibility (systematic, ask-first) |
 | `bencium-innovative-ux-designer` | Bold/creative rag_admin surfaces, campaigns, distinctive pages |
 | `bencium-impact-designer` | High-impact production UI with strong aesthetic direction |
+
+Stack profiles for all `C:\Cursor IDE\*` projects: `WORKSPACE-STACKS.md` inside each bencium skill directory.
 
 ## Upstream pool (`UPSTREAM_*`)
 
@@ -63,7 +79,7 @@ Shared `httpx.AsyncClient` started in app lifespan (`startup_upstream_client` / 
 
 - `pytest tests/ -q` passes; no network in unit tests.
 - Fail-open: cognitive errors never break upstream request.
-- New env vars in `.env.example` + `rag_proxy/config.py`.
+- New env vars in `.env.example` plus the module that reads them (`rag_proxy/config.py`, `rag_admin/config.py`, `ingest/chunk_config.py`, `ingest/embed_pool.py`, or sidecar `app.py` as appropriate).
 
 ## User-facing docs
 

@@ -1,6 +1,6 @@
 # rag-admin UI, ZIM ingest, and catalog subscriptions (install alongside requirements.txt)
 chonkie[tokenizers]>=1.4,<2
-# Optional on GPU ingest hosts: chonkie[semantic] for arXiv/dense PDF semantic chunking
+# Optional: chonkie[semantic] for arXiv/dense PDF semantic chunking; chonkie[code] for code strategy
 requests>=2.28,<3
 libzim>=3.3.0
 jinja2>=3.1.0

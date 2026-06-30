@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from ingest.worker import IngestWorker
+from ingest.chunking import warmup_chunking
 from rag_admin.auth import (
     AuthMiddleware,
     clear_session,
@@ -56,6 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         upload_dir=settings.upload_dir,
     )
     worker.start()
+    warmup_chunking()
     job_runner = BackgroundJobRunner(
         db,
         repo_root=settings.repo_root,

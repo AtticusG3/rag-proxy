@@ -8,7 +8,7 @@ Pipeline:
   5. Build and save ThreeLayerMemory
 
 Usage (file corpus, original mode):
-  python -m scripts.build_memgraphrag_index \\
+  python scripts/build_memgraphrag_index.py \\
     --input corpus.txt \\
     --output /var/lib/rag_proxy/memgraphrag.sqlite \\
     --llm-url http://192.168.1.202:8080/v1 \\
@@ -17,7 +17,7 @@ Usage (file corpus, original mode):
     --overlap 64
 
 Usage (Qdrant collection, new mode):
-  python -m scripts.build_memgraphrag_index \\
+  python scripts/build_memgraphrag_index.py \\
     --source qdrant \\
     --qdrant-url http://192.168.1.36:6333 \\
     --collection nomad_knowledge_base \\

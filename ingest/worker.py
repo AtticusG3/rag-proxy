@@ -8,7 +8,7 @@ import threading
 import time
 import uuid
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -16,6 +16,7 @@ from typing import Callable
 import httpx
 
 from ingest.db import IngestDatabase
+from ingest.chunk_config import ChunkConfig, load_chunk_config
 from ingest.chunking import chunk_text
 from ingest.chunking_strategy import ChunkContext
 from ingest.embed_urls import parse_ingest_embed_urls
@@ -50,6 +51,7 @@ class IngestConfig:
     sparse_reindex_mode: str = "idle"
     stall_seconds: int = 900
     embed_urls: list[str] | None = None
+    chunk_config: ChunkConfig = field(default_factory=load_chunk_config)
 
 
 UpdateStateFn = Callable[..., None]
@@ -66,6 +68,7 @@ def _iter_chunks_for_file(
     file_path: str,
     *,
     max_articles: int,
+    chunk_config: ChunkConfig,
 ) -> Iterator[tuple[str, str, str]]:
     """Yield (title, source, chunk_text) without loading whole ZIMs into RAM."""
     file_type = determine_file_type(file_path)
@@ -74,13 +77,13 @@ def _iter_chunks_for_file(
 
     if file_type == "text":
         title, text = _read_text_file(file_path)
-        for piece in chunk_text(text, context=chunk_ctx):
+        for piece in chunk_text(text, context=chunk_ctx, config=chunk_config):
             yield title, source, piece
         return
 
     if file_type == "zim":
         for article in iter_zim_articles(file_path, max_articles=max_articles):
-            for piece in chunk_text(article.text, context=chunk_ctx):
+            for piece in chunk_text(article.text, context=chunk_ctx, config=chunk_config):
                 yield article.title, source, piece
         return
 
@@ -88,7 +91,7 @@ def _iter_chunks_for_file(
         title, text = read_pdf_text(file_path)
         if not text.strip():
             return
-        for piece in chunk_text(text, context=chunk_ctx):
+        for piece in chunk_text(text, context=chunk_ctx, config=chunk_config):
             yield title, source, piece
         return
 
@@ -102,7 +105,11 @@ def process_file(
     on_progress: UpdateStateFn | None = None,
 ) -> int:
     """Embed one file into Qdrant. Returns total chunks embedded."""
-    chunk_iter = _iter_chunks_for_file(file_path, max_articles=config.max_articles)
+    chunk_iter = _iter_chunks_for_file(
+        file_path,
+        max_articles=config.max_articles,
+        chunk_config=config.chunk_config,
+    )
     return run_ingest_pipeline(
         chunk_iter,
         embed_url=config.embed_url,

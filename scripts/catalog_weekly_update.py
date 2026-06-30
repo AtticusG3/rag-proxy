@@ -23,7 +23,10 @@ def _load_env_file(path: str) -> None:
 def main() -> int:
     repo = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo))
-    _load_env_file(os.getenv("RAG_ADMIN_ENV", "/opt/ai/config/rag-admin.env"))
+    _load_env_file(
+        os.getenv("RAG_ADMIN_ENV_FILE")
+        or os.getenv("RAG_ADMIN_ENV", "/opt/ai/config/rag-admin.env")
+    )
 
     from ingest.worker import IngestConfig, IngestWorker
     from rag_admin.catalog.download_manager import CatalogDownloadManager
