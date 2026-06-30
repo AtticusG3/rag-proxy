@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from rag_admin.catalog.item_context import SOURCE_META, describe_item
 from rag_admin.catalog.listing_parser import infer_subscribable, is_internal_href
 from rag_admin.catalog.providers import SOURCES, browse_source
-from rag_admin.templates_env import templates
+from rag_admin.helpers import templates
 
 router = APIRouter()
 

@@ -2,13 +2,32 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from urllib.parse import urlencode
 
 from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
+from fastapi.templating import Jinja2Templates
 
 from rag_admin.config import resolve_ingest_path, settings
+
+_BASE = os.path.dirname(__file__)
+
+
+def format_datetime(value: str | None) -> str:
+    """Format ISO-8601 timestamps as DD-MMM-YYYY hh:mm:ss."""
+    if not value:
+        return ""
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    return dt.strftime("%d-%b-%Y %H:%M:%S")
+
+
+templates = Jinja2Templates(directory=os.path.join(_BASE, "templates"))
+templates.env.filters["format_dt"] = format_datetime
 
 
 def flash_redirect(url: str, message: str, *, level: str = "info") -> RedirectResponse:
@@ -29,14 +48,3 @@ def validated_ingest_file_path(file_path: str) -> str:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-def format_datetime(value: str | None) -> str:
-    """Format ISO-8601 timestamps as DD-MMM-YYYY hh:mm:ss."""
-    if not value:
-        return ""
-    try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return value
-    return dt.strftime("%d-%b-%Y %H:%M:%S")

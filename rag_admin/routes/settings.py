@@ -14,7 +14,7 @@ from rag_admin.service_restart import schedule_restart
 from rag_admin.service_status import service_status
 from rag_admin.settings_schema import GROUP_LABELS, SETTING_FIELDS, SETTING_GROUPS
 from rag_admin.settings_store import SettingsStore
-from rag_admin.templates_env import templates
+from rag_admin.helpers import templates
 
 router = APIRouter()
 

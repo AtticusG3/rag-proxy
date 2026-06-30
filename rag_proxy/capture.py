@@ -7,7 +7,7 @@ import random
 from datetime import datetime
 from typing import Any
 
-from rag_proxy import capture_writer
+from rag_proxy.capture_writer import enqueue_records
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext
 from rag_proxy.message_sanitize import is_exportable_turn, sanitize_client_messages
@@ -163,7 +163,7 @@ def capture_chat_response(
 ) -> None:
     """Build and queue capture records for a completed response."""
     try:
-        capture_writer.enqueue_records(
+        enqueue_records(
             build_capture_records(
                 original_messages=original_messages,
                 ctx=ctx,

@@ -1,11 +1,7 @@
 """Transcript message sanitization should remove proxy-only context."""
 
 from rag_proxy.legacy_rag import inject_context
-from rag_proxy.message_sanitize import (
-    is_exportable_turn,
-    sanitize_client_messages,
-    strip_rolling_memory,
-)
+from rag_proxy.message_sanitize import is_exportable_turn, sanitize_client_messages
 
 
 def test_sanitize_client_messages_removes_rag_prefix_but_keeps_system_prompt():
@@ -32,7 +28,7 @@ def test_sanitize_client_messages_drops_context_only_system_message():
     assert out == [{"role": "user", "content": "hi"}]
 
 
-def test_strip_rolling_memory_removes_operational_memory_prefix():
+def test_sanitize_client_messages_strips_rolling_memory_prefix():
     """Rolling memory is runtime context and should not become training text."""
     messages = [
         {
@@ -42,7 +38,7 @@ def test_strip_rolling_memory_removes_operational_memory_prefix():
         {"role": "user", "content": "latest"},
     ]
 
-    out = strip_rolling_memory(messages)
+    out = sanitize_client_messages(messages)
 
     assert out[0]["content"] == "base instructions"
 

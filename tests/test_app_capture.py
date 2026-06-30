@@ -87,7 +87,7 @@ def test_chat_capture_error_does_not_change_response(monkeypatch):
 
     with patch("rag_proxy.pipeline_stages.hybrid_search", fake_hybrid):
         with patch("rag_proxy.upstream_client.httpx.AsyncClient", return_value=mock_client):
-            with patch("rag_proxy.capture.capture_writer.enqueue_records", side_effect=OSError("disk full")):
+            with patch("rag_proxy.capture.enqueue_records", side_effect=OSError("disk full")):
                 with TestClient(app) as client:
                     resp = client.post(
                         "/v1/chat/completions",

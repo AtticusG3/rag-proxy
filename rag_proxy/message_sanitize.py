@@ -33,12 +33,6 @@ def _strip_first_system_prefix(
     return messages
 
 
-def strip_rolling_memory(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Remove rolling-memory prefix from the first system message."""
-    out = copy.deepcopy(messages)
-    return _strip_first_system_prefix(out, ROLLING_MEMORY_PREFIX)
-
-
 def _strip_proxy_artefacts(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out = copy.deepcopy(messages)
     for prefix in (RAG_CONTEXT_PREFIX, ROLLING_MEMORY_PREFIX):

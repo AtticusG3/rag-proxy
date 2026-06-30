@@ -11,8 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ingest.types import determine_file_type
 from rag_admin.config import settings
-from rag_admin.helpers import flash_redirect, validated_ingest_file_path
-from rag_admin.templates_env import templates
+from rag_admin.helpers import flash_redirect, templates, validated_ingest_file_path
 
 router = APIRouter()
 

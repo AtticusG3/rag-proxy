@@ -16,7 +16,7 @@ from rag_admin.ingest_status import (
     ingest_config_snapshot,
     ingest_queue_stats,
 )
-from rag_admin.templates_env import templates
+from rag_admin.helpers import templates
 
 router = APIRouter()
 

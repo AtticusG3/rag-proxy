@@ -26,7 +26,7 @@ from rag_admin.catalog import CatalogDownloadManager
 from rag_admin.job_runner import BackgroundJobRunner
 from rag_admin.routes import dashboard, explorer, ingest, settings as settings_routes, zim
 from rag_admin.settings_store import SettingsStore
-from rag_admin.templates_env import templates
+from rag_admin.helpers import templates
 
 log = logging.getLogger("rag-admin")
 
