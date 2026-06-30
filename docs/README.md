@@ -2,7 +2,7 @@
 
 Operator and integrator guides for transparent RAG middleware in front of [llama-swap](https://github.com/mostlygeek/llama-swap).
 
-**New here?** Start with [Getting started](getting-started.md), then [Verify the stack](getting-started.md#verify-the-stack).
+**New here?** Read the [repository README](../README.md) for a plain-English overview, then [Getting started](getting-started.md) and [Verify the stack](getting-started.md#verify-the-stack).
 
 ## Guides
 

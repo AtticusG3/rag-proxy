@@ -1,17 +1,70 @@
 # rag_proxy
 
-Transparent RAG middleware in front of [llama-swap](https://github.com/mostlygeek/llama-swap). Clients point at this proxy instead of llama-swap directly; chat requests can be augmented with Qdrant context before they reach any model.
+**Local knowledge, wired into every chat** — without changing your clients.
 
-**You do not change client API keys** — point the OpenAI-compatible base URL at the proxy; llama-swap still validates auth downstream.
+rag_proxy is a small FastAPI proxy that sits in front of [llama-swap](https://github.com/mostlygeek/llama-swap). Your Open WebUI, Cursor, or curl scripts keep the same API paths and keys; you only point the base URL at rag_proxy instead of llama-swap. On each chat request, the proxy can embed your question, search a Qdrant knowledge base, inject relevant chunks into the prompt, and forward the enriched request upstream.
+
+Transparent middleware: retrieval happens in the open, errors fail open (chat still works), and advanced stages are opt-in.
+
+## Who this is for
+
+- **Homelab LLM setups** — run models through llama-swap and give them access to your own docs, ZIM archives, PDFs, and notes.
+- **Open WebUI / Continue / Cursor users** — one base URL swap (`http://<host>:8088/v1`) adds RAG to any OpenAI-compatible client.
+- **Operators who want control** — tune retrieval thresholds, roll out a tiered cognitive pipeline when you are ready, index content with rag_admin, or expose search via MCP tools.
+
+You do **not** need a separate API key or client plugin. rag_proxy is the same HTTP surface as llama-swap, with optional context injection on chat `POST`s.
+
+## How it works (default path)
+
+With cognitive mode off (`ENABLE_COGNITIVE_PIPELINE=false`, the default), every chat request follows a simple pipeline:
+
+```text
+Client  -->  rag_proxy :8088
+                | embed query (nomic-embed :8089)
+                | dense search (Qdrant)
+                | inject chunks into system message
+             -->  llama-swap :8080  -->  your model
+```
+
+Non-chat routes (`GET /v1/models`, health checks, etc.) pass through unchanged. If embed or Qdrant fails, the proxy logs a warning and still forwards the request — your chat does not break.
+
+Optional **cognitive pipeline** adds staged retrieval (gating, hybrid BM25, rerank, graph lookup, MemGraphRAG, tools, session memory) behind per-stage `ENABLE_*` flags. See [Architecture](docs/architecture.md) and [Cognitive pipeline](docs/cognitive-pipeline.md).
 
 ## Quick start
 
-1. **Start dependencies**: Qdrant (with your collection), `nomic-embed` on `:8089`, llama-swap on `:8080`.
-2. **Install**: `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
-3. **Configure**: `cp .env.example .env` — set `QDRANT_URL` and `QDRANT_COLLECTION`.
-4. **Run**: `python rag_proxy.py`
-5. **Point clients** at `http://<host>:8088/v1` (same paths and API key as llama-swap).
-6. **Verify** — see [Getting started — Verify the stack](docs/getting-started.md#verify-the-stack).
+**Prerequisites:** llama-swap (`:8080`), nomic-embed (`:8089`), and Qdrant with a populated collection.
+
+### Windows (local dev)
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+# Edit .env — set QDRANT_URL and QDRANT_COLLECTION
+python rag_proxy.py
+```
+
+### Linux
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # set QDRANT_URL and QDRANT_COLLECTION
+python rag_proxy.py
+```
+
+### Point your client
+
+Use the same paths and API key as llama-swap; only the base URL changes:
+
+```text
+http://<host>:8088/v1
+```
+
+### Verify
+
+Run the smoke checks in [Getting started — Verify the stack](docs/getting-started.md#verify-the-stack). You want a log line like `RAG: injected N chunk(s)` for a question that matches your index.
 
 Leave `ENABLE_COGNITIVE_PIPELINE=false` until legacy RAG injects chunks reliably.
 
@@ -24,31 +77,33 @@ Leave `ENABLE_COGNITIVE_PIPELINE=false` until legacy RAG injects chunks reliably
 | `LLAMA_SWAP_URL` | If not local | `http://127.0.0.1:8080` |
 | `EMBED_URL` | If not local | `http://127.0.0.1:8089` |
 
-Full variable reference: [docs/configuration.md](docs/configuration.md).
+Full reference: [Configuration](docs/configuration.md).
 
-## Architecture (brief)
+## Feature highlights
 
-**Legacy (default)** — `ENABLE_COGNITIVE_PIPELINE=false`:
+| Feature | What you get |
+| --- | --- |
+| **Drop-in proxy** | OpenAI-compatible `/v1` API; swap base URL only |
+| **Fail-open RAG** | Embed/Qdrant errors never block upstream chat |
+| **Legacy mode (default)** | Embed, dense Qdrant search, inject — simple and predictable |
+| **Cognitive pipeline (optional)** | Tiered stages with latency budgets and per-stage flags |
+| **Hybrid retrieval** | Dense + BM25 sparse merge when sidecars are enabled |
+| **rag_admin + ingest** | Web UI and worker to index ZIM/PDF/text into Qdrant |
+| **MCP tools** | `search_knowledge_base` for IDE integration (`sidecars/mcp_rag/`) |
+| **Observability** | Request traces, JSON logs, Prometheus `GET /metrics` |
 
-```text
-Client -> rag_proxy :8088
-            | embed (nomic-embed :8089)
-            | search Qdrant
-            | inject chunks into system message
-            -> llama-swap :8080 -> models
-```
-
-**Cognitive (optional)** — tiered stages (tier0, intent, gating, retrieve, rerank, graph, memgraphrag, tools, memory) with per-stage `ENABLE_*` flags and budgets. Fail-open: RAG errors never break the upstream request.
-
-Details: [docs/architecture.md](docs/architecture.md) · rollout: [docs/cognitive-pipeline.md](docs/cognitive-pipeline.md) · [docs/COGNITIVE_RAG_PLAN.md](docs/COGNITIVE_RAG_PLAN.md)
+Per-request overrides (`x-rag-mode`, `x-no-cache`, `x-conversation-id`): [Headers and clients](docs/headers-and-clients.md).
 
 ## Documentation
 
 | Guide | Purpose |
 | --- | --- |
-| [docs/README.md](docs/README.md) | Documentation index |
+| [docs/README.md](docs/README.md) | Full documentation index |
 | [Getting started](docs/getting-started.md) | Install, verify, legacy RAG behavior |
-| [Configuration](docs/configuration.md) | All env vars |
+| [Architecture](docs/architecture.md) | Components, injection, fail-open |
+| [Configuration](docs/configuration.md) | All environment variables |
+| [Cognitive pipeline](docs/cognitive-pipeline.md) | Stage summary and rollout |
+| [COGNITIVE_RAG_PLAN.md](docs/COGNITIVE_RAG_PLAN.md) | Detailed flag matrix and failure modes |
 | [Headers and clients](docs/headers-and-clients.md) | Open WebUI, Cursor, per-request headers |
 | [Deployment](docs/deployment.md) | systemd, Docker |
 | [Observability](docs/observability.md) | Traces, metrics, logs |
@@ -58,22 +113,30 @@ Details: [docs/architecture.md](docs/architecture.md) · rollout: [docs/cognitiv
 
 ## Deployment
 
-**Linux systemd** (production): edit `rag-proxy.service` and `nomic-embed.service` paths, then `systemctl enable --now nomic-embed rag-proxy`. Walkthrough: [docs/deployment.md](docs/deployment.md).
+**Linux systemd** (production): edit `rag-proxy.service` and `nomic-embed.service` paths, then `systemctl enable --now nomic-embed rag-proxy`. Walkthrough: [Deployment](docs/deployment.md).
 
-**Docker**: `docker compose up -d --build` (legacy) or `--profile qdrant --profile cognitive` for full stack. See [docker/README.md](docker/README.md).
+**Docker** (bundled llama-swap + optional Qdrant and cognitive sidecars):
 
-Default ports: proxy `8088`, llama-swap `8080`, embed `8089` — all configurable via `.env`.
+```powershell
+copy docker\.env.example docker\.env
+copy docker\config.yaml.example docker\config.yaml
+# Edit docker\.env and docker\config.yaml (MODELS_DIR, Qdrant, chat model)
+docker compose up -d --build
+```
+
+Full stack with Qdrant and cognitive sidecars: `docker compose --profile qdrant --profile cognitive up -d --build`. Details: [docker/README.md](docker/README.md).
+
+Default ports: proxy `8088`, llama-swap `8080`, embed `8089` — all overridable in `.env`.
 
 ## Tests
 
-```bash
-pip install pytest
-pytest tests/ -q
+```powershell
+.\scripts\run-tests.ps1
 ```
 
-Or on Windows: `.\scripts\run-tests.ps1`
+Or on Linux: `pip install -r requirements-dev.txt` then `pytest tests/ -q`.
 
-Offline unit tests only (no live Qdrant or embed server).
+Offline unit tests only — no live Qdrant or embed server required.
 
 ## License
 
