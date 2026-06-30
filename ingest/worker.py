@@ -20,8 +20,8 @@ from ingest.chunking import ChunkConfig, load_chunk_config
 from ingest.chunking import chunk_text
 from ingest.chunking_strategy import ChunkContext
 from ingest.embed_urls import parse_ingest_embed_urls
-from ingest.pdf_reader import read_pdf_text
-from ingest.pipeline import run_ingest_pipeline
+from ingest.pdf_reader import iter_pdf_pages
+from ingest.pipeline import make_embed_semaphore, run_ingest_pipeline
 from ingest.qdrant_writer import delete_by_source
 from ingest.scanner import scan_storage
 from ingest.types import determine_file_type
@@ -51,7 +51,23 @@ class IngestConfig:
     sparse_reindex_mode: str = "idle"
     stall_seconds: int = 900
     embed_urls: list[str] | None = None
+    file_concurrency: int | None = None
     chunk_config: ChunkConfig = field(default_factory=load_chunk_config)
+
+
+def resolve_file_concurrency(
+    embed_urls: list[str],
+    *,
+    explicit: int | None = None,
+) -> int:
+    """Worker thread count: explicit env/config, else max(1, min(4, len(embed_urls)))."""
+    if explicit is not None and explicit > 0:
+        return explicit
+    env_raw = os.getenv("INGEST_FILE_CONCURRENCY", "").strip()
+    if env_raw:
+        return max(1, int(env_raw))
+    pool_size = len(embed_urls) if embed_urls else 1
+    return max(1, min(4, pool_size))
 
 
 UpdateStateFn = Callable[..., None]
@@ -62,6 +78,14 @@ def _read_text_file(path: str) -> tuple[str, str]:
         text = handle.read()
     title = Path(path).stem.replace("_", " ").title()
     return title, text
+
+
+def _pdf_page_carry(text: str) -> str:
+    """Last paragraph from a page for cross-page chunk overlap."""
+    paragraphs = [piece.strip() for piece in text.split("\n\n") if piece.strip()]
+    if not paragraphs:
+        return ""
+    return paragraphs[-1]
 
 
 def _iter_chunks_for_file(
@@ -88,11 +112,18 @@ def _iter_chunks_for_file(
         return
 
     if file_type == "pdf":
-        title, text = read_pdf_text(file_path)
-        if not text.strip():
-            return
-        for piece in chunk_text(text, context=chunk_ctx, config=chunk_config):
-            yield title, source, piece
+        title_base = Path(file_path).stem.replace("_", " ").title()
+        carry = ""
+        for page_label, page_text in iter_pdf_pages(file_path):
+            if not page_text.strip():
+                continue
+            text_for_chunk = page_text
+            if carry:
+                text_for_chunk = f"{carry}\n\n{page_text}"
+            page_title = f"{title_base} ({page_label})"
+            for piece in chunk_text(text_for_chunk, context=chunk_ctx, config=chunk_config):
+                yield page_title, source, piece
+            carry = _pdf_page_carry(page_text)
         return
 
     raise ValueError(f"Unsupported file type for {file_path}")
@@ -103,6 +134,7 @@ def process_file(
     config: IngestConfig,
     *,
     on_progress: UpdateStateFn | None = None,
+    embed_limiter: threading.Semaphore | None = None,
 ) -> int:
     """Embed one file into Qdrant. Returns total chunks embedded."""
     chunk_iter = _iter_chunks_for_file(
@@ -120,6 +152,7 @@ def process_file(
         batch_size=config.batch_size,
         embed_max_chars=config.embed_max_chars,
         embed_concurrency=config.embed_concurrency,
+        embed_limiter=embed_limiter,
         on_progress=on_progress,
     )
 
@@ -169,7 +202,7 @@ class SparseReindexScheduler:
 
 
 class IngestWorker:
-    """Single-threaded job processor with SQLite-backed state."""
+    """Multi-threaded job processor with SQLite-backed state."""
 
     def __init__(
         self,
@@ -182,7 +215,14 @@ class IngestWorker:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._paused = False
-        self._thread: threading.Thread | None = None
+        self._threads: list[threading.Thread] = []
+        self._embed_limiter = make_embed_semaphore(config.embed_concurrency)
+
+    def _file_worker_count(self) -> int:
+        urls = self.config.embed_urls or parse_ingest_embed_urls(
+            embed_url=self.config.embed_url
+        )
+        return resolve_file_concurrency(urls, explicit=self.config.file_concurrency)
 
     @property
     def paused(self) -> bool:
@@ -193,16 +233,27 @@ class IngestWorker:
 
     def update_config(self, config: IngestConfig) -> None:
         with self._lock:
+            if config.embed_concurrency != self.config.embed_concurrency:
+                self._embed_limiter = make_embed_semaphore(config.embed_concurrency)
             self.config = config
             self._sparse.config = config
 
     def start(self) -> None:
-        if self._thread and self._thread.is_alive():
+        alive = [thread for thread in self._threads if thread.is_alive()]
+        if alive:
             return
         self._stop.clear()
         self._recover_interrupted_running()
-        self._thread = threading.Thread(target=self._run_loop, daemon=True, name="ingest-worker")
-        self._thread.start()
+        worker_count = self._file_worker_count()
+        self._threads = []
+        for index in range(worker_count):
+            thread = threading.Thread(
+                target=self._run_loop,
+                daemon=True,
+                name=f"ingest-worker-{index}",
+            )
+            thread.start()
+            self._threads.append(thread)
 
     def stop(self) -> None:
         self._stop.set()
@@ -323,12 +374,12 @@ class IngestWorker:
                 time.sleep(1.0)
                 continue
             self._fail_stalled_running()
-            pending = self.db.list_pending_files(limit=1)
-            if not pending:
+            claimed = self.db.claim_pending_file()
+            if claimed is None:
                 self._sparse.flush()
                 time.sleep(1.0)
                 continue
-            file_path = pending[0]["file_path"]
+            file_path = claimed["file_path"]
             if not os.path.isfile(file_path):
                 log.warning("ingest file missing, removing state: %s", file_path)
                 self.remove_file_from_index(file_path)
@@ -345,20 +396,17 @@ class IngestWorker:
                 )
 
     def _process_one(self, file_path: str) -> None:
-        with self._lock:
-            self.db.update_file_state(
-                file_path,
-                status="running",
-                started_at=_utc_now(),
-                last_error=None,
-            )
-
         def on_progress(**kwargs: object) -> None:
             chunks = kwargs.get("chunks_embedded")
             if isinstance(chunks, int):
                 self.db.update_file_state(file_path, chunks_embedded=chunks)
 
-        count = process_file(file_path, self.config, on_progress=on_progress)
+        count = process_file(
+            file_path,
+            self.config,
+            on_progress=on_progress,
+            embed_limiter=self._embed_limiter,
+        )
 
         with self._lock:
             self.db.update_file_state(

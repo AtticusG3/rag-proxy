@@ -29,7 +29,13 @@ def test_process_one_releases_lock_during_process_file() -> None:
     release_process = threading.Event()
     lock_acquired_during_process = threading.Event()
 
-    def slow_process_file(file_path: str, config: IngestConfig, *, on_progress=None) -> int:
+    def slow_process_file(
+        file_path: str,
+        config: IngestConfig,
+        *,
+        on_progress=None,
+        embed_limiter=None,
+    ) -> int:
         process_started.set()
         release_process.wait(timeout=5.0)
         return 3

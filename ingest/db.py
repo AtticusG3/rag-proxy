@@ -13,6 +13,14 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _sqlite_supports_returning() -> bool:
+    """RETURNING on UPDATE requires SQLite 3.35+."""
+    parts = sqlite3.sqlite_version.split(".")
+    major = int(parts[0])
+    minor = int(parts[1]) if len(parts) > 1 else 0
+    return (major, minor) >= (3, 35)
+
+
 class IngestDatabase:
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
@@ -197,6 +205,70 @@ class IngestDatabase:
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def claim_pending_file(self) -> dict[str, Any] | None:
+        """Atomically claim one pending file (status -> running)."""
+        if _sqlite_supports_returning():
+            return self._claim_pending_file_returning()
+        return self._claim_pending_file_legacy()
+
+    def _claim_pending_file_returning(self) -> dict[str, Any] | None:
+        now = _utc_now()
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                UPDATE kb_ingest_state
+                SET status = 'running',
+                    started_at = ?,
+                    last_error = NULL,
+                    updated_at = ?
+                WHERE rowid = (
+                    SELECT rowid FROM kb_ingest_state
+                    WHERE status IN ('pending', 'queued')
+                    ORDER BY updated_at
+                    LIMIT 1
+                )
+                AND status IN ('pending', 'queued')
+                RETURNING *
+                """,
+                (now, now),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def _claim_pending_file_legacy(self) -> dict[str, Any] | None:
+        """BEGIN IMMEDIATE claim for SQLite < 3.35 (no UPDATE RETURNING)."""
+        now = _utc_now()
+        with self._conn() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            target = conn.execute(
+                """
+                SELECT rowid FROM kb_ingest_state
+                WHERE status IN ('pending', 'queued')
+                ORDER BY updated_at
+                LIMIT 1
+                """
+            ).fetchone()
+            if target is None:
+                return None
+            rowid = int(target[0])
+            conn.execute(
+                """
+                UPDATE kb_ingest_state
+                SET status = 'running',
+                    started_at = ?,
+                    last_error = NULL,
+                    updated_at = ?
+                WHERE rowid = ? AND status IN ('pending', 'queued')
+                """,
+                (now, now, rowid),
+            )
+            row = conn.execute(
+                "SELECT * FROM kb_ingest_state WHERE rowid = ?",
+                (rowid,),
+            ).fetchone()
+        if row is None or row["status"] != "running":
+            return None
+        return dict(row)
 
     def create_job(self, job_id: str, job_type: str, message: str = "") -> None:
         with self._conn() as conn:

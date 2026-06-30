@@ -121,6 +121,9 @@ class SettingsStore:
             embed_max_chars=int(values.get("EMBED_MAX_CHARS", "2000")),
             sparse_reindex_mode=values.get("INGEST_SPARSE_REINDEX", "idle").lower(),
             stall_seconds=int(values.get("INGEST_STALL_MINUTES", "15")) * 60,
+            file_concurrency=int(values["INGEST_FILE_CONCURRENCY"])
+            if values.get("INGEST_FILE_CONCURRENCY", "").strip()
+            else None,
             chunk_config=chunk_config_from_values(values),
         )
 

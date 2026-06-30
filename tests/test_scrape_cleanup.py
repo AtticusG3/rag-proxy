@@ -30,6 +30,30 @@ def test_merge_undersized_chunks_combines_adjacent_small_pieces():
     assert "word" in merged[0]
 
 
+def test_merge_undersized_chunks_counts_tokens_linearly(monkeypatch) -> None:
+    """Merge pass should not re-tokenize full combined buffers (O(n) not O(n^2))."""
+    from ingest import chunking
+
+    calls = 0
+    real_count = chunking.count_tokens
+
+    def counting_tokens(text: str, tokenizer: str) -> int:
+        nonlocal calls
+        calls += 1
+        return real_count(text, tokenizer)
+
+    monkeypatch.setattr(chunking, "count_tokens", counting_tokens)
+    pieces = [f"segment {index} " * 5 for index in range(12)]
+    merge_undersized_chunks(
+        pieces,
+        tokenizer="word",
+        min_tokens=5,
+        max_tokens=500,
+    )
+    # One count per piece plus one for the "\n\n" separator probe.
+    assert calls == len(pieces) + 1
+
+
 def test_warmup_chunking_logs_active_tokenizer(caplog):
     import logging
 

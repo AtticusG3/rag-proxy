@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Protocol
 
 import httpx
 
@@ -12,6 +14,48 @@ from ingest.embedder import embed_texts
 from ingest.qdrant_writer import build_point, ensure_collection, upsert_points
 
 log = logging.getLogger("ingest.pipeline")
+
+
+class EmbedLimiter(Protocol):
+    def acquire(self, blocking: bool = True, timeout: float = -1) -> bool: ...
+
+    def release(self) -> None: ...
+
+
+def _embed_with_limiter(
+    texts: list[str],
+    *,
+    embed_url: str,
+    embed_urls: list[str],
+    max_chars: int,
+    client: httpx.Client,
+    limiter: EmbedLimiter | None,
+) -> list[list[float]]:
+    if limiter is not None:
+        limiter.acquire()
+        try:
+            return embed_texts(
+                texts,
+                embed_url=embed_url,
+                embed_urls=embed_urls,
+                max_chars=max_chars,
+                client=client,
+            )
+        finally:
+            limiter.release()
+    return embed_texts(
+        texts,
+        embed_url=embed_url,
+        embed_urls=embed_urls,
+        max_chars=max_chars,
+        client=client,
+    )
+
+
+def make_embed_semaphore(concurrency: int) -> threading.Semaphore:
+    """Shared cap on concurrent embed HTTP calls across file pipelines."""
+    return threading.Semaphore(max(1, concurrency))
+
 
 UpdateStateFn = Callable[..., None]
 ChunkBatch = list[tuple[str, str, str]]
@@ -119,6 +163,7 @@ def run_ingest_pipeline(
     batch_size: int,
     embed_max_chars: int,
     embed_concurrency: int,
+    embed_limiter: EmbedLimiter | None = None,
     on_progress: UpdateStateFn | None = None,
 ) -> int:
     """Embed batches concurrently and upsert to Qdrant in chunk order."""
@@ -133,7 +178,12 @@ def run_ingest_pipeline(
     chunk_start = 0
     pending: dict[int, PendingBatch] = {}
 
+    limits = httpx.Limits(
+        max_connections=concurrency,
+        max_keepalive_connections=concurrency,
+    )
     qdrant_client = httpx.Client(timeout=120.0)
+    embed_client = httpx.Client(timeout=120.0, limits=limits)
     try:
         ensure_collection(qdrant_url, qdrant_collection, client=qdrant_client)
         with ThreadPoolExecutor(
@@ -144,11 +194,13 @@ def run_ingest_pipeline(
                 texts = [chunk[2] for chunk in batch]
                 target_url = urls[next_seq % len(urls)]
                 future = pool.submit(
-                    embed_texts,
+                    _embed_with_limiter,
                     texts,
                     embed_url=target_url,
                     embed_urls=urls,
                     max_chars=embed_max_chars,
+                    client=embed_client,
+                    limiter=embed_limiter,
                 )
                 pending[next_seq] = (batch, chunk_start, future)
                 chunk_start += len(batch)
@@ -186,6 +238,7 @@ def run_ingest_pipeline(
                     total=total,
                 )
     finally:
+        embed_client.close()
         qdrant_client.close()
 
     return total

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -15,6 +16,9 @@ from ingest.scrape_cleanup import strip_scrape_boilerplate
 from rag_proxy.env_parse import parse_bool
 
 log = logging.getLogger("ingest.chunking")
+
+# lru_cached Chonkie runners are not thread-safe; serialize strategy execution.
+_chunk_runner_lock = threading.Lock()
 
 # nomic-embed-text-v1.5 is tuned for ~512-token inputs; 64 tokens ~= 12.5% overlap.
 DEFAULT_CHUNK_SIZE_TOKENS = 512
@@ -242,17 +246,18 @@ def _run_strategy(
     tokenizer: str,
     config: ChunkConfig,
 ) -> list[str]:
-    runner = _cached_runner(
-        strategy.value,
-        tokenizer,
-        config.chunk_size,
-        config.chunk_overlap,
-        config.semantic_model,
-    )
-    if isinstance(runner, Pipeline):
-        raw = [chunk.text for chunk in runner.run(texts=text).chunks]
-    else:
-        raw = [chunk.text for chunk in runner(text)]
+    with _chunk_runner_lock:
+        runner = _cached_runner(
+            strategy.value,
+            tokenizer,
+            config.chunk_size,
+            config.chunk_overlap,
+            config.semantic_model,
+        )
+        if isinstance(runner, Pipeline):
+            raw = [chunk.text for chunk in runner.run(texts=text).chunks]
+        else:
+            raw = [chunk.text for chunk in runner(text)]
     return [piece for piece in raw if piece.strip()]
 
 
@@ -267,20 +272,21 @@ def merge_undersized_chunks(
     if min_tokens <= 0 or len(pieces) <= 1:
         return pieces
 
+    piece_token_counts = [count_tokens(piece, tokenizer) for piece in pieces]
+    separator_tokens = count_tokens("\n\n", tokenizer)
+
     merged: list[str] = []
     buffer = ""
     buffer_tokens = 0
 
-    for piece in pieces:
-        piece_tokens = count_tokens(piece, tokenizer)
+    for piece, piece_tokens in zip(pieces, piece_token_counts):
         if not buffer:
             buffer = piece
             buffer_tokens = piece_tokens
             continue
-        combined = f"{buffer}\n\n{piece}"
-        combined_tokens = count_tokens(combined, tokenizer)
+        combined_tokens = buffer_tokens + separator_tokens + piece_tokens
         if buffer_tokens < min_tokens and combined_tokens <= max_tokens:
-            buffer = combined
+            buffer = f"{buffer}\n\n{piece}"
             buffer_tokens = combined_tokens
         else:
             merged.append(buffer)
