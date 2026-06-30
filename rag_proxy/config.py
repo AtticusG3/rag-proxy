@@ -212,16 +212,10 @@ class Settings:
 
     # MemGraphRAG offline index build (scripts/build_memgraphrag_index.py, rag-admin)
     memgraph_build_llm_url: str = field(
-        default_factory=lambda: os.getenv(
-            "MEMGRAPH_BUILD_LLM_URL",
-            os.getenv("MEMGRAPHRAG_BUILD_LLM_URL", "http://127.0.0.1:8080/v1"),
-        )
+        default_factory=lambda: os.getenv("MEMGRAPH_BUILD_LLM_URL", "http://127.0.0.1:8080/v1")
     )
     memgraph_build_llm_model: str = field(
-        default_factory=lambda: os.getenv(
-            "MEMGRAPH_BUILD_LLM_MODEL",
-            os.getenv("MEMGRAPHRAG_BUILD_LLM_MODEL", "qwen3.5-9b-turbo"),
-        )
+        default_factory=lambda: os.getenv("MEMGRAPH_BUILD_LLM_MODEL", "qwen3.5-9b-turbo")
     )
     memgraph_build_max_chunks: int = field(
         default_factory=lambda: _env_int("MEMGRAPH_BUILD_MAX_CHUNKS", 1000)
@@ -239,9 +233,6 @@ class Settings:
     # Model registry / routing
     model_registry_ttl_sec: int = field(
         default_factory=lambda: _env_int("MODEL_REGISTRY_TTL_SEC", 300)
-    )
-    model_registry_config_path: str = field(
-        default_factory=lambda: os.getenv("MODEL_REGISTRY_CONFIG_PATH", "")
     )
     model_capabilities_json: str = field(
         default_factory=lambda: os.getenv("MODEL_CAPABILITIES_JSON", "")
@@ -296,11 +287,7 @@ class Settings:
     )
 
     # Observability
-    enable_metrics: bool = field(
-        default_factory=lambda: _env_bool("ENABLE_METRICS", False)
-        or _env_int("METRICS_PORT", 0) > 0
-    )
-    metrics_port: int = field(default_factory=lambda: _env_int("METRICS_PORT", 0))
+    enable_metrics: bool = field(default_factory=lambda: _env_bool("ENABLE_METRICS", False))
 
     # Tier 0 tuning
     tier0_max_chars: int = field(default_factory=lambda: _env_int("TIER0_MAX_CHARS", 80))

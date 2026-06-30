@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from ingest.chunk_config import ChunkConfig
-from ingest.chunking import merge_undersized_chunks
-from ingest.chunk_tokenizer import resolve_tokenizer, warmup_chunking
+from ingest.chunking import ChunkConfig, merge_undersized_chunks, resolve_tokenizer, warmup_chunking
 from ingest.scrape_cleanup import strip_scrape_boilerplate
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-from rag_proxy.clients.bundle import ClientBundle
+from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.clients.qdrant import hybrid_search
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, PipelineTier, RequestContext, RetrievalDecision
@@ -23,7 +23,7 @@ class PipelineStage:
     min_budget_ms: float
     enabled: Callable[[], bool]
     should_run: Callable[[RequestContext], bool]
-    run: Callable[[RequestContext, ClientBundle], Awaitable[None]]
+    run: Callable[[RequestContext, ModelRegistry], Awaitable[None]]
 
 
 def _retrieval_active(ctx: RequestContext) -> bool:
@@ -55,26 +55,26 @@ def _memory_should_run(ctx: RequestContext) -> bool:
     return bool(ctx.conversation_id)
 
 
-async def _run_tier0(ctx: RequestContext, clients: ClientBundle) -> None:
+async def _run_tier0(ctx: RequestContext, _registry: ModelRegistry) -> None:
     """Run tier0 heuristics and promote tier when retrieval stays on."""
     await tier0_heuristics.run_tier0(ctx)
     if ctx.retrieval != RetrievalDecision.SKIP:
         ctx.tier = PipelineTier.TIER1_LIGHT
 
 
-async def _run_retrieve(ctx: RequestContext, clients: ClientBundle) -> None:
+async def _run_retrieve(ctx: RequestContext, _registry: ModelRegistry) -> None:
     """Set retrieval tier and run hybrid retrieval."""
     ctx.tier = PipelineTier.TIER2_RETRIEVAL
-    await tier2_retrieval.run_retrieval(ctx, clients)
+    await tier2_retrieval.run_retrieval(ctx, _registry)
 
 
-async def _run_graph(ctx: RequestContext, clients: ClientBundle) -> None:
+async def _run_graph(ctx: RequestContext, _registry: ModelRegistry) -> None:
     """Set heavy tier and run graph lookup."""
     ctx.tier = PipelineTier.TIER3_HEAVY
     await tier3_graph.run_graph(ctx)
 
 
-async def _run_legacy_retrieve(ctx: RequestContext, clients: ClientBundle) -> None:
+async def _run_legacy_retrieve(ctx: RequestContext, _registry: ModelRegistry) -> None:
     """Legacy path: embed and hybrid-search into ctx.hits."""
     query = ctx.query_text
     if not query:
@@ -87,9 +87,9 @@ async def _run_legacy_retrieve(ctx: RequestContext, clients: ClientBundle) -> No
     ctx.stage_trace.append(f"retrieve:{len(ctx.hits)}")
 
 
-async def _run_legacy_context(ctx: RequestContext, clients: ClientBundle) -> None:
+async def _run_legacy_context(ctx: RequestContext, registry: ModelRegistry) -> None:
     """Legacy path: assemble and inject context from hits."""
-    await tier2_context.run_context_assembly(ctx, clients)
+    await tier2_context.run_context_assembly(ctx, registry)
 
 
 def build_legacy_pipeline_stages() -> list[PipelineStage]:
@@ -127,28 +127,28 @@ def build_pipeline_stages() -> list[PipelineStage]:
             min_budget_ms=0,
             enabled=lambda: settings.enable_intent_router,
             should_run=lambda _ctx: True,
-            run=lambda ctx, clients: tier1_intent.run_intent(ctx, clients),
+            run=lambda ctx, registry: tier1_intent.run_intent(ctx, registry),
         ),
         PipelineStage(
             name="gating",
             min_budget_ms=0,
             enabled=lambda: settings.enable_retrieval_gating,
             should_run=lambda _ctx: True,
-            run=lambda ctx, _clients: tier1_gating.run_gating(ctx),
+            run=lambda ctx, _registry: tier1_gating.run_gating(ctx),
         ),
         PipelineStage(
             name="routing",
             min_budget_ms=float(settings.stage_budget_routing_ms),
             enabled=lambda: settings.enable_model_routing,
             should_run=lambda _ctx: True,
-            run=lambda ctx, clients: routing_stage.run_routing(ctx, clients),
+            run=lambda ctx, registry: routing_stage.run_routing(ctx, registry),
         ),
         PipelineStage(
             name="rewrite",
             min_budget_ms=float(settings.stage_budget_rewrite_ms),
             enabled=lambda: settings.enable_query_rewrite,
             should_run=_retrieval_active,
-            run=lambda ctx, _clients: tier2_rewrite.run_rewrite(ctx),
+            run=lambda ctx, _registry: tier2_rewrite.run_rewrite(ctx),
         ),
         PipelineStage(
             name="retrieve",
@@ -162,7 +162,7 @@ def build_pipeline_stages() -> list[PipelineStage]:
             min_budget_ms=float(settings.rerank_timeout_ms),
             enabled=lambda: settings.enable_reranker,
             should_run=lambda ctx: _retrieval_active(ctx) and bool(ctx.hits),
-            run=lambda ctx, _clients: tier2_rerank.run_rerank(ctx),
+            run=lambda ctx, _registry: tier2_rerank.run_rerank(ctx),
         ),
         PipelineStage(
             name="graph",
@@ -176,27 +176,27 @@ def build_pipeline_stages() -> list[PipelineStage]:
             min_budget_ms=float(settings.stage_budget_memgraphrag_ms),
             enabled=lambda: settings.enable_memgraphrag,
             should_run=_retrieval_active,
-            run=lambda ctx, _clients: tier3_memgraphrag.run_memgraphrag(ctx),
+            run=lambda ctx, _registry: tier3_memgraphrag.run_memgraphrag(ctx),
         ),
         PipelineStage(
             name="tools",
             min_budget_ms=float(settings.tool_budget_ms),
             enabled=lambda: settings.enable_tools,
             should_run=_tools_should_run,
-            run=lambda ctx, _clients: tier3_tools.run_tools(ctx),
+            run=lambda ctx, _registry: tier3_tools.run_tools(ctx),
         ),
         PipelineStage(
             name="memory",
             min_budget_ms=0,
             enabled=lambda: settings.enable_rolling_memory,
             should_run=_memory_should_run,
-            run=lambda ctx, _clients: tier3_memory.run_memory(ctx),
+            run=lambda ctx, _registry: tier3_memory.run_memory(ctx),
         ),
         PipelineStage(
             name="context",
             min_budget_ms=0,
             enabled=lambda: True,
             should_run=lambda ctx: bool(ctx.hits),
-            run=lambda ctx, clients: tier2_context.run_context_assembly(ctx, clients),
+            run=lambda ctx, registry: tier2_context.run_context_assembly(ctx, registry),
         ),
     ]

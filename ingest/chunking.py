@@ -3,22 +3,151 @@
 from __future__ import annotations
 
 import logging
+import os
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
 from chonkie import Pipeline, RecursiveChunker, SentenceChunker, TokenChunker
 
-from ingest.chunk_config import (
-    ChunkConfig,
-    DEFAULT_CHUNK_OVERLAP_TOKENS,
-    DEFAULT_CHUNK_SIZE_TOKENS,
-    load_chunk_config,
-)
-from ingest.chunk_tokenizer import count_tokens, resolve_tokenizer, warmup_chunking
 from ingest.chunking_strategy import ChunkContext, ChunkStrategy, select_chunk_strategy
 from ingest.scrape_cleanup import strip_scrape_boilerplate
 
 log = logging.getLogger("ingest.chunking")
+
+# nomic-embed-text-v1.5 is tuned for ~512-token inputs; 64 tokens ~= 12.5% overlap.
+DEFAULT_CHUNK_SIZE_TOKENS = 512
+DEFAULT_CHUNK_OVERLAP_TOKENS = 64
+DEFAULT_CHUNK_TOKENIZER = "nomic-ai/nomic-embed-text-v1.5"
+DEFAULT_SEMANTIC_MODEL = "minishlab/potion-base-32M"
+DEFAULT_MIN_CHUNK_TOKENS = 100
+TOKENIZER_FALLBACKS = ("gpt2", "word")
+
+_PROBE_TEXT = "tokenizer probe text."
+
+
+def _env_bool_from_str(raw: str | None, default: bool) -> bool:
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+@dataclass(frozen=True)
+class ChunkConfig:
+    chunk_size: int = DEFAULT_CHUNK_SIZE_TOKENS
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP_TOKENS
+    tokenizer: str = DEFAULT_CHUNK_TOKENIZER
+    semantic_model: str = DEFAULT_SEMANTIC_MODEL
+    semantic_enabled: bool = True
+    min_chunk_tokens: int = DEFAULT_MIN_CHUNK_TOKENS
+
+
+def chunk_config_from_values(values: dict[str, str]) -> ChunkConfig:
+    """Build chunk config from settings/env key-value map."""
+    return ChunkConfig(
+        chunk_size=int(values.get("INGEST_CHUNK_SIZE_TOKENS", str(DEFAULT_CHUNK_SIZE_TOKENS))),
+        chunk_overlap=int(
+            values.get("INGEST_CHUNK_OVERLAP_TOKENS", str(DEFAULT_CHUNK_OVERLAP_TOKENS))
+        ),
+        tokenizer=values.get("INGEST_CHUNK_TOKENIZER", DEFAULT_CHUNK_TOKENIZER),
+        semantic_model=values.get("INGEST_CHUNK_SEMANTIC_MODEL", DEFAULT_SEMANTIC_MODEL),
+        semantic_enabled=_env_bool_from_str(values.get("INGEST_CHUNK_SEMANTIC"), True),
+        min_chunk_tokens=int(
+            values.get("INGEST_CHUNK_MIN_TOKENS", str(DEFAULT_MIN_CHUNK_TOKENS))
+        ),
+    )
+
+
+def load_chunk_config() -> ChunkConfig:
+    """Load chunk settings from environment."""
+    return chunk_config_from_values(
+        {
+            "INGEST_CHUNK_SIZE_TOKENS": os.getenv(
+                "INGEST_CHUNK_SIZE_TOKENS", str(DEFAULT_CHUNK_SIZE_TOKENS)
+            ),
+            "INGEST_CHUNK_OVERLAP_TOKENS": os.getenv(
+                "INGEST_CHUNK_OVERLAP_TOKENS", str(DEFAULT_CHUNK_OVERLAP_TOKENS)
+            ),
+            "INGEST_CHUNK_TOKENIZER": os.getenv("INGEST_CHUNK_TOKENIZER", DEFAULT_CHUNK_TOKENIZER),
+            "INGEST_CHUNK_SEMANTIC_MODEL": os.getenv(
+                "INGEST_CHUNK_SEMANTIC_MODEL", DEFAULT_SEMANTIC_MODEL
+            ),
+            "INGEST_CHUNK_SEMANTIC": os.getenv("INGEST_CHUNK_SEMANTIC"),
+            "INGEST_CHUNK_MIN_TOKENS": os.getenv(
+                "INGEST_CHUNK_MIN_TOKENS", str(DEFAULT_MIN_CHUNK_TOKENS)
+            ),
+        }
+    )
+
+
+@lru_cache(maxsize=16)
+def resolve_tokenizer(preferred: str) -> str:
+    """Return the first working tokenizer; log loudly when not the configured one."""
+    for candidate in (preferred, *TOKENIZER_FALLBACKS):
+        try:
+            RecursiveChunker(tokenizer=candidate, chunk_size=64)(_PROBE_TEXT)
+        except Exception as exc:
+            log.warning(
+                "INGEST_CHUNK_TOKENIZER probe failed for %r: %s",
+                candidate,
+                exc,
+            )
+            continue
+        if candidate != preferred:
+            log.warning(
+                "INGEST_CHUNK_TOKENIZER FALLBACK: configured=%s active=%s "
+                "(chunk token counts may not match nomic-embed; install chonkie[tokenizers])",
+                preferred,
+                candidate,
+            )
+        return candidate
+    log.error(
+        "INGEST_CHUNK_TOKENIZER: all probes failed (configured=%s); using word last-resort",
+        preferred,
+    )
+    return "word"
+
+
+@lru_cache(maxsize=16)
+def _counter_chunker(tokenizer: str) -> RecursiveChunker:
+    return RecursiveChunker(tokenizer=tokenizer, chunk_size=10_000_000)
+
+
+def count_tokens(text: str, tokenizer: str) -> int:
+    """Count tokens for a text slice using the active ingest tokenizer."""
+    if not text.strip():
+        return 0
+    chunks = _counter_chunker(tokenizer)(text)
+    return sum(chunk.token_count for chunk in chunks)
+
+
+def warmup_chunking(config: ChunkConfig | None = None) -> str:
+    """Resolve tokenizer at startup and log the active ingest chunk profile."""
+    cfg = config or load_chunk_config()
+    active = resolve_tokenizer(cfg.tokenizer)
+    if active == cfg.tokenizer:
+        log.info(
+            "ingest chunking ready: tokenizer=%s chunk_size=%s overlap=%s "
+            "min_chunk_tokens=%s semantic=%s",
+            active,
+            cfg.chunk_size,
+            cfg.chunk_overlap,
+            cfg.min_chunk_tokens,
+            cfg.semantic_enabled,
+        )
+    else:
+        log.warning(
+            "ingest chunking ready WITH TOKENIZER FALLBACK: configured=%s active=%s "
+            "chunk_size=%s overlap=%s min_chunk_tokens=%s semantic=%s",
+            cfg.tokenizer,
+            active,
+            cfg.chunk_size,
+            cfg.chunk_overlap,
+            cfg.min_chunk_tokens,
+            cfg.semantic_enabled,
+        )
+    return active
+
 
 # Backward-compatible aliases (token counts, not characters).
 DEFAULT_CHUNK_SIZE = DEFAULT_CHUNK_SIZE_TOKENS
@@ -293,9 +422,14 @@ def chunk_text(
 
 
 __all__ = [
+    "ChunkConfig",
     "DEFAULT_CHUNK_OVERLAP",
     "DEFAULT_CHUNK_SIZE",
+    "chunk_config_from_values",
     "chunk_text",
+    "count_tokens",
+    "load_chunk_config",
     "merge_undersized_chunks",
+    "resolve_tokenizer",
     "warmup_chunking",
 ]

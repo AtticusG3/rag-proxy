@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from rag_proxy.clients.bundle import ClientBundle
+from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.clients.llama_swap import classify_intent_via_model
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, RequestContext
@@ -58,7 +58,7 @@ def _intent_from_dict(data: dict) -> tuple[IntentLabel, float]:
         return IntentLabel.UNKNOWN, 0.0
 
 
-async def run_intent(ctx: RequestContext, clients: ClientBundle) -> None:
+async def run_intent(ctx: RequestContext, _registry: ModelRegistry) -> None:
     """Classify query intent into ctx.intent."""
     if not ctx.query_text:
         return

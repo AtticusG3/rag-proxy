@@ -36,9 +36,8 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `ingest/embed_pool.py` | VRAM-aware nomic-embed pool planner |
 | `docker/` | Compose profiles (proxy, cognitive sidecars) |
 | `ingest/` | ZIM/PDF/text ingest worker (Qdrant + sparse reindex) |
-| `ingest/chunk_config.py` | Ingest chunk size/overlap/tokenizer env (`INGEST_CHUNK_*`) |
 | `ingest/chunking_strategy.py` | Per-document Chonkie strategy selection (recursive, sentence, semantic, token, code) |
-| `ingest/chunking.py` | Chonkie chunk execution and strategy fallbacks |
+| `ingest/chunking.py` | Chonkie chunk execution, env-backed chunk config (`INGEST_CHUNK_*`), tokenizer resolution |
 | `scripts/catalog_weekly_update.py` | Cron helper for subscription update checks |
 | `scripts/requeue_all_ingest.py` | Re-queue all ingest files after chunk strategy/size change |
 | `rag_proxy/chunk_text.py` | Shared Qdrant payload text extraction (dense + sparse) |
@@ -79,7 +78,7 @@ Shared `httpx.AsyncClient` started in app lifespan (`startup_upstream_client` / 
 
 - `pytest tests/ -q` passes; no network in unit tests.
 - Fail-open: cognitive errors never break upstream request.
-- New env vars in `.env.example` plus the module that reads them (`rag_proxy/config.py`, `rag_admin/config.py`, `ingest/chunk_config.py`, `ingest/embed_pool.py`, or sidecar `app.py` as appropriate).
+- New env vars in `.env.example` plus the module that reads them (`rag_proxy/config.py`, `rag_admin/config.py`, `ingest/chunking.py`, `ingest/embed_pool.py`, or sidecar `app.py` as appropriate).
 
 ## User-facing docs
 

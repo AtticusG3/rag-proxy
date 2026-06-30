@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 
-from rag_proxy.clients.bundle import ClientBundle
+from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext
 from rag_proxy.legacy_rag import extract_query_text
@@ -18,7 +18,7 @@ from rag_proxy.pipeline_stages import (
 
 log = logging.getLogger("rag-proxy")
 
-_clients = ClientBundle()
+_registry = ModelRegistry()
 
 
 def _elapsed_ms(start: float) -> float:
@@ -78,7 +78,7 @@ async def run_cognitive_pipeline(ctx: RequestContext) -> None:
             if _budget_remaining(ctx) < stage.min_budget_ms:
                 continue
             t0 = time.perf_counter()
-            await stage.run(ctx, _clients)
+            await stage.run(ctx, _registry)
             ctx.latency_ms[stage.name] = _elapsed_ms(t0)
     finally:
         ctx.latency_ms["total_cognitive"] = _elapsed_ms(ctx.cognitive_start_ms)
@@ -93,15 +93,6 @@ def apply_context_to_payload(data: dict, ctx: RequestContext) -> dict:
     return data
 
 
-async def augment_chat_payload(
-    data: dict,
-    headers: dict[str, str] | None = None,
-) -> dict:
-    """Augment messages in chat payload; fail-open at HTTP boundary."""
-    data, _ctx = await augment_chat_payload_with_context(data, headers)
-    return data
-
-
 async def augment_chat_payload_with_context(
     data: dict,
     headers: dict[str, str] | None = None,
@@ -109,7 +100,7 @@ async def augment_chat_payload_with_context(
     """Augment messages and return the context used for capture/observability."""
     ctx = build_request_context_from_http(data, headers)
     if _needs_model_registry_refresh():
-        await _clients.model_registry.refresh()
+        await _registry.refresh()
     await run_cognitive_pipeline(ctx)
     data = apply_context_to_payload(data, ctx)
     log_rag_request(ctx)

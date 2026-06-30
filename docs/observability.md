@@ -75,7 +75,7 @@ rag_chunks_injected_total 87
 | `rag_requests_total` | Chat requests that completed RAG path (legacy + cognitive) |
 | `rag_chunks_injected_total` | Sum of chunks injected across requests |
 
-Legacy: `METRICS_PORT>0` also enables metrics when `ENABLE_METRICS` is unset/false.
+Set `ENABLE_METRICS=true` to expose counters on the proxy port.
 
 When metrics are disabled, `GET /metrics` returns `404` with body `metrics disabled`.
 

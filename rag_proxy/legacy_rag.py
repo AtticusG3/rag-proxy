@@ -9,6 +9,7 @@ import httpx
 
 from rag_proxy.chunk_text import extract_chunk_text
 from rag_proxy.config import settings
+from rag_proxy.rag_context import RAG_CONTEXT_PREFIX
 
 log = logging.getLogger("rag-proxy")
 
@@ -148,40 +149,10 @@ def extract_query_text(messages: list[dict]) -> str | None:
 def inject_context(messages: list[dict], chunks: list[str]) -> list[dict]:
     """Prepend retrieved context as a system message (or prefix an existing one)."""
     context_block = "\n\n---\n\n".join(chunks)
-    rag_prefix = (
-        "The following context was retrieved from the local knowledge base. "
-        "Use it to inform your response where relevant. "
-        "Do not mention the knowledge base unless the user asks.\n\n"
-        f"{context_block}"
-    )
+    rag_prefix = f"{RAG_CONTEXT_PREFIX}{context_block}"
     messages = list(messages)
     if messages and messages[0]["role"] == "system":
         messages[0] = {**messages[0], "content": rag_prefix + "\n\n" + messages[0]["content"]}
     else:
         messages.insert(0, {"role": "system", "content": rag_prefix})
     return messages
-
-
-async def legacy_augment_messages(messages: list[dict]) -> tuple[list[dict], dict]:
-    """Backward-compatible retrieve-and-inject helper for tests and exports.
-
-    Prefer augment_chat_payload / run_cognitive_pipeline for request handling.
-    """
-    meta: dict = {"chunks": 0, "scores": [], "query": None}
-    query = extract_query_text(messages)
-    if not query:
-        return messages, meta
-
-    meta["query"] = query
-    vector = await get_embedding(query)
-    if vector is None:
-        return messages, meta
-
-    hits = await search_qdrant_dense(vector)
-    chunks = [extract_chunk_text(h) for h in hits]
-    chunks = [c for c in chunks if c]
-    if chunks:
-        meta["chunks"] = len(chunks)
-        meta["scores"] = [round(h["score"], 3) for h in hits]
-        return inject_context(messages, chunks), meta
-    return messages, meta

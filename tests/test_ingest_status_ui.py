@@ -6,7 +6,7 @@ import os
 import tempfile
 
 from ingest.worker import IngestConfig
-from rag_admin.flash import flash_redirect
+from rag_admin.helpers import flash_redirect
 from rag_admin.ingest_status import (
     enrich_file_rows,
     ingest_config_snapshot,

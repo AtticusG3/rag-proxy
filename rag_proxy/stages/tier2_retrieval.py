@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from rag_proxy.clients.bundle import ClientBundle
+from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.clients.qdrant import hybrid_search
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext, RetrievalDecision
 
 
-async def run_retrieval(ctx: RequestContext, clients: ClientBundle) -> None:
+async def run_retrieval(ctx: RequestContext, _registry: ModelRegistry) -> None:
     if ctx.retrieval == RetrievalDecision.SKIP:
         return
 

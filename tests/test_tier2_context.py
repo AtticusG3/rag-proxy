@@ -1,9 +1,8 @@
 """Tests for context budget estimation."""
 
-from rag_proxy.clients.bundle import ClientBundle
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext
-from rag_proxy.registry.models import ModelCapabilities
+from rag_proxy.registry.models import ModelCapabilities, ModelRegistry
 from rag_proxy.stages.tier2_context import estimate_message_chars, resolve_inject_budget_chars
 
 
@@ -25,8 +24,8 @@ def test_resolve_inject_budget_unknown_model_uses_char_fallback(monkeypatch):
     monkeypatch.setattr(settings, "context_fallback_chars", 8000)
     monkeypatch.setattr(settings, "default_completion_reserve", 1024)
     ctx = RequestContext(messages=[], requested_model="unknown-model")
-    clients = ClientBundle()
-    budget = resolve_inject_budget_chars(ctx, clients)
+    registry = ModelRegistry()
+    budget = resolve_inject_budget_chars(ctx, registry)
     assert budget == settings.context_fallback_chars - (settings.default_completion_reserve * 4)
 
 
@@ -34,11 +33,11 @@ def test_resolve_inject_budget_uses_model_context_tokens(monkeypatch):
     monkeypatch.setattr(settings, "context_budget_ratio", 0.25)
     monkeypatch.setattr(settings, "default_completion_reserve", 1024)
     ctx = RequestContext(messages=[], requested_model="test-model")
-    clients = ClientBundle()
-    clients.model_registry._cache["test-model"] = ModelCapabilities(
+    registry = ModelRegistry()
+    registry._cache["test-model"] = ModelCapabilities(
         model_id="test-model",
         context_length=8192,
     )
     char_budget = int(8192 * settings.context_budget_ratio) * 4
     reserve = settings.default_completion_reserve * 4
-    assert resolve_inject_budget_chars(ctx, clients) == char_budget - reserve
+    assert resolve_inject_budget_chars(ctx, registry) == char_budget - reserve

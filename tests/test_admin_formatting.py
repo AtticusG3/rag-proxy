@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from ingest.db import IngestDatabase
-from rag_admin.formatting import format_datetime
+from rag_admin.helpers import format_datetime
 
 
 class TestAdminFormatting(unittest.TestCase):

@@ -12,7 +12,6 @@ Helper scripts for operators and homelab dev. Run from repo root unless noted.
 | [`scale_nomic_embed_pool.py`](scale_nomic_embed_pool.py) | VRAM-aware nomic-embed pool sizing (`INGEST_EMBED_URLS`) |
 | [`export_finetune_dataset.py`](export_finetune_dataset.py) | Export transcript JSONL to fine-tuning message format |
 | [`promote_rag_corpus.py`](promote_rag_corpus.py) | Promote RAG improvement JSONL pairs to Qdrant |
-| [`test_memgraphrag_retrieve.py`](test_memgraphrag_retrieve.py) | Smoke-test MemGraphRAG retrieval against a built index |
 | [`update-buster-embed-gpu.sh`](update-buster-embed-gpu.sh) | Deploy GPU nomic-embed units on `/opt/ai` hosts |
 | [`run-tests.ps1`](run-tests.ps1) | Offline pytest (Windows; uses `.venv` when present) |
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from rag_proxy.clients.bundle import ClientBundle
+from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, RequestContext
 
@@ -18,7 +18,7 @@ _INTENT_DEFAULT_ROUTES: dict[IntentLabel, str] = {
 }
 
 
-async def run_routing(ctx: RequestContext, clients: ClientBundle) -> None:
+async def run_routing(ctx: RequestContext, registry: ModelRegistry) -> None:
     if not settings.enable_model_routing:
         return
 
@@ -26,7 +26,7 @@ async def run_routing(ctx: RequestContext, clients: ClientBundle) -> None:
     target = routes.get(ctx.intent.value) or _INTENT_DEFAULT_ROUTES.get(ctx.intent)
     if not target:
         return
-    if not clients.model_registry.model_exists(target):
+    if not registry.model_exists(target):
         ctx.errors.append(f"route:unknown_model:{target}")
         return
 

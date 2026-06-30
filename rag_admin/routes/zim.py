@@ -10,9 +10,8 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ingest.types import determine_file_type
-from rag_admin.flash import flash_redirect
 from rag_admin.config import settings
-from rag_admin.paths import validated_ingest_file_path
+from rag_admin.helpers import flash_redirect, validated_ingest_file_path
 from rag_admin.templates_env import templates
 
 router = APIRouter()

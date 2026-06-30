@@ -6,12 +6,8 @@ import copy
 from typing import Any
 
 from rag_proxy.legacy_rag import is_embeddable_user_query
+from rag_proxy.rag_context import RAG_CONTEXT_PREFIX
 
-RAG_CONTEXT_PREFIX = (
-    "The following context was retrieved from the local knowledge base. "
-    "Use it to inform your response where relevant. "
-    "Do not mention the knowledge base unless the user asks.\n\n"
-)
 ROLLING_MEMORY_PREFIX = "Operational memory (session):\n"
 
 
@@ -37,12 +33,6 @@ def _strip_first_system_prefix(
     return messages
 
 
-def strip_rag_injection(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Remove proxy-injected RAG context from the first system message."""
-    out = copy.deepcopy(messages)
-    return _strip_first_system_prefix(out, RAG_CONTEXT_PREFIX)
-
-
 def strip_rolling_memory(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Remove rolling-memory prefix from the first system message."""
     out = copy.deepcopy(messages)
@@ -51,7 +41,7 @@ def strip_rolling_memory(messages: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 def _strip_proxy_artefacts(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     out = copy.deepcopy(messages)
-    for prefix in (RAG_CONTEXT_PREFIX, ROLLING_MEMORY_PREFIX, RAG_CONTEXT_PREFIX):
+    for prefix in (RAG_CONTEXT_PREFIX, ROLLING_MEMORY_PREFIX):
         _strip_first_system_prefix(out, prefix)
     return out
 

@@ -9,7 +9,6 @@ from rag_proxy.observability import (
 
 def test_metrics_enabled_uses_enable_metrics_flag(monkeypatch):
     monkeypatch.setattr("rag_proxy.config.settings.enable_metrics", True)
-    monkeypatch.setattr("rag_proxy.config.settings.metrics_port", 0)
     assert metrics_enabled()
 
 

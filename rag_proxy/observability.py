@@ -22,7 +22,7 @@ def new_trace_id() -> str:
 
 
 def metrics_enabled() -> bool:
-    """ENABLE_METRICS or legacy METRICS_PORT > 0 enables GET /metrics on the proxy app."""
+    """ENABLE_METRICS enables GET /metrics on the proxy app."""
     return settings.enable_metrics
 
 

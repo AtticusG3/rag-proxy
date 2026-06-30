@@ -159,7 +159,7 @@ The `tier0` stage is always registered when the cognitive pipeline is on (`enabl
 | `ENABLE_JSON_LOGS` | false | JSON pipeline logs (vs text) |
 | `ENABLE_METRICS` | false | `GET /metrics` on proxy port |
 
-Legacy: `METRICS_PORT` > 0 also enables metrics when `ENABLE_METRICS` is unset/false. Not a separate listener.
+`ENABLE_METRICS=true` exposes `GET /metrics` on the proxy port. Not a separate listener.
 
 ## Transcript capture
 
@@ -229,7 +229,7 @@ Full reference: [Configuration — Transcript capture](configuration.md#transcri
 | Tools leak paths | Narrow `TOOL_ALLOWED_ROOTS` to comma-separated absolute paths |
 | Stage skipped unexpectedly | Compare `latency_ms` total to `COGNITIVE_LATENCY_BUDGET_MS`; raise `STAGE_BUDGET_*` or global budget |
 | No trace logs | Set `ENABLE_REQUEST_TRACE=true`; ensure `LOG_LEVEL=INFO` |
-| Metrics 404 | Set `ENABLE_METRICS=true` (or legacy `METRICS_PORT>0`); hit `http://<proxy>:8088/metrics` |
+| Metrics 404 | Set `ENABLE_METRICS=true`; hit `http://<proxy>:8088/metrics` |
 | Chat works, RAG silent | Fail-open — check WARNING lines for embed/Qdrant errors; run [smoke tests](getting-started.md#verify-the-stack) |
 
 Cognitive and RAG errors are fail-open: the original request body is forwarded unchanged.

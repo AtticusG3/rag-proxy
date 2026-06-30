@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 
-from rag_proxy.clients.bundle import ClientBundle
+from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit, RequestContext
 from rag_proxy.legacy_rag import inject_context, user_message_text
@@ -76,9 +76,9 @@ def apply_context_budget(hits: list[ChunkHit], budget_chars: int) -> list[ChunkH
     return kept
 
 
-def resolve_inject_budget_chars(ctx: RequestContext, clients: ClientBundle) -> int:
+def resolve_inject_budget_chars(ctx: RequestContext, registry: ModelRegistry) -> int:
     model_id = ctx.requested_model or None
-    context_tokens = clients.model_registry.resolve_context_tokens(model_id)
+    context_tokens = registry.resolve_context_tokens(model_id)
     if context_tokens is not None:
         token_budget = int(context_tokens * settings.context_budget_ratio)
         char_budget = token_budget * 4
@@ -90,12 +90,12 @@ def resolve_inject_budget_chars(ctx: RequestContext, clients: ClientBundle) -> i
     return max(0, char_budget - existing - reserve)
 
 
-async def run_context_assembly(ctx: RequestContext, clients: ClientBundle) -> None:
+async def run_context_assembly(ctx: RequestContext, registry: ModelRegistry) -> None:
     if not ctx.hits:
         return
 
     hits = dedupe_chunks(list(ctx.hits), settings.enable_semantic_dedupe)
-    budget = resolve_inject_budget_chars(ctx, clients)
+    budget = resolve_inject_budget_chars(ctx, registry)
     hits = apply_context_budget(hits, budget)
     ctx.hits = hits
 

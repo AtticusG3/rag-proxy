@@ -56,7 +56,7 @@ See [COGNITIVE_RAG_PLAN.md — Failure modes](COGNITIVE_RAG_PLAN.md#failure-mode
 
 ## Metrics 404
 
-Set `ENABLE_METRICS=true` (or legacy `METRICS_PORT>0`). Hit `http://<proxy_host>:<PROXY_PORT>/metrics` — not a separate port.
+Set `ENABLE_METRICS=true`. Hit `http://<proxy_host>:<PROXY_PORT>/metrics` — not a separate port.
 
 ## No trace logs
 

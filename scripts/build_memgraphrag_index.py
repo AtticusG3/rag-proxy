@@ -532,18 +532,12 @@ async def main() -> None:
     parser.add_argument("--output", required=True, help="Output SQLite database path")
     parser.add_argument(
         "--llm-url",
-        default=os.getenv(
-            "MEMGRAPH_BUILD_LLM_URL",
-            os.getenv("MEMGRAPHRAG_BUILD_LLM_URL", "http://127.0.0.1:8080/v1"),
-        ),
+        default=os.getenv("MEMGRAPH_BUILD_LLM_URL", "http://127.0.0.1:8080/v1"),
         help="LLM API URL (OpenAI-compatible). Env: MEMGRAPH_BUILD_LLM_URL",
     )
     parser.add_argument(
         "--llm-model",
-        default=os.getenv(
-            "MEMGRAPH_BUILD_LLM_MODEL",
-            os.getenv("MEMGRAPHRAG_BUILD_LLM_MODEL", "qwen3.5-9b-turbo"),
-        ),
+        default=os.getenv("MEMGRAPH_BUILD_LLM_MODEL", "qwen3.5-9b-turbo"),
         help="LLM model name. Env: MEMGRAPH_BUILD_LLM_MODEL",
     )
     parser.add_argument("--api-key", default="sk-llama-cpp", help="LLM API key")

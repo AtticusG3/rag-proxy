@@ -15,10 +15,10 @@ def test_default_route_resolves_intent_enum_key(monkeypatch):
     monkeypatch.setattr("rag_proxy.config.settings.model_routes_json", "")
 
     ctx = RequestContext(intent=IntentLabel.CODE_GENERATION, data={"model": "requested"})
-    clients = MagicMock()
-    clients.model_registry.model_exists.return_value = True
+    registry = MagicMock()
+    registry.model_exists.return_value = True
 
-    asyncio.run(run_routing(ctx, clients))
+    asyncio.run(run_routing(ctx, registry))
 
     assert ctx.selected_model == "bonsai-8b"
     assert ctx.data["model"] == "requested"
@@ -31,10 +31,10 @@ def test_force_route_does_not_mutate_ctx_data(monkeypatch):
     monkeypatch.setattr("rag_proxy.config.settings.model_routes_json", "")
 
     ctx = RequestContext(intent=IntentLabel.CODE_GENERATION, data={"model": "requested"})
-    clients = MagicMock()
-    clients.model_registry.model_exists.return_value = True
+    registry = MagicMock()
+    registry.model_exists.return_value = True
 
-    asyncio.run(run_routing(ctx, clients))
+    asyncio.run(run_routing(ctx, registry))
 
     assert ctx.selected_model == "bonsai-8b"
     assert ctx.data["model"] == "requested"

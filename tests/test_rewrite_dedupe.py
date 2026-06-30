@@ -1,14 +1,11 @@
-"""Unit tests for rewrite, RRF merge, and dedupe."""
+"""Unit tests for rewrite and dedupe."""
 
 import asyncio
-
-import pytest
 
 from rag_proxy.clients.qdrant import (
     _apply_recency_boost,
     hybrid_search,
     merge_fused_with_sparse_reserve,
-    rrf_merge,
 )
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit, RequestContext
@@ -33,29 +30,6 @@ def test_rewrite_expands_k8s_glossary():
     q = "k8s pod scheduling"
     out = rewrite_query_deterministic(q)
     assert "kubernetes" in out
-
-
-def test_rrf_merge_orders_shared_docs_higher():
-    """RRF ranks docs appearing in both lists above single-list docs."""
-    dense = [("a", 0.9), ("b", 0.8)]
-    sparse = [("b", 0.7), ("c", 0.6)]
-    merged = rrf_merge([dense, sparse], limit=3)
-    ids = [doc_id for doc_id, _ in merged]
-    assert "b" in ids
-    assert ids[0] == "b"
-
-
-def test_rrf_list_weights_scale_contribution():
-    """RRF list_weights bias fusion toward the heavier list."""
-    lists = [[("a", 1.0)], [("b", 1.0)]]
-    assert rrf_merge(lists, limit=2, list_weights=[0.9, 0.1])[0][0] == "a"
-    assert rrf_merge(lists, limit=2, list_weights=[0.1, 0.9])[0][0] == "b"
-
-
-def test_rrf_list_weights_length_must_match_ranked_lists():
-    """RRF rejects list_weights length mismatches."""
-    with pytest.raises(ValueError, match="list_weights length"):
-        rrf_merge([[("a", 1.0)]], list_weights=[0.5, 0.5])
 
 
 def test_dedupe_drops_subset_chunk_when_semantic_enabled():

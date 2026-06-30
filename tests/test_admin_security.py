@@ -160,7 +160,7 @@ def _patch_paths_settings(
     monkeypatch: pytest.MonkeyPatch, zim_dir: Path, upload_dir: Path
 ) -> None:
     monkeypatch.setattr(
-        "rag_admin.paths.settings",
+        "rag_admin.helpers.settings",
         _admin_settings(zim_dir=str(zim_dir), upload_dir=str(upload_dir)),
     )
 
@@ -168,7 +168,7 @@ def _patch_paths_settings(
 def test_validated_ingest_file_path_accepts_zim_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from rag_admin.paths import validated_ingest_file_path
+    from rag_admin.helpers import validated_ingest_file_path
 
     zim_dir = tmp_path / "zim"
     upload_dir = tmp_path / "uploads"
@@ -184,7 +184,7 @@ def test_validated_ingest_file_path_accepts_zim_file(
 def test_validated_ingest_file_path_rejects_outside_roots(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from rag_admin.paths import validated_ingest_file_path
+    from rag_admin.helpers import validated_ingest_file_path
 
     zim_dir = tmp_path / "zim"
     upload_dir = tmp_path / "uploads"
@@ -203,7 +203,7 @@ def test_validated_ingest_file_path_rejects_outside_roots(
 def test_validated_ingest_file_path_rejects_traversal(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from rag_admin.paths import validated_ingest_file_path
+    from rag_admin.helpers import validated_ingest_file_path
 
     zim_dir = tmp_path / "zim"
     upload_dir = tmp_path / "uploads"

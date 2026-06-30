@@ -7,13 +7,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from rag_admin.config import settings
-from rag_admin.flash import flash_redirect
+from rag_admin.helpers import flash_redirect, validated_ingest_file_path
 from rag_admin.ingest_status import (
     enrich_file_rows,
     ingest_config_snapshot,
     ingest_queue_stats,
 )
-from rag_admin.paths import validated_ingest_file_path
 
 router = APIRouter(prefix="/api/ingest")
 

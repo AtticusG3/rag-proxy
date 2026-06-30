@@ -16,7 +16,7 @@ from typing import Callable
 import httpx
 
 from ingest.db import IngestDatabase
-from ingest.chunk_config import ChunkConfig, load_chunk_config
+from ingest.chunking import ChunkConfig, load_chunk_config
 from ingest.chunking import chunk_text
 from ingest.chunking_strategy import ChunkContext
 from ingest.embed_urls import parse_ingest_embed_urls

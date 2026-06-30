@@ -150,19 +150,17 @@ Restart the proxy after changes: `sudo systemctl restart rag-proxy`.
 
 ## Verify
 
-### 1. Offline retrieval smoke test
+### 1. Offline retrieval tests
 
-Bypasses the full proxy; exercises embed + optional rerank + PPR against the built SQLite file:
+Run the MemGraphRAG retrieval unit tests (no network when mocked):
 
 ```bash
-python scripts/test_memgraphrag_retrieve.py \
-  --index /var/lib/rag_proxy/memgraphrag.sqlite \
-  --embed-url http://127.0.0.1:8089/v1/embeddings \
-  --rerank-url http://127.0.0.1:8095/rerank \
-  --queries "your test question about indexed topics"
+pytest tests/test_memgraphrag_retrieval.py -q
 ```
 
-Expect passage previews with scores. `No facts in index` means rebuild without `--skip-relations`.
+For a live index on disk, point `MEMGRAPHRAG_DB_PATH` at your SQLite file and enable `ENABLE_MEMGRAPHRAG=true` before proxy integration tests.
+
+Expect passage previews with scores when the index is populated. `No facts in index` means rebuild without `--skip-relations`.
 
 ### 2. Proxy integration
 

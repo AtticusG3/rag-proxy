@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from ingest.chunk_config import chunk_config_from_values
+from ingest.chunking import chunk_config_from_values
 from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.worker import IngestConfig, IngestWorker
 from rag_admin.db import AdminDatabase

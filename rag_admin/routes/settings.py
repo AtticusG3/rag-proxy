@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from ingest.worker import trigger_sparse_reindex
 from rag_admin.config import settings
-from rag_admin.flash import flash_redirect
+from rag_admin.helpers import flash_redirect
 from rag_admin.service_restart import schedule_restart
 from rag_admin.service_status import service_status
 from rag_admin.settings_schema import GROUP_LABELS, SETTING_FIELDS, SETTING_GROUPS

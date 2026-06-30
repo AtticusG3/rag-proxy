@@ -120,8 +120,6 @@ Rerank and tools use `RERANK_TIMEOUT_MS` and `TOOL_BUDGET_MS` as their stage min
 | `MEMGRAPH_BUILD_EMBED_URL` | *(EMBED_URL)* | Embed endpoint for fact vectors at build time |
 | `MEMGRAPH_BUILD_SKIP_RELATIONS` | `false` | Entity-only extraction (faster) |
 
-Deprecated aliases still accepted by `rag_proxy/config.py` and `scripts/build_memgraphrag_index.py`: `MEMGRAPHRAG_BUILD_LLM_URL`, `MEMGRAPHRAG_BUILD_LLM_MODEL` (prefer `MEMGRAPH_BUILD_*`).
-
 Env-only defaults above come from `rag_proxy/config.py`. Rag-admin **Settings → MemGraphRAG index build** defaults `MEMGRAPH_BUILD_LLM_URL` to `http://192.168.1.202:8081/v1` (homelab remote qwen); override in Settings or env.
 
 Build and rollout: [MemGraphRAG operator guide](memgraphrag.md). Rag-admin **Settings → MemGraphRAG index build** uses the same `MEMGRAPH_BUILD_*` keys (stored in admin SQLite; env vars are the fallback).
@@ -129,7 +127,6 @@ Build and rollout: [MemGraphRAG operator guide](memgraphrag.md). Rag-admin **Set
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `MODEL_REGISTRY_TTL_SEC` | `300` | Cache TTL for `/v1/models` |
-| `MODEL_REGISTRY_CONFIG_PATH` | *(empty)* | Optional static registry file |
 | `MODEL_CAPABILITIES_JSON` | *(empty)* | JSON overrides for model capabilities |
 | `MODEL_ROUTES_JSON` | *(empty)* | JSON intent → model map |
 
@@ -165,7 +162,6 @@ python scripts/promote_rag_corpus.py --input /var/lib/rag_proxy/capture/rag_impr
 | `ENABLE_REQUEST_TRACE` | `true` | Per-request pipeline summary logs |
 | `ENABLE_JSON_LOGS` | `false` | JSON pipeline logs instead of text |
 | `ENABLE_METRICS` | `false` | Expose `GET /metrics` on proxy port |
-| `METRICS_PORT` | `0` | Legacy: `>0` also enables metrics when `ENABLE_METRICS` is unset/false |
 
 Details: [Observability](observability.md).
 

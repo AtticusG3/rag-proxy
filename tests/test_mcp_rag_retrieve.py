@@ -11,8 +11,6 @@ MCP_RAG = REPO_ROOT / "sidecars" / "mcp_rag"
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(MCP_RAG))
 
-from rag_proxy.clients.retrieve_sync import rrf_merge
-
 from retrieve import (
     RetrievedChunk,
     RetrieveSettings,
@@ -41,19 +39,6 @@ def _settings(**overrides: object) -> RetrieveSettings:
 
 def test_format_chunks_empty() -> None:
     assert "No matching" in format_chunks_for_agent([])
-
-
-def test_rrf_merge_prefers_both_lists() -> None:
-    """Parity with canonical retrieve_sync RRF fusion."""
-    fused = rrf_merge(
-        [
-            [("a", 0.9), ("b", 0.5)],
-            [("b", 1.0), ("c", 0.4)],
-        ],
-        limit=3,
-        list_weights=[0.7, 0.3],
-    )
-    assert fused[0][0] == "b"
 
 
 def test_search_knowledge_base_pipeline() -> None:

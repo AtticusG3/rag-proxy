@@ -98,7 +98,7 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 
 1. **Queue** — jobs created from UI (ZIM path, upload, catalog subscription).
 2. **Read** — ZIM (`ingest/zim_reader.py`), PDF (`ingest/pdf_reader.py`), or plain text.
-3. **Chunk** — `ingest/chunking_strategy.py` picks a Chonkie strategy per document; `ingest/chunk_config.py` loads token size/overlap from env; `ingest/chunking.py` runs the chunker with strategy-specific fallbacks. Default **512 tokens / 64 overlap** (~12.5%) using the nomic-embed tokenizer when available.
+3. **Chunk** — `ingest/chunking_strategy.py` picks a Chonkie strategy per document; `ingest/chunking.py` loads token size/overlap from env and runs the chunker with strategy-specific fallbacks. Default **512 tokens / 64 overlap** (~12.5%) using the nomic-embed tokenizer when available.
 4. **Embed** — `ingest/embedder.py` calls `EMBED_URL` (same nomic-embed as proxy).
 5. **Write** — `ingest/qdrant_writer.py` upserts to `QDRANT_COLLECTION`.
 6. **Sparse reindex** — optional POST to `SPARSE_INDEX_URL` when `INGEST_SPARSE_REINDEX` triggers (hybrid cognitive mode).

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from ingest.chunk_config import ChunkConfig
-from ingest.chunking import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, chunk_text
+from ingest.chunking import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, ChunkConfig, chunk_text
 from ingest.chunking_strategy import ChunkStrategy
 
 

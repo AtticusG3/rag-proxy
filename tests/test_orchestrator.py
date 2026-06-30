@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from rag_proxy.clients.bundle import ClientBundle
+from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext
 from rag_proxy.orchestrator import (
@@ -14,12 +14,12 @@ from rag_proxy.orchestrator import (
 from rag_proxy.pipeline_stages import PipelineStage
 
 
-async def _slow_stage(ctx: RequestContext, _clients: ClientBundle) -> None:
+async def _slow_stage(ctx: RequestContext, _registry: ModelRegistry) -> None:
     await asyncio.sleep(0.05)
     ctx.stage_trace.append("slow:ok")
 
 
-async def _expensive_stage(ctx: RequestContext, _clients: ClientBundle) -> None:
+async def _expensive_stage(ctx: RequestContext, _registry: ModelRegistry) -> None:
     ctx.stage_trace.append("expensive:ran")
 
 
@@ -61,7 +61,7 @@ def test_orchestrator_skips_stage_when_budget_exhausted(monkeypatch):
 def test_pipeline_summary_on_stage_error(monkeypatch):
     summary_calls: list[str] = []
 
-    async def boom(_ctx: RequestContext, _clients: ClientBundle) -> None:
+    async def boom(_ctx: RequestContext, _registry: ModelRegistry) -> None:
         raise RuntimeError("stage failed")
 
     monkeypatch.setattr(
