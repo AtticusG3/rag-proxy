@@ -10,8 +10,8 @@ import pytest
 
 from conftest import FakeAsyncClient
 from rag_proxy.chunk_text import extract_chunk_text
+from rag_proxy.clients.retrieval_async import embed_text, get_embedding, search_qdrant_dense
 from rag_proxy.config import settings
-from rag_proxy.legacy_rag import get_embedding, search_qdrant_dense
 
 
 def test_get_embedding_returns_none_on_http_500(monkeypatch):
@@ -29,7 +29,10 @@ def test_get_embedding_returns_none_on_http_500(monkeypatch):
     )
     post = AsyncMock(return_value=response)
 
-    with patch("rag_proxy.legacy_rag.httpx.AsyncClient", return_value=FakeAsyncClient(post)):
+    with patch(
+        "rag_proxy.clients.retrieval_async.httpx.AsyncClient",
+        return_value=FakeAsyncClient(post),
+    ):
         vector = asyncio.run(get_embedding("hello"))
 
     assert vector is None
@@ -44,7 +47,10 @@ def test_get_embedding_returns_vector_on_success():
 
     post = AsyncMock(return_value=response)
 
-    with patch("rag_proxy.legacy_rag.httpx.AsyncClient", return_value=FakeAsyncClient(post)):
+    with patch(
+        "rag_proxy.clients.retrieval_async.httpx.AsyncClient",
+        return_value=FakeAsyncClient(post),
+    ):
         vector = asyncio.run(get_embedding("hello"))
 
     assert vector == [0.1, 0.2, 0.3]
@@ -72,7 +78,7 @@ def test_search_qdrant_passes_similarity_threshold(monkeypatch):
         return response
 
     with patch(
-        "rag_proxy.legacy_rag.httpx.AsyncClient",
+        "rag_proxy.clients.retrieval_async.httpx.AsyncClient",
         return_value=FakeAsyncClient(AsyncMock(side_effect=post)),
     ):
         hits = asyncio.run(search_qdrant_dense([0.1, 0.2]))
@@ -85,10 +91,39 @@ def test_search_qdrant_passes_similarity_threshold(monkeypatch):
 def test_search_qdrant_returns_empty_on_http_error():
     post = AsyncMock(side_effect=httpx.ConnectError("qdrant down"))
 
-    with patch("rag_proxy.legacy_rag.httpx.AsyncClient", return_value=FakeAsyncClient(post)):
+    with patch(
+        "rag_proxy.clients.retrieval_async.httpx.AsyncClient",
+        return_value=FakeAsyncClient(post),
+    ):
         hits = asyncio.run(search_qdrant_dense([0.1]))
 
     assert hits == []
+
+
+def test_embed_text_uses_cache_when_enabled(monkeypatch):
+    monkeypatch.setattr(settings, "enable_embed_cache", True)
+    calls = 0
+
+    async def fake_get_embedding(text: str):
+        nonlocal calls
+        calls += 1
+        return [0.1, 0.2]
+
+    monkeypatch.setattr(
+        "rag_proxy.clients.retrieval_async.get_embedding",
+        fake_get_embedding,
+    )
+    monkeypatch.setattr("rag_proxy.clients.retrieval_async._embed_cache", {})
+
+    async def run():
+        first = await embed_text("cached query")
+        second = await embed_text("cached query")
+        return first, second
+
+    first, second = asyncio.run(run())
+    assert first == [0.1, 0.2]
+    assert second == [0.1, 0.2]
+    assert calls == 1
 
 
 def test_extract_chunk_text_prefers_text_over_content():

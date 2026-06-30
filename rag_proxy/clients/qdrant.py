@@ -1,8 +1,7 @@
 """Async Qdrant dense + optional sparse / hybrid retrieval for the proxy pipeline.
 
-Sync retrieval (MCP sidecar, scripts) lives in retrieve_sync.py and shares only
-rrf_merge today. This module adds recency boosting, merge_fused_with_sparse_reserve,
-and async httpx orchestration -- intentional divergence unless parity is required.
+Sync retrieval (MCP sidecar, scripts) lives in retrieve_sync.py and shares
+retrieval_core request bodies with this module.
 """
 
 from __future__ import annotations
@@ -12,14 +11,11 @@ import logging
 import time
 from datetime import datetime
 
-import httpx
-
-from rag_proxy.clients.embed import embed_text
+from rag_proxy.clients.retrieval_async import embed_text, search_qdrant_dense, sparse_search
 from rag_proxy.clients.retrieve_sync import rrf_merge
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit
 from rag_proxy.chunk_text import extract_chunk_text
-from rag_proxy.legacy_rag import search_qdrant_dense
 
 log = logging.getLogger("rag-proxy")
 
@@ -55,23 +51,6 @@ def _apply_recency_boost(score: float, payload: dict) -> float:
     days = max(0.0, (time.time() - epoch) / 86400.0)
     decay = max(0.0, 1.0 - days / 365.0)
     return score + settings.recency_weight * decay
-
-
-async def sparse_search(query: str, limit: int) -> list[dict]:
-    """Optional BM25 sidecar; fail-open to empty list."""
-    if not settings.sparse_index_url:
-        return []
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.post(
-                f"{settings.sparse_index_url.rstrip('/')}/search",
-                json={"query": query, "limit": limit, "collection": settings.qdrant_collection},
-            )
-            r.raise_for_status()
-            return r.json().get("results", [])
-    except Exception as e:
-        log.warning(f"Sparse search failed: {e}")
-        return []
 
 
 def _hit_to_chunk(hit: dict, source: str) -> ChunkHit:

@@ -9,10 +9,16 @@ from dataclasses import dataclass
 import httpx
 
 from rag_proxy.chunk_text import extract_chunk_text
+from rag_proxy.clients.retrieval_core import (
+    dense_search_payload,
+    embed_payload,
+    parse_dense_hits,
+    parse_embedding,
+    parse_sparse_hits,
+    sparse_search_payload,
+)
 
 log = logging.getLogger("rag-proxy")
-
-DEFAULT_EMBED_MODEL = "nomic-embed-text-v1.5"
 
 
 @dataclass(frozen=True)
@@ -76,10 +82,10 @@ def embed_query(config: RetrieveConfig, query: str) -> list[float] | None:
         with httpx.Client(timeout=30.0, headers=_headers(config)) as client:
             r = client.post(
                 f"{config.embed_url.rstrip('/')}/v1/embeddings",
-                json={"model": DEFAULT_EMBED_MODEL, "input": trimmed},
+                json=embed_payload(trimmed),
             )
             r.raise_for_status()
-            return r.json()["data"][0]["embedding"]
+            return parse_embedding(r.json())
     except Exception as e:
         log.warning(f"Embedding failed: {e}")
         return None
@@ -96,13 +102,12 @@ def dense_search(
     threshold = (
         config.similarity_threshold if score_threshold is None else score_threshold
     )
-    body: dict = {
-        "vector": vector,
-        "limit": limit,
-        "with_payload": True,
-    }
-    if threshold is not None and threshold > 0:
-        body["score_threshold"] = threshold
+    body = dense_search_payload(
+        vector,
+        limit,
+        threshold,
+        omit_zero_threshold=True,
+    )
     try:
         with httpx.Client(timeout=10.0, headers=_headers(config)) as client:
             r = client.post(
@@ -111,7 +116,7 @@ def dense_search(
                 json=body,
             )
             r.raise_for_status()
-            return r.json().get("result", [])
+            return parse_dense_hits(r.json())
     except Exception as e:
         log.warning(f"Qdrant search failed: {e}")
         return []
@@ -126,18 +131,15 @@ def sparse_search(
     """Optional BM25 sidecar; fail-open to empty list."""
     if not config.sparse_index_url:
         return []
+    body = sparse_search_payload(query, limit, config.qdrant_collection)
     try:
         with httpx.Client(timeout=10.0, headers=_headers(config)) as client:
             r = client.post(
                 f"{config.sparse_index_url.rstrip('/')}/search",
-                json={
-                    "query": query,
-                    "limit": limit,
-                    "collection": config.qdrant_collection,
-                },
+                json=body,
             )
             r.raise_for_status()
-            return r.json().get("results", [])
+            return parse_sparse_hits(r.json())
     except Exception as e:
         log.warning(f"Sparse search failed: {e}")
         return []
