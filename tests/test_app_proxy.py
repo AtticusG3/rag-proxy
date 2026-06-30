@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from conftest import pooled_ctor_side_effect
 from rag_proxy import upstream_client as uc
 from rag_proxy.app import app
 
@@ -50,12 +51,15 @@ def test_proxy_shared_client_two_gets_one_async_client_ctor():
     mock_response = _buffered_upstream_response()
     mock_client = _pooled_client_mock(mock_response)
 
-    with patch("rag_proxy.upstream_client.httpx.AsyncClient", return_value=mock_client) as ctor:
+    with patch(
+        "rag_proxy.upstream_client.httpx.AsyncClient",
+        side_effect=pooled_ctor_side_effect(mock_client),
+    ) as ctor:
         with TestClient(app) as client:
             r1 = client.get("/v1/models")
             r2 = client.get("/v1/models")
 
-    assert ctor.call_count == 1
+    assert ctor.call_count == 3
     assert r1.status_code == 200
     assert r2.status_code == 200
     assert r1.json() == {"ok": True}
@@ -71,7 +75,10 @@ def test_proxy_buffered_returns_body_and_closes_response():
     mock_response = _buffered_upstream_response()
     mock_client = _pooled_client_mock(mock_response)
 
-    with patch("rag_proxy.upstream_client.httpx.AsyncClient", return_value=mock_client):
+    with patch(
+        "rag_proxy.upstream_client.httpx.AsyncClient",
+        side_effect=pooled_ctor_side_effect(mock_client),
+    ):
         with TestClient(app) as client:
             resp = client.get("/v1/models")
 
@@ -88,7 +95,10 @@ def test_proxy_closes_upstream_when_send_raises():
     mock_client = _pooled_client_mock(mock_response)
     mock_client.send = AsyncMock(side_effect=RuntimeError("upstream send failed"))
 
-    with patch("rag_proxy.upstream_client.httpx.AsyncClient", return_value=mock_client):
+    with patch(
+        "rag_proxy.upstream_client.httpx.AsyncClient",
+        side_effect=pooled_ctor_side_effect(mock_client),
+    ):
         with patch("rag_proxy.app.close_upstream_response", AsyncMock()) as close_mock:
             with TestClient(app, raise_server_exceptions=False) as client:
                 resp = client.get("/v1/models")
@@ -104,11 +114,14 @@ def test_proxy_sse_streams_via_real_relay_upstream():
     mock_response = _streaming_upstream_response(chunks)
     mock_client = _pooled_client_mock(mock_response)
 
-    with patch("rag_proxy.upstream_client.httpx.AsyncClient", return_value=mock_client) as ctor:
+    with patch(
+        "rag_proxy.upstream_client.httpx.AsyncClient",
+        side_effect=pooled_ctor_side_effect(mock_client),
+    ) as ctor:
         with TestClient(app) as client:
             resp = client.get("/v1/chat/completions")
 
-    assert ctor.call_count == 1
+    assert ctor.call_count == 3
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
     assert resp.content == b"".join(chunks)
@@ -123,13 +136,16 @@ def test_lifespan_starts_janitor_and_closes_pool_on_shutdown():
     mock_client = MagicMock()
     mock_client.aclose = AsyncMock()
 
-    with patch("rag_proxy.upstream_client.httpx.AsyncClient", return_value=mock_client) as ctor:
+    with patch(
+        "rag_proxy.upstream_client.httpx.AsyncClient",
+        side_effect=pooled_ctor_side_effect(mock_client),
+    ) as ctor:
         with TestClient(app):
-            assert ctor.call_count == 1
+            assert ctor.call_count == 3
             assert uc._janitor_task is not None
             assert not uc._janitor_task.done()
 
-    mock_client.aclose.assert_awaited_once()
+    assert mock_client.aclose.await_count == 1
     assert uc._upstream_client is None
     assert uc._janitor_task is None
 

@@ -21,7 +21,7 @@ def test_chat_capture_writes_sanitized_finetune_and_rag_records(tmp_path, monkey
     monkeypatch.setattr(settings, "rag_improvement_log_path", str(tmp_path / "rag.jsonl"))
     monkeypatch.setattr(settings, "enable_cognitive_pipeline", False)
 
-    async def fake_hybrid(_query, limit, score_threshold=None, no_cache=False):
+    async def fake_hybrid(_query, limit, score_threshold=None, no_cache=False, cache_hits=None):
         return [
             ChunkHit(
                 id="doc-1",
@@ -82,7 +82,7 @@ def test_chat_capture_error_does_not_change_response(monkeypatch):
     )
     mock_client = pooled_client_mock(mock_response)
 
-    async def fake_hybrid(_query, limit, score_threshold=None, no_cache=False):
+    async def fake_hybrid(_query, limit, score_threshold=None, no_cache=False, cache_hits=None):
         return []
 
     with patch("rag_proxy.pipeline_stages.hybrid_search", fake_hybrid):
@@ -108,7 +108,7 @@ def test_chat_capture_writes_streaming_completion_record(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "rag_improvement_log_path", str(tmp_path / "rag.jsonl"))
     monkeypatch.setattr(settings, "enable_cognitive_pipeline", False)
 
-    async def fake_hybrid(_query, limit, score_threshold=None, no_cache=False):
+    async def fake_hybrid(_query, limit, score_threshold=None, no_cache=False, cache_hits=None):
         return []
 
     mock_response = _streaming_upstream_response(

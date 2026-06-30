@@ -14,6 +14,20 @@ from rag_proxy.clients.retrieval_async import embed_text, get_embedding, search_
 from rag_proxy.config import settings
 
 
+def _mock_embed_client(post: AsyncMock):
+    return patch(
+        "rag_proxy.clients.retrieval_async.get_embed_client",
+        return_value=FakeAsyncClient(post),
+    )
+
+
+def _mock_qdrant_client(post: AsyncMock):
+    return patch(
+        "rag_proxy.clients.retrieval_async.get_qdrant_client",
+        return_value=FakeAsyncClient(post),
+    )
+
+
 def test_get_embedding_returns_none_on_http_500(monkeypatch):
     """Embed server failures must fail-open to None (no vector for retrieval)."""
 
@@ -29,10 +43,7 @@ def test_get_embedding_returns_none_on_http_500(monkeypatch):
     )
     post = AsyncMock(return_value=response)
 
-    with patch(
-        "rag_proxy.clients.retrieval_async.httpx.AsyncClient",
-        return_value=FakeAsyncClient(post),
-    ):
+    with _mock_embed_client(post):
         vector = asyncio.run(get_embedding("hello"))
 
     assert vector is None
@@ -47,10 +58,7 @@ def test_get_embedding_returns_vector_on_success():
 
     post = AsyncMock(return_value=response)
 
-    with patch(
-        "rag_proxy.clients.retrieval_async.httpx.AsyncClient",
-        return_value=FakeAsyncClient(post),
-    ):
+    with _mock_embed_client(post):
         vector = asyncio.run(get_embedding("hello"))
 
     assert vector == [0.1, 0.2, 0.3]
@@ -77,10 +85,7 @@ def test_search_qdrant_passes_similarity_threshold(monkeypatch):
         captured.append({"url": url, "json": json})
         return response
 
-    with patch(
-        "rag_proxy.clients.retrieval_async.httpx.AsyncClient",
-        return_value=FakeAsyncClient(AsyncMock(side_effect=post)),
-    ):
+    with _mock_qdrant_client(AsyncMock(side_effect=post)):
         hits = asyncio.run(search_qdrant_dense([0.1, 0.2]))
 
     assert len(hits) == 1
@@ -91,10 +96,7 @@ def test_search_qdrant_passes_similarity_threshold(monkeypatch):
 def test_search_qdrant_returns_empty_on_http_error():
     post = AsyncMock(side_effect=httpx.ConnectError("qdrant down"))
 
-    with patch(
-        "rag_proxy.clients.retrieval_async.httpx.AsyncClient",
-        return_value=FakeAsyncClient(post),
-    ):
+    with _mock_qdrant_client(post):
         hits = asyncio.run(search_qdrant_dense([0.1]))
 
     assert hits == []

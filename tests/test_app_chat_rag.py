@@ -41,7 +41,7 @@ def test_chat_post_injects_retrieved_context_into_upstream_body(monkeypatch):
     monkeypatch.setattr(settings, "enable_cognitive_pipeline", False)
     chunk_text = "homelab docker compose stack deployment guide"
 
-    async def fake_hybrid(_query, limit, score_threshold=None, no_cache=False):
+    async def fake_hybrid(_query, limit, score_threshold=None, no_cache=False, cache_hits=None):
         return [ChunkHit(id="doc-1", text=chunk_text, score=0.91, source="dense")]
 
     mock_response = buffered_upstream_response(b'{"choices":[]}')

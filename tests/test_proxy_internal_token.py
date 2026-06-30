@@ -15,10 +15,16 @@ from rag_proxy.config import settings
 
 @pytest.fixture(autouse=True)
 def _reset_sidecar_clients():
+    import rag_proxy.sidecar_client as sc
+
     sc._embed_client = None
+    sc._qdrant_client = None
+    sc._sparse_client = None
     sc._reranker_client = None
     yield
     sc._embed_client = None
+    sc._qdrant_client = None
+    sc._sparse_client = None
     sc._reranker_client = None
 
 

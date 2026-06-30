@@ -150,6 +150,9 @@ class Settings:
     stage_budget_memgraphrag_ms: int = field(
         default_factory=lambda: _env_int("STAGE_BUDGET_MEMGRAPHRAG_MS", 200)
     )
+    stage_exec_timeout_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_EXEC_TIMEOUT_MS", 30000)
+    )
     retrieval_candidate_k: int = field(default_factory=lambda: _env_int("RETRIEVAL_CANDIDATE_K", 20))
     context_budget_ratio: float = field(
         default_factory=lambda: _env_float("CONTEXT_BUDGET_RATIO", 0.25)

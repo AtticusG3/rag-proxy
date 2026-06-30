@@ -63,23 +63,26 @@ Ensure `LOG_LEVEL=INFO` (or `DEBUG` for verbose RAG detail).
 curl -s "http://127.0.0.1:8088/metrics"
 ```
 
-Example output:
+Prometheus text format via `prometheus_client`. Example series:
 
-```text
-rag_requests_total 42
-rag_chunks_injected_total 87
-```
+| Metric | Type | Meaning |
+| --- | --- | --- |
+| `rag_requests_total{outcome}` | Counter | Pipeline completions: `hit`, `miss`, `skip` |
+| `rag_chunks_injected_total` | Counter | Sum of chunks injected across requests |
+| `rag_augment_errors_total` | Counter | Augmentation failures (request forwarded unmodified) |
+| `rag_embed_cache_hits_total` / `rag_embed_cache_misses_total` | Counter | Embed cache when `ENABLE_EMBED_CACHE=true` |
+| `rag_stage_latency_seconds{stage}` | Histogram | Per-stage pipeline latency |
+| `rag_augment_duration_seconds` | Histogram | RAG augmentation wall time only |
+| `proxy_request_duration_seconds` | Histogram | Full proxy handler (buffered responses include upstream read; streaming measures until stream ends) |
+| `upstream_active_streams` | Gauge | Active upstream SSE streams |
 
-| Counter | Meaning |
-| --- | --- |
-| `rag_requests_total` | Chat requests that completed RAG path (legacy + cognitive) |
-| `rag_chunks_injected_total` | Sum of chunks injected across requests |
+Per-request `latency_ms` and `cache_hits` remain in trace logs (`ENABLE_REQUEST_TRACE`).
 
-Set `ENABLE_METRICS=true` to expose counters on the proxy port.
+Set `ENABLE_METRICS=true` to expose metrics on the proxy port.
+
+`GET /debug` returns a JSON snapshot of pools, embed cache, and feature flags (same `PROXY_INTERNAL_TOKEN` gate as metrics when configured). See [Performance](performance.md).
 
 When metrics are disabled, `GET /metrics` returns `404` with body `metrics disabled`.
-
-This is a lightweight metrics stub — not a full Prometheus client with histograms or labels.
 
 ## Log level
 

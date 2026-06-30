@@ -67,9 +67,10 @@ async def _dense_chunks(
     limit: int,
     score_threshold: float | None,
     no_cache: bool,
+    cache_hits: list[str] | None = None,
 ) -> list[ChunkHit]:
     """Embed query and return dense ChunkHit list."""
-    vector = await embed_text(query, no_cache=no_cache)
+    vector = await embed_text(query, no_cache=no_cache, cache_hits=cache_hits)
     if vector is None:
         return []
     dense_hits = await search_qdrant_dense(
@@ -117,14 +118,15 @@ async def hybrid_search(
     limit: int,
     score_threshold: float | None = None,
     no_cache: bool = False,
+    cache_hits: list[str] | None = None,
 ) -> list[ChunkHit]:
     """Dense-only or RRF hybrid dense+sparse retrieval."""
     if not settings.enable_hybrid_retrieval or not settings.sparse_index_url:
-        return await _dense_chunks(query, limit, score_threshold, no_cache)
+        return await _dense_chunks(query, limit, score_threshold, no_cache, cache_hits)
 
     sparse_result, dense_result = await asyncio.gather(
         sparse_search(query, limit),
-        _dense_chunks(query, limit, score_threshold, no_cache),
+        _dense_chunks(query, limit, score_threshold, no_cache, cache_hits),
         return_exceptions=True,
     )
     if isinstance(sparse_result, asyncio.CancelledError):

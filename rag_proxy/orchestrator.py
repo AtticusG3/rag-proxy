@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -9,7 +10,13 @@ from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext
 from rag_proxy.legacy_rag import extract_query_text
-from rag_proxy.observability import log_pipeline_summary, log_rag_request, new_trace_id
+from rag_proxy.observability import (
+    log_pipeline_summary,
+    log_rag_request,
+    new_trace_id,
+    observe_rag_augment_duration,
+    observe_stage_latency,
+)
 from rag_proxy.pipeline_stages import (
     PipelineStage,
     build_legacy_pipeline_stages,
@@ -30,6 +37,33 @@ def _budget_remaining(ctx: RequestContext) -> float:
         return float(settings.cognitive_latency_budget_ms)
     spent = _elapsed_ms(ctx.cognitive_start_ms)
     return max(0.0, settings.cognitive_latency_budget_ms - spent)
+
+
+def _stage_exec_timeout_sec(stage: PipelineStage) -> float | None:
+    if stage.min_budget_ms > 0:
+        ms = int(stage.min_budget_ms)
+    else:
+        ms = settings.stage_exec_timeout_ms
+    if ms <= 0:
+        return None
+    return ms / 1000.0
+
+
+async def _run_stage(stage: PipelineStage, ctx: RequestContext) -> None:
+    t0 = time.perf_counter()
+    timeout_sec = _stage_exec_timeout_sec(stage)
+    try:
+        if timeout_sec is None:
+            await stage.run(ctx, _registry)
+        else:
+            await asyncio.wait_for(stage.run(ctx, _registry), timeout=timeout_sec)
+    except asyncio.TimeoutError:
+        log.warning("Stage %s timed out after %.3fs", stage.name, timeout_sec or 0.0)
+        ctx.errors.append(f"{stage.name}:timeout")
+        return
+    elapsed = _elapsed_ms(t0)
+    ctx.latency_ms[stage.name] = elapsed
+    observe_stage_latency(stage.name, elapsed / 1000.0)
 
 
 def build_request_context_from_http(
@@ -77,9 +111,7 @@ async def run_cognitive_pipeline(ctx: RequestContext) -> None:
                 continue
             if _budget_remaining(ctx) < stage.min_budget_ms:
                 continue
-            t0 = time.perf_counter()
-            await stage.run(ctx, _registry)
-            ctx.latency_ms[stage.name] = _elapsed_ms(t0)
+            await _run_stage(stage, ctx)
     finally:
         ctx.latency_ms["total_cognitive"] = _elapsed_ms(ctx.cognitive_start_ms)
         log_pipeline_summary(ctx)
@@ -101,7 +133,9 @@ async def augment_chat_payload_with_context(
     ctx = build_request_context_from_http(data, headers)
     if _needs_model_registry_refresh():
         await _registry.refresh()
+    augment_t0 = time.perf_counter()
     await run_cognitive_pipeline(ctx)
+    observe_rag_augment_duration(time.perf_counter() - augment_t0)
     data = apply_context_to_payload(data, ctx)
     log_rag_request(ctx)
     return data, ctx

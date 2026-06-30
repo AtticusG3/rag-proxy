@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
 import time
@@ -64,8 +65,8 @@ async def run_memory(ctx: RequestContext) -> None:
 
     db_path = Path(settings.memory_db_path)
     try:
-        _ensure_memory_schema(db_path)
-        summary = _load_summary(db_path, conv_id)
+        await asyncio.to_thread(_ensure_memory_schema, db_path)
+        summary = await asyncio.to_thread(_load_summary, db_path, conv_id)
         if summary:
             block = f"Operational memory (session):\n{summary}"
             if ctx.messages and ctx.messages[0].get("role") == "system":
@@ -80,7 +81,7 @@ async def run_memory(ctx: RequestContext) -> None:
         user_turns = sum(1 for m in ctx.messages if m.get("role") == "user")
         if user_turns > 0 and user_turns % settings.memory_refresh_turns == 0:
             brief = (ctx.query_text or "")[:500]
-            _save_summary(db_path, conv_id, brief, user_turns)
+            await asyncio.to_thread(_save_summary, db_path, conv_id, brief, user_turns)
             ctx.stage_trace.append("memory:refreshed")
     except Exception as e:
         ctx.errors.append(f"memory:{e}")

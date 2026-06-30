@@ -12,6 +12,7 @@ import httpx
 from starlette.requests import Request
 
 from rag_proxy.config import settings
+from rag_proxy.observability import set_upstream_active_streams
 
 log = logging.getLogger("rag-proxy")
 
@@ -30,12 +31,25 @@ def _registry_lock() -> asyncio.Lock:
     return _stream_registry_lock
 
 
+def _update_stream_gauge_locked() -> None:
+    set_upstream_active_streams(len(_stream_registry))
+
+
+async def _update_stream_gauge() -> None:
+    async with _registry_lock():
+        _update_stream_gauge_locked()
+
+
 def _build_limits() -> httpx.Limits:
     return httpx.Limits(
         max_connections=settings.upstream_max_connections,
         max_keepalive_connections=settings.upstream_max_keepalive,
         keepalive_expiry=settings.upstream_keepalive_expiry_sec,
     )
+
+
+def upstream_active_stream_count() -> int:
+    return len(_stream_registry)
 
 
 def get_upstream_client() -> httpx.AsyncClient:
@@ -111,6 +125,7 @@ async def reap_abandoned_streams() -> int:
         closed += 1
     if closed:
         log.info("janitor: closed %s idle upstream stream(s)", closed)
+        await _update_stream_gauge()
     return closed
 
 
@@ -132,6 +147,7 @@ async def register_stream(response: httpx.Response) -> int:
     now = time.monotonic()
     async with _registry_lock():
         _stream_registry[key] = (response, now)
+        _update_stream_gauge_locked()
     return key
 
 
@@ -146,6 +162,7 @@ async def touch_stream(key: int) -> None:
 async def unregister_stream(key: int) -> None:
     async with _registry_lock():
         _stream_registry.pop(key, None)
+        _update_stream_gauge_locked()
 
 
 async def relay_upstream(

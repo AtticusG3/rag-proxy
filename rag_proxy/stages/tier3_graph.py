@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import sqlite3
@@ -109,7 +110,7 @@ async def run_graph(ctx: RequestContext) -> None:
 
     db_path = Path(settings.graph_db_path)
     try:
-        lines = _query_graph(db_path, seeds, settings.graph_max_depth)
+        lines = await asyncio.to_thread(_query_graph, db_path, seeds, settings.graph_max_depth)
         if lines:
             text = "Infrastructure graph context:\n" + "\n".join(lines)
             ctx.hits.append(ChunkHit(id="graph", text=text, score=0.9, source="graph"))

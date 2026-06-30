@@ -83,6 +83,7 @@ async def _run_legacy_retrieve(ctx: RequestContext, _registry: ModelRegistry) ->
         query,
         limit=settings.top_k,
         no_cache=ctx.no_cache,
+        cache_hits=ctx.cache_hits,
     )
     ctx.stage_trace.append(f"retrieve:{len(ctx.hits)}")
 

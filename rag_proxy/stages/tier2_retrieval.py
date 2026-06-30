@@ -26,6 +26,7 @@ async def run_retrieval(ctx: RequestContext, _registry: ModelRegistry) -> None:
         query,
         limit=limit,
         no_cache=ctx.no_cache,
+        cache_hits=ctx.cache_hits,
     )
     ctx.hits = hits
     ctx.stage_trace.append(f"retrieve:{len(ctx.hits)}")

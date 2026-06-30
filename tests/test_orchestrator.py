@@ -87,6 +87,33 @@ def test_pipeline_summary_on_stage_error(monkeypatch):
     assert "total_cognitive" in ctx.latency_ms
 
 
+async def _timeout_stage(_ctx: RequestContext, _registry: ModelRegistry) -> None:
+    await asyncio.sleep(0.2)
+
+
+def test_orchestrator_times_out_slow_stage(monkeypatch):
+    monkeypatch.setattr(settings, "stage_exec_timeout_ms", 50)
+    monkeypatch.setattr(
+        "rag_proxy.orchestrator._pipeline_stages_for_mode",
+        lambda: [
+            PipelineStage(
+                name="slow",
+                min_budget_ms=0,
+                enabled=lambda: True,
+                should_run=lambda _ctx: True,
+                run=_timeout_stage,
+            )
+        ],
+    )
+    monkeypatch.setattr("rag_proxy.orchestrator.log_pipeline_summary", lambda _ctx: None)
+
+    ctx = RequestContext(query_text="test")
+    asyncio.run(run_cognitive_pipeline(ctx))
+
+    assert any("slow:timeout" in err for err in ctx.errors)
+    assert "slow" not in ctx.latency_ms
+
+
 def test_legacy_pipeline_has_retrieve_and_context_only():
     stages = build_legacy_pipeline_stages()
     names = [s.name for s in stages]

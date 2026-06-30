@@ -6,6 +6,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from copy import deepcopy
@@ -13,13 +14,20 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from rag_proxy.capture import capture_chat_response, capture_enabled
 from rag_proxy.capture_writer import shutdown_capture_writer, startup_capture_writer
 from rag_proxy.config import CHAT_PATHS, settings
 from rag_proxy.context import RequestContext
-from rag_proxy.observability import metrics_enabled, render_metrics_text
+from rag_proxy.debug_info import build_debug_snapshot
+from rag_proxy.observability import (
+    metrics_content_type,
+    metrics_enabled,
+    observe_proxy_request_duration,
+    record_augment_error,
+    render_metrics_text,
+)
 from rag_proxy.orchestrator import (
     augment_chat_payload_with_context,
     build_request_context_from_http,
@@ -83,6 +91,13 @@ async def _app_lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="RAG Proxy", docs_url=None, redoc_url=None, lifespan=_app_lifespan)
 
 
+@app.get("/debug")
+async def debug_snapshot(request: Request) -> JSONResponse:
+    if not _internal_token_ok(request):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse(build_debug_snapshot())
+
+
 @app.get("/metrics")
 async def prometheus_metrics(request: Request) -> PlainTextResponse:
     if not _internal_token_ok(request):
@@ -91,7 +106,7 @@ async def prometheus_metrics(request: Request) -> PlainTextResponse:
         return PlainTextResponse("metrics disabled\n", status_code=404)
     return PlainTextResponse(
         render_metrics_text(),
-        media_type="text/plain; charset=utf-8",
+        media_type=metrics_content_type(),
     )
 
 
@@ -100,6 +115,7 @@ async def proxy(request: Request, path: str):
     if not _internal_token_ok(request):
         return PlainTextResponse("unauthorized\n", status_code=401)
 
+    request_t0 = time.perf_counter()
     body = await request.body()
 
     skip_headers = {"host", "content-length", "transfer-encoding", "connection"}
@@ -132,6 +148,7 @@ async def proxy(request: Request, path: str):
                 except Exception as e:
                     # Single fail-open boundary for RAG augmentation errors.
                     log.warning(f"RAG augmentation error (passing through unmodified): {e}")
+                    record_augment_error()
                     if should_capture:
                         capture_ctx = build_request_context_from_http(data, headers)
                     body = original_body
@@ -155,7 +172,6 @@ async def proxy(request: Request, path: str):
         content_type = upstream.headers.get("content-type", "")
 
         if "text/event-stream" in content_type:
-            stream_body = relay_upstream(request, upstream)
             if should_capture and capture_original_messages is not None and capture_ctx is not None:
 
                 async def _capture_stream(response_body: bytes) -> None:
@@ -168,8 +184,18 @@ async def proxy(request: Request, path: str):
                     )
 
                 stream_body = relay_upstream_capture(request, upstream, _capture_stream)
+            else:
+                stream_body = relay_upstream(request, upstream)
+
+            async def _timed_stream():
+                try:
+                    async for chunk in stream_body:
+                        yield chunk
+                finally:
+                    observe_proxy_request_duration(time.perf_counter() - request_t0)
+
             return StreamingResponse(
-                stream_body,
+                _timed_stream(),
                 status_code=upstream.status_code,
                 headers=resp_headers,
                 media_type="text/event-stream",
@@ -187,6 +213,7 @@ async def proxy(request: Request, path: str):
                 path=path,
                 stream=bool(capture_ctx.stream),
             )
+        observe_proxy_request_duration(time.perf_counter() - request_t0)
         return Response(
             content=content,
             status_code=status_code,
