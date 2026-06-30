@@ -56,6 +56,17 @@ class FakeAsyncClient:
         return False
 
 
+def sidecar_pool_mock() -> MagicMock:
+    mock = MagicMock()
+    mock.aclose = AsyncMock()
+    return mock
+
+
+def pooled_ctor_side_effect(upstream_client: MagicMock) -> list[MagicMock]:
+    """Lifespan builds upstream + embed + qdrant pools (shared httpx.AsyncClient patch)."""
+    return [upstream_client, sidecar_pool_mock(), sidecar_pool_mock()]
+
+
 @pytest.fixture(autouse=True)
 def _reset_upstream_client():
     """Isolate upstream pool singleton between tests."""
