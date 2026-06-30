@@ -49,9 +49,11 @@ class AdminSettings:
     admin_restart_cmd: str
     pool_scale_env_path: str
     pool_env_path: str
+    env_example_path: str
 
     @classmethod
     def from_env(cls) -> AdminSettings:
+        default_repo_root = str(Path(__file__).resolve().parents[1])
         return cls(
             host=os.getenv("ADMIN_HOST", "127.0.0.1"),
             port=_env_int("ADMIN_PORT", 8087),
@@ -97,6 +99,10 @@ class AdminSettings:
             pool_env_path=os.getenv(
                 "NOMIC_EMBED_POOL_ENV_FILE",
                 "/opt/ai/config/nomic-embed-pool.env",
+            ),
+            env_example_path=os.getenv(
+                "RAG_ADMIN_ENV_EXAMPLE_FILE",
+                os.path.join(default_repo_root, ".env.example"),
             ),
         )
 

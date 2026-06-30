@@ -66,12 +66,14 @@ class SettingsStore:
         proxy_env_path: str,
         pool_scale_env_path: str = "/opt/ai/config/nomic-embed-scale.env",
         pool_env_path: str = "/opt/ai/config/nomic-embed-pool.env",
+        env_example_path: str = "",
     ) -> None:
         self.db = db
         self.admin_env_path = admin_env_path
         self.proxy_env_path = proxy_env_path
         self.pool_scale_env_path = pool_scale_env_path
         self.pool_env_path = pool_env_path
+        self.env_example_path = env_example_path
 
     def _pool_scale_env(self) -> dict[str, str]:
         return read_env_file(self.pool_scale_env_path)
@@ -94,7 +96,19 @@ class SettingsStore:
             proxy_env = read_env_file(self.proxy_env_path)
             if key in proxy_env:
                 return proxy_env[key]
+        example = self._example_env()
+        if key in example:
+            return example[key]
         return None
+
+    def _example_env(self) -> dict[str, str]:
+        if not self.env_example_path:
+            return {}
+        cache = getattr(self, "_example_env_cache", None)
+        if cache is None:
+            cache = read_env_file(self.env_example_path)
+            self._example_env_cache = cache
+        return cache
 
     def has_override(self, field: SettingField) -> bool:
         return self.get_override_value(field.key, target=field.target) is not None
@@ -121,6 +135,9 @@ class SettingsStore:
         env_val = os.getenv(key)
         if env_val is not None and env_val != "":
             return env_val
+        example = self._example_env()
+        if key in example:
+            return example[key]
         field = _field_by_key(key)
         if field is not None:
             return field.default

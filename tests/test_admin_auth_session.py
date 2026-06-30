@@ -55,6 +55,7 @@ def _admin_settings(**overrides: object) -> AdminSettings:
         "admin_restart_cmd": "systemctl restart rag-admin",
         "pool_scale_env_path": "/tmp/nomic-embed-scale.env",
         "pool_env_path": "/tmp/nomic-embed-pool.env",
+        "env_example_path": "",
     }
     defaults.update(overrides)
     return AdminSettings(**defaults)
