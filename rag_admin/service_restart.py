@@ -19,6 +19,8 @@ def schedule_restart(command: str, *, delay_sec: float = 1.5) -> tuple[bool, str
     def _worker() -> None:
         time.sleep(delay_sec)
         try:
+            # shell=True: command comes from operator env (RAG_*_RESTART_CMD); only
+            # trusted admins should set it — arbitrary shell injection if misconfigured.
             result = subprocess.run(
                 command,
                 shell=True,

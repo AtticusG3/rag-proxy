@@ -72,6 +72,13 @@ class AdminDatabase:
                     started_at TEXT NOT NULL,
                     finished_at TEXT
                 );
+                CREATE TABLE IF NOT EXISTS admin_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    revoked_at TEXT,
+                    client_ip TEXT
+                );
                 """
             )
             self._ensure_subscription_columns(conn)
@@ -346,3 +353,51 @@ class AdminDatabase:
                 (job_type, limit),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def create_admin_session(
+        self,
+        session_id: str,
+        *,
+        expires_at: str,
+        client_ip: str | None = None,
+    ) -> None:
+        now = _utc_now()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO admin_sessions
+                (session_id, created_at, expires_at, revoked_at, client_ip)
+                VALUES (?, ?, ?, NULL, ?)
+                """,
+                (session_id, now, expires_at, client_ip),
+            )
+
+    def get_admin_session(self, session_id: str) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM admin_sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def revoke_admin_session(self, session_id: str) -> None:
+        now = _utc_now()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                UPDATE admin_sessions
+                SET revoked_at = ?
+                WHERE session_id = ? AND revoked_at IS NULL
+                """,
+                (now, session_id),
+            )
+
+    def prune_expired_admin_sessions(self) -> int:
+        """Delete sessions past expires_at (call on login to limit table growth)."""
+        now = _utc_now()
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "DELETE FROM admin_sessions WHERE expires_at < ?",
+                (now,),
+            )
+        return int(cursor.rowcount)

@@ -17,16 +17,18 @@ from ingest.chunking import warmup_chunking
 from rag_admin.auth import (
     AuthMiddleware,
     clear_session,
+    is_authenticated,
     set_session,
     verify_password,
 )
 from rag_admin.config import settings, validate_settings
 from rag_admin.db import AdminDatabase
+from rag_admin.rate_limit import LoginRateLimiter
 from rag_admin.catalog import CatalogDownloadManager
 from rag_admin.job_runner import BackgroundJobRunner
 from rag_admin.routes import dashboard, explorer, ingest, settings as settings_routes, zim
 from rag_admin.settings_store import SettingsStore
-from rag_admin.helpers import templates
+from rag_admin.helpers import client_ip, templates
 
 log = logging.getLogger("rag-admin")
 
@@ -73,6 +75,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings_store = settings_store
     app.state.job_runner = job_runner
     app.state.catalog_manager = catalog_manager
+    app.state.login_rate_limiter = LoginRateLimiter(
+        max_attempts=settings.login_max_attempts,
+        lockout_minutes=settings.login_lockout_minutes,
+    )
     log.info("rag-admin started zim_dir=%s port=%s", settings.zim_dir, settings.port)
     yield
     catalog_manager.stop()
@@ -101,6 +107,8 @@ def create_app() -> FastAPI:
 
     @app.get("/login", response_class=HTMLResponse)
     async def login_page(request: Request) -> HTMLResponse:
+        if is_authenticated(request, request.app.state.db):
+            return RedirectResponse(url="/", status_code=303)
         return templates.TemplateResponse(request, "login.html", {"error": None})
 
     @app.post("/login", response_model=None)
@@ -108,21 +116,34 @@ def create_app() -> FastAPI:
         request: Request,
         password: str = Form(...),
     ):
+        db: AdminDatabase = request.app.state.db
+        limiter: LoginRateLimiter = request.app.state.login_rate_limiter
+        db.prune_expired_admin_sessions()
+        client_addr = client_ip(request)
+        if limiter.is_locked(client_addr):
+            return templates.TemplateResponse(
+                request,
+                "login.html",
+                {"error": "Too many failed login attempts. Try again later."},
+                status_code=429,
+            )
         if not verify_password(password):
+            limiter.record_failure(client_addr)
             return templates.TemplateResponse(
                 request,
                 "login.html",
                 {"error": "Invalid password"},
                 status_code=401,
             )
+        limiter.clear(client_addr)
         response = RedirectResponse(url="/", status_code=303)
-        set_session(response)
+        set_session(response, db, client_ip=client_addr)
         return response
 
     @app.post("/logout")
-    async def logout() -> RedirectResponse:
+    async def logout(request: Request) -> RedirectResponse:
         response = RedirectResponse(url="/login", status_code=303)
-        clear_session(response)
+        clear_session(response, request, request.app.state.db)
         return response
 
     return app

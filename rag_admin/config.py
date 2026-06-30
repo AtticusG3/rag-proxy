@@ -36,6 +36,9 @@ class AdminSettings:
     sparse_reindex_mode: str
     stall_seconds: int
     session_secret: str
+    session_ttl_seconds: int
+    login_max_attempts: int
+    login_lockout_minutes: int
     password: str
     rag_proxy_url: str
     admin_env_path: str
@@ -65,6 +68,9 @@ class AdminSettings:
             sparse_reindex_mode=os.getenv("INGEST_SPARSE_REINDEX", "idle").strip().lower(),
             stall_seconds=_env_int("INGEST_STALL_MINUTES", 15) * 60,
             session_secret=os.getenv("ADMIN_SESSION_SECRET", DEFAULT_SESSION_SECRET),
+            session_ttl_seconds=_env_int("ADMIN_SESSION_TTL_SECONDS", 86400 * 7),
+            login_max_attempts=_env_int("ADMIN_LOGIN_MAX_ATTEMPTS", 5),
+            login_lockout_minutes=_env_int("ADMIN_LOGIN_LOCKOUT_MINUTES", 15),
             password=os.getenv("ADMIN_PASSWORD", DEFAULT_PASSWORD),
             rag_proxy_url=os.getenv("RAG_PROXY_URL", "http://127.0.0.1:8081"),
             admin_env_path=os.getenv(

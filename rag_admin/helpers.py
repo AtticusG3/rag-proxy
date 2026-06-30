@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from urllib.parse import urlencode
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -28,6 +28,19 @@ def format_datetime(value: str | None) -> str:
 
 templates = Jinja2Templates(directory=os.path.join(_BASE, "templates"))
 templates.env.filters["format_dt"] = format_datetime
+
+
+def client_ip(request: Request) -> str:
+    """Client IP for rate limits: CF-Connecting-IP, then X-Forwarded-For, then peer."""
+    cf = request.headers.get("cf-connecting-ip")
+    if cf:
+        return cf.strip()
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client is not None:
+        return request.client.host
+    return "unknown"
 
 
 def flash_redirect(url: str, message: str, *, level: str = "info") -> RedirectResponse:

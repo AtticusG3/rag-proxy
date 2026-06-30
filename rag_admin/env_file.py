@@ -62,4 +62,5 @@ def write_env_file(path: str, updates: dict[str, str], *, create: bool = True) -
     file_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = file_path.with_suffix(file_path.suffix + ".tmp")
     tmp_path.write_text(content, encoding="utf-8")
+    os.chmod(tmp_path, 0o600)
     os.replace(tmp_path, file_path)
