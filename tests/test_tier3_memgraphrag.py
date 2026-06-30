@@ -23,7 +23,10 @@ def test_run_memgraphrag_appends_hits_to_context(monkeypatch) -> None:
     async def fake_retrieve(_query: str):
         return list(expected)
 
-    with patch("rag_proxy.stages.tier3_memgraphrag.load_memory", return_value=memory):
+    with patch("rag_proxy.stages.tier3_memgraphrag.get_memory_index") as get_index:
+        index = MagicMock()
+        index.memory = memory
+        get_index.return_value = index
         with patch(
             "rag_proxy.stages.tier3_memgraphrag.MemGraphRetriever"
         ) as retriever_cls:
@@ -46,7 +49,10 @@ def test_run_memgraphrag_fail_open_on_retriever_error(monkeypatch) -> None:
     memory = MagicMock()
     memory.facts = {0: object()}
 
-    with patch("rag_proxy.stages.tier3_memgraphrag.load_memory", return_value=memory):
+    with patch("rag_proxy.stages.tier3_memgraphrag.get_memory_index") as get_index:
+        index = MagicMock()
+        index.memory = memory
+        get_index.return_value = index
         with patch(
             "rag_proxy.stages.tier3_memgraphrag.MemGraphRetriever"
         ) as retriever_cls:
@@ -68,10 +74,10 @@ def test_run_memgraphrag_skips_without_query(monkeypatch) -> None:
     monkeypatch.setattr(settings, "memgraphrag_db_path", "/tmp/memgraphrag.sqlite")
     ctx = RequestContext(query_text=None, hits=[])
 
-    with patch("rag_proxy.stages.tier3_memgraphrag.load_memory") as load_memory:
+    with patch("rag_proxy.stages.tier3_memgraphrag.get_memory_index") as get_index:
         asyncio.run(run_memgraphrag(ctx))
 
-    load_memory.assert_not_called()
+    get_index.assert_not_called()
     assert ctx.hits == []
 
 
@@ -80,10 +86,10 @@ def test_run_memgraphrag_skips_without_db_path(monkeypatch) -> None:
     monkeypatch.setattr(settings, "memgraphrag_db_path", "")
     ctx = RequestContext(query_text="query", hits=[])
 
-    with patch("rag_proxy.stages.tier3_memgraphrag.load_memory") as load_memory:
+    with patch("rag_proxy.stages.tier3_memgraphrag.get_memory_index") as get_index:
         asyncio.run(run_memgraphrag(ctx))
 
-    load_memory.assert_not_called()
+    get_index.assert_not_called()
 
 
 def test_run_memgraphrag_skips_empty_memory(monkeypatch) -> None:
@@ -93,7 +99,10 @@ def test_run_memgraphrag_skips_empty_memory(monkeypatch) -> None:
     memory.facts = {}
     ctx = RequestContext(query_text="query", hits=[])
 
-    with patch("rag_proxy.stages.tier3_memgraphrag.load_memory", return_value=memory):
+    with patch("rag_proxy.stages.tier3_memgraphrag.get_memory_index") as get_index:
+        index = MagicMock()
+        index.memory = memory
+        get_index.return_value = index
         with patch("rag_proxy.stages.tier3_memgraphrag.MemGraphRetriever") as retriever_cls:
             asyncio.run(run_memgraphrag(ctx))
 

@@ -12,16 +12,21 @@ When no facts score above zero similarity, returns an empty list (no dense fallb
 
 from __future__ import annotations
 
+import asyncio
 import logging
-import math
-from typing import Any
 
 import httpx
 import numpy as np
 
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit
-from rag_proxy.memgraphrag.memory import ThreeLayerMemory
+from rag_proxy.memgraphrag.cache import MemoryIndex
+
+try:
+    from rag_proxy.sidecar_client import get_embed_client, get_reranker_client
+except ImportError:
+    get_embed_client = None  # type: ignore[assignment,misc]
+    get_reranker_client = None  # type: ignore[assignment,misc]
 
 log = logging.getLogger("rag-proxy.memgraphrag.retrieval")
 
@@ -33,7 +38,7 @@ class MemGraphRetriever:
 
     def __init__(
         self,
-        memory: ThreeLayerMemory,
+        index: MemoryIndex,
         embed_url: str | None = None,
         reranker_url: str | None = None,
         top_k: int = 5,
@@ -43,7 +48,8 @@ class MemGraphRetriever:
         ppr_threshold: float = 0.01,
         passage_node_weight: float = 0.5,
     ):
-        self.memory = memory
+        self.index = index
+        self.memory = index.memory
         self.embed_url = embed_url or settings.embed_url
         self.reranker_url = reranker_url or settings.reranker_url
         self.top_k = top_k
@@ -52,16 +58,6 @@ class MemGraphRetriever:
         self.ppr_iterations = ppr_iterations
         self.ppr_threshold = ppr_threshold
         self.passage_node_weight = passage_node_weight
-
-        # Build adjacency for PPR (fact-to-fact graph)
-        self._fact_adj: dict[int, list[int]] = {}
-        self._build_fact_graph()
-
-    def _build_fact_graph(self) -> None:
-        """Build fact-to-fact adjacency from inter-layer connections."""
-        for fi in self.memory.facts:
-            self._fact_adj[fi] = self.memory.get_related_fact_indices(fi)
-        log.info("Built fact graph: %d nodes", len(self._fact_adj))
 
     # -- embedding ---------------------------------------------------------
 
@@ -72,39 +68,49 @@ class MemGraphRetriever:
             return []
         url = f"{self.embed_url.rstrip('/')}/v1/embeddings"
         payload = {"model": _EMBED_MODEL, "input": trimmed}
+        if get_embed_client is not None:
+            try:
+                client = get_embed_client()
+                resp = await client.post(url, json=payload)
+                resp.raise_for_status()
+                return resp.json()["data"][0]["embedding"]
+            except RuntimeError:
+                pass
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
+        resp.raise_for_status()
+        return resp.json()["data"][0]["embedding"]
 
     # -- fact scoring ------------------------------------------------------
+
+    def _score_facts_vectorized(self, query_emb: np.ndarray) -> list[tuple[int, float]]:
+        """Score embedded facts via single matmul against row-normalized fact vectors."""
+        if self.index.fact_embeddings.size == 0:
+            return []
+
+        query_norm = float(np.linalg.norm(query_emb))
+        if query_norm == 0:
+            return []
+
+        query_unit = query_emb / query_norm
+        scores = self.index.fact_embeddings @ query_unit
+
+        order = np.argsort(-scores)
+        return [
+            (int(self.index.fact_indices[i]), float(scores[i]))
+            for i in order
+        ]
 
     async def score_facts(self, query: str) -> list[tuple[int, float]]:
         """Score all facts against the query using precomputed embedding cosine similarity.
 
-        Query is embedded once via HTTP; fact vectors are loaded from memory (index build).
-        Facts without stored embeddings are skipped.
+        Query is embedded once via HTTP; fact vectors come from the cached index.
+        Facts without stored embeddings are omitted at index build time.
 
         Returns list of (fact_idx, score) sorted by score descending.
         """
         query_emb = np.array(await self._embed_query(query), dtype=np.float32)
-        query_norm = np.linalg.norm(query_emb)
-        if query_norm == 0:
-            return []
-
-        scored: list[tuple[int, float]] = []
-        for fi, fact in self.memory.facts.items():
-            if not fact.embedding:
-                continue
-            fact_emb = np.array(fact.embedding, dtype=np.float32)
-            fact_norm = np.linalg.norm(fact_emb)
-            if fact_norm == 0:
-                continue
-            score = float(np.dot(query_emb, fact_emb) / (query_norm * fact_norm))
-            scored.append((fi, score))
-
-        scored.sort(key=lambda x: x[1], reverse=True)
-        return scored
+        return await asyncio.to_thread(self._score_facts_vectorized, query_emb)
 
     # -- reranking ---------------------------------------------------------
 
@@ -122,28 +128,34 @@ class MemGraphRetriever:
         try:
             timeout = settings.rerank_timeout_ms / 1000.0 + 0.5
             url = f"{self.reranker_url.rstrip('/')}/rerank"
-            async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(
-                    url,
-                    json={"pairs": pairs, "top_k": len(fact_indices)},
+            payload = {"pairs": pairs, "top_k": len(fact_indices)}
+            resp = None
+            if get_reranker_client is not None:
+                try:
+                    client = get_reranker_client()
+                    resp = await client.post(url, json=payload, timeout=timeout)
+                except RuntimeError:
+                    resp = None
+            if resp is None:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+            order = resp.json().get("indices", [])
+            if not order:
+                return list(zip(fact_indices, [1.0] * len(fact_indices)))
+            ranked: list[tuple[int, float]] = []
+            for rank, pair_idx in enumerate(order):
+                if 0 <= pair_idx < len(fact_indices):
+                    fi = fact_indices[pair_idx]
+                    ranked.append((fi, float(len(fact_indices) - rank)))
+            if len(ranked) != len(fact_indices):
+                log.warning(
+                    "Reranker returned %d indices for %d facts",
+                    len(ranked),
+                    len(fact_indices),
                 )
-                resp.raise_for_status()
-                order = resp.json().get("indices", [])
-                if not order:
-                    return list(zip(fact_indices, [1.0] * len(fact_indices)))
-                ranked: list[tuple[int, float]] = []
-                for rank, pair_idx in enumerate(order):
-                    if 0 <= pair_idx < len(fact_indices):
-                        fi = fact_indices[pair_idx]
-                        ranked.append((fi, float(len(fact_indices) - rank)))
-                if len(ranked) != len(fact_indices):
-                    log.warning(
-                        "Reranker returned %d indices for %d facts",
-                        len(ranked),
-                        len(fact_indices),
-                    )
-                    return list(zip(fact_indices, [1.0] * len(fact_indices)))
-                return ranked
+                return list(zip(fact_indices, [1.0] * len(fact_indices)))
+            return ranked
         except Exception as e:
             log.warning("Reranker failed: %s", e)
             return list(zip(fact_indices, [1.0] * len(fact_indices)))
@@ -159,10 +171,10 @@ class MemGraphRetriever:
 
         Args:
             seed_scores: initial score for each seed fact (from reranker)
-            adj: adjacency list (fact_idx → list of neighbor fact indices)
+            adj: adjacency list (fact_idx -> list of neighbor fact indices)
 
         Returns:
-            dict mapping fact_idx → PPR score
+            dict mapping fact_idx -> PPR score
         """
         if not seed_scores:
             return {}
@@ -239,26 +251,33 @@ class MemGraphRetriever:
         """
         log.info("MemGraphRAG retrieve: %r (memory: %s)", query[:80], self.memory.stats)
 
-        # Step 1: Score facts
-        all_scored = await self.score_facts(query)
+        # Step 1: Score facts (embed async, score in thread)
+        query_emb = np.array(await self._embed_query(query), dtype=np.float32)
+        all_scored = await asyncio.to_thread(self._score_facts_vectorized, query_emb)
         if not all_scored:
             log.info("No facts scored, returning empty")
             return []
 
         # Step 2: Take top facts for reranking
         top_fact_indices = [fi for fi, _ in all_scored[:self.fact_top_k]]
-        top_fact_texts = [self.memory.facts[fi].triple_str for fi in top_fact_indices if fi in self.memory.facts]
+        top_fact_texts = [
+            self.memory.facts[fi].triple_str
+            for fi in top_fact_indices
+            if fi in self.memory.facts
+        ]
 
         reranked = await self.rerank_facts(query, top_fact_indices, top_fact_texts)
         log.info("Reranked %d facts", len(reranked))
 
         # Step 3: PPR from reranked facts
         seed_scores = {fi: score for fi, score in reranked if score > 0}
-        ppr_scores = self._ppr(seed_scores, self._fact_adj)
+        ppr_scores = await asyncio.to_thread(
+            self._ppr, seed_scores, self.index.fact_adj
+        )
         log.info("PPR: %d facts above threshold", len(ppr_scores))
 
         # Step 4: Aggregate to passages
-        passage_ranked = self._passages_from_ppr(ppr_scores)
+        passage_ranked = await asyncio.to_thread(self._passages_from_ppr, ppr_scores)
         log.info("Passage candidates: %d", len(passage_ranked))
 
         # Step 5: Build ChunkHits
