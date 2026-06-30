@@ -1,5 +1,5 @@
 # Optional deps for offline tests (sidecar contract tests).
-chonkie>=1.4,<2
+chonkie[tokenizers]>=1.4,<2
 requests>=2.28,<3
 rank-bm25>=0.2.2
 # Admin route tests import Jinja2 templates (full admin stack: requirements-admin.txt).

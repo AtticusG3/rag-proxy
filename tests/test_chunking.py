@@ -2,20 +2,38 @@
 
 from __future__ import annotations
 
+from ingest.chunk_config import ChunkConfig
 from ingest.chunking import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, chunk_text
+from ingest.chunking_strategy import ChunkStrategy
 
 
-def test_chunk_text_splits_huge_paragraph():
-    huge = "x" * 10_000
-    chunks = chunk_text(f"{huge}\n\nafter")
-    max_len = DEFAULT_CHUNK_SIZE + DEFAULT_CHUNK_OVERLAP
-    assert all(len(c) <= max_len for c in chunks)
-    assert chunks[0].startswith("x")
-    assert any("after" in c for c in chunks)
-
-
-def test_chunk_text_respects_size_limit():
-    text = "word " * 200
-    chunks = chunk_text(text, size=100, overlap=10)
+def test_chunk_text_splits_long_prose():
+    prose = ("Sentence one about homelab deployment. " * 200) + "\n\nFinal paragraph here."
+    chunks = chunk_text(
+        prose,
+        size=100,
+        overlap=10,
+        config=ChunkConfig(tokenizer="word", semantic_enabled=False),
+        strategy=ChunkStrategy.SENTENCE,
+    )
     assert len(chunks) > 1
-    assert all(len(c) <= 110 for c in chunks)
+    assert all(len(c) > 0 for c in chunks)
+    assert any("Final paragraph" in c for c in chunks)
+
+
+def test_chunk_text_respects_token_budget():
+    text = "word " * 800
+    chunks = chunk_text(
+        text,
+        size=100,
+        overlap=10,
+        config=ChunkConfig(tokenizer="word", semantic_enabled=False),
+        strategy=ChunkStrategy.TOKEN,
+    )
+    assert len(chunks) > 1
+    assert all(len(c.split()) <= 110 for c in chunks)
+
+
+def test_default_token_targets_match_nomic_guidance():
+    assert DEFAULT_CHUNK_SIZE == 512
+    assert DEFAULT_CHUNK_OVERLAP == 64

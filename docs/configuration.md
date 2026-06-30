@@ -184,6 +184,11 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `INGEST_MAX_ARTICLES` | `0` | ZIM article cap (`0` = unlimited) |
 | `INGEST_SPARSE_REINDEX` | `idle` | Sparse sidecar reindex mode |
 | `INGEST_STALL_MINUTES` | `15` | Stall detection for ingest jobs |
+| `INGEST_CHUNK_SIZE_TOKENS` | `512` | Target chunk size in tokens (nomic-embed range) |
+| `INGEST_CHUNK_OVERLAP_TOKENS` | `64` | Chunk overlap in tokens (~12.5%) |
+| `INGEST_CHUNK_TOKENIZER` | `nomic-ai/nomic-embed-text-v1.5` | Tokenizer for chunk sizing |
+| `INGEST_CHUNK_SEMANTIC` | `true` | Use semantic chunking when deps installed |
+| `INGEST_CHUNK_SEMANTIC_MODEL` | `minishlab/potion-base-32M` | Embedding model for semantic boundaries |
 | `RAG_PROXY_URL` | `http://127.0.0.1:8081` | Proxy URL for admin smoke hooks |
 
 Details: [Ingest and admin](ingest-and-admin.md).

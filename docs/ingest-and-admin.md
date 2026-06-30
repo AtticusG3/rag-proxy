@@ -76,14 +76,34 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 
 1. **Queue** — jobs created from UI (ZIM path, upload, catalog subscription).
 2. **Read** — ZIM (`ingest/zim_reader.py`), PDF (`ingest/pdf_reader.py`), or plain text.
-3. **Chunk** — `ingest/chunking.py` splits text with [Chonkie](https://github.com/chonkie-inc/chonkie) `RecursiveChunker` (character tokenizer, default 400 chars / 64 overlap).
+3. **Chunk** — `ingest/chunking.py` selects a Chonkie strategy per document (see below), default **512 tokens / 64 overlap** (~12.5%) using the nomic-embed tokenizer when available.
 4. **Embed** — `ingest/embedder.py` calls `EMBED_URL` (same nomic-embed as proxy).
 5. **Write** — `ingest/qdrant_writer.py` upserts to `QDRANT_COLLECTION`.
 6. **Sparse reindex** — optional POST to `SPARSE_INDEX_URL` when `INGEST_SPARSE_REINDEX` triggers (hybrid cognitive mode).
 
+### Chunk strategy selection
+
+| Strategy | When | Typical sources |
+| --- | --- | --- |
+| `recursive` | Markdown structure (headers, frontmatter, tables) | `.md`, fleet docs, schema nodes |
+| `sentence` | Flowing prose without reliable formatting | ZIM articles, plain PDFs, narrative `.txt` |
+| `semantic` | Dense technical writing where topics do not follow layout | arXiv PDFs, academic papers (requires `chonkie[semantic]`) |
+| `token` | Unstructured scrapes / OCR dumps | Long single-line text, weak paragraph breaks |
+| `code` | Source-heavy content | Scripts, playbooks (requires `chonkie[code]`) |
+
+Fallback order is strategy-specific; failures fall back to `recursive`, then `token`. Tokenizer resolution tries `INGEST_CHUNK_TOKENIZER` (default `nomic-ai/nomic-embed-text-v1.5`), then `gpt2`, then `word`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `INGEST_CHUNK_SIZE_TOKENS` | `512` | Target chunk size (nomic-embed sweet spot) |
+| `INGEST_CHUNK_OVERLAP_TOKENS` | `64` | Overlap (~12.5%; use 50-100 for 512-token chunks) |
+| `INGEST_CHUNK_TOKENIZER` | `nomic-ai/nomic-embed-text-v1.5` | Tokenizer aligned with embed model |
+| `INGEST_CHUNK_SEMANTIC` | `true` | Enable semantic strategy when deps installed |
+| `INGEST_CHUNK_SEMANTIC_MODEL` | `minishlab/potion-base-32M` | Local model for semantic boundary detection |
+
 Bulk ZIM ingest uses `ingest/pipeline.py`: multiple embed batches run concurrently (`INGEST_EMBED_CONCURRENCY`) while Qdrant upserts stay in chunk order. Set `llama-server --parallel` on the embed endpoint to at least the same value (e.g. `16` on a dedicated nomic-embed GPU). Smaller `INGEST_BATCH_SIZE` (e.g. `32`) with higher concurrency often beats one huge batch per request.
 
-Chunking defaults to 400 characters so each input stays under the per-slot token limit when context is divided by `--parallel` (e.g. `-c 8096 --parallel 16` -> ~512 tokens per input). The embedder bisects batches on `exceed_context_size` 400 responses.
+Chunking defaults to **512 tokens** with **64-token overlap** so each chunk fits nomic-embed-text-v1.5's effective range without diluting the vector. The embedder still bisects batches on `exceed_context_size` responses.
 
 ### Multi-instance embed pool (VRAM auto-scale)
 

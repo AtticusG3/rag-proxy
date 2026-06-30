@@ -17,6 +17,7 @@ import httpx
 
 from ingest.db import IngestDatabase
 from ingest.chunking import chunk_text
+from ingest.chunking_strategy import ChunkContext
 from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.pdf_reader import read_pdf_text
 from ingest.pipeline import run_ingest_pipeline
@@ -69,16 +70,17 @@ def _iter_chunks_for_file(
     """Yield (title, source, chunk_text) without loading whole ZIMs into RAM."""
     file_type = determine_file_type(file_path)
     source = file_path
+    chunk_ctx = ChunkContext.from_path(file_path, file_type)
 
     if file_type == "text":
         title, text = _read_text_file(file_path)
-        for piece in chunk_text(text):
+        for piece in chunk_text(text, context=chunk_ctx):
             yield title, source, piece
         return
 
     if file_type == "zim":
         for article in iter_zim_articles(file_path, max_articles=max_articles):
-            for piece in chunk_text(article.text):
+            for piece in chunk_text(article.text, context=chunk_ctx):
                 yield article.title, source, piece
         return
 
@@ -86,7 +88,7 @@ def _iter_chunks_for_file(
         title, text = read_pdf_text(file_path)
         if not text.strip():
             return
-        for piece in chunk_text(text):
+        for piece in chunk_text(text, context=chunk_ctx):
             yield title, source, piece
         return
 
@@ -256,12 +258,11 @@ class IngestWorker:
                 file_type=determine_file_type(file_path),
             )
             return
-        if row["status"] != "indexed":
-            delete_by_source(
-                self.config.qdrant_url,
-                self.config.qdrant_collection,
-                file_path,
-            )
+        delete_by_source(
+            self.config.qdrant_url,
+            self.config.qdrant_collection,
+            file_path,
+        )
         if not self.db.retry_file_state(file_path, reset_chunks=True):
             self.db.upsert_file_state(
                 file_path,
@@ -281,6 +282,26 @@ class IngestWorker:
             status="queued",
             message=f"{len(failed)} failed file(s) re-queued",
         )
+        return job_id
+
+    def requeue_all_files(self) -> str:
+        """Re-queue every on-disk ingest file (clears Qdrant points per source first)."""
+        job_id = str(uuid.uuid4())
+        rows = self.db.list_file_states()
+        requeued = 0
+        skipped = 0
+        self.db.create_job(job_id, job_type="requeue_all")
+        for row in rows:
+            file_path = str(row["file_path"])
+            if not os.path.isfile(file_path):
+                skipped += 1
+                continue
+            self._prepare_file_restart(file_path)
+            requeued += 1
+        message = f"{requeued} file(s) re-queued"
+        if skipped:
+            message += f", {skipped} missing on disk skipped"
+        self.db.update_job(job_id, status="queued", message=message)
         return job_id
 
     def enqueue_file(self, file_path: str) -> str:
