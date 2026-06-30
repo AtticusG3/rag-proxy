@@ -60,7 +60,7 @@ def test_budget_keeps_constraint_lines():
         ChunkHit(id="1", text="filler " * 200, score=0.5),
         ChunkHit(id="2", text="ERROR: disk full on /dev/sda", score=0.9),
     ]
-    kept = apply_context_budget(hits, budget_chars=120)
+    kept = apply_context_budget(hits, 120)
     assert any("ERROR" in h.text for h in kept)
 
 

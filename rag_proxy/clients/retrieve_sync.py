@@ -15,6 +15,7 @@ from rag_proxy.clients.retrieval_core import (
     parse_dense_hits,
     parse_embedding,
     parse_sparse_hits,
+    prepare_embed_text,
     sparse_search_payload,
 )
 
@@ -75,7 +76,7 @@ def _headers(config: RetrieveConfig) -> dict[str, str]:
 
 def embed_query(config: RetrieveConfig, query: str) -> list[float] | None:
     """Embed query text via the standalone nomic-embed server."""
-    trimmed = query.strip()[: config.embed_max_chars]
+    trimmed = prepare_embed_text(query, config.embed_max_chars)
     if not trimmed:
         return None
     try:

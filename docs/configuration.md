@@ -62,7 +62,7 @@ Default empty = no change (open proxy, same as before). Use when `PROXY_HOST=0.0
 | `ENABLE_TOOLS` | `false` | Whitelisted file reads |
 | `ENABLE_ROLLING_MEMORY` | `false` | Session summaries in SQLite |
 | `ENABLE_EMBED_CACHE` | `false` | In-request embed cache (respects `X-No-Cache`) |
-| `ENABLE_TOKENIZER_ESTIMATE` | `false` | Token-budget estimation in context assembly |
+| `ENABLE_TOKENIZER_ESTIMATE` | `false` | Use tiktoken (`cl100k_base`) for context budget and injection truncation |
 
 Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIVE_RAG_PLAN.md](COGNITIVE_RAG_PLAN.md).
 
@@ -76,6 +76,7 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 | `STAGE_BUDGET_RETRIEVE_MS` | `50` | Min ms for embed + Qdrant/hybrid |
 | `STAGE_BUDGET_GRAPH_MS` | `100` | Min ms for graph lookup |
 | `STAGE_BUDGET_MEMGRAPHRAG_MS` | `200` | Min ms for MemGraphRAG stage |
+| `STAGE_EXEC_TIMEOUT_MS` | `30000` | Max runtime for stages without a dedicated budget (also caps tier0/intent/memory/context) |
 | `RETRIEVAL_CANDIDATE_K` | `20` | Candidate pool before rerank/top-k trim |
 | `CONTEXT_BUDGET_RATIO` | `0.25` | Fraction of context window for RAG chunks |
 | `CONTEXT_FALLBACK_CHARS` | `8000` | Char fallback when tokenizer estimate off |

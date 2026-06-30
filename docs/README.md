@@ -17,6 +17,7 @@ Diagrams in these guides use [Mermaid](https://mermaid.js.org/) (rendered on Git
 | [COGNITIVE_RAG_PLAN.md](COGNITIVE_RAG_PLAN.md) | Detailed cognitive rollout, flag matrix, failure modes |
 | [Headers and clients](headers-and-clients.md) | Base URL, per-request headers, client integration |
 | [Observability](observability.md) | Traces, JSON logs, metrics, log greps |
+| [Performance](performance.md) | Latency trade-offs, caching, tuning |
 | [Deployment](deployment.md) | systemd, Docker, port layout |
 | [Troubleshooting](troubleshooting.md) | Symptom → fix table and diagnostic commands |
 | [Ingest and admin](ingest-and-admin.md) | RAG admin UI, ingest worker |
