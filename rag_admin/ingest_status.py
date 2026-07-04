@@ -7,6 +7,12 @@ from typing import Any
 
 from ingest.stall import is_stalled
 
+from rag_admin.embed_throughput import (
+    embed_throughput_rates,
+    format_embed_rate,
+    record_embed_progress,
+)
+
 
 def enrich_file_rows(
     rows: list[dict[str, Any]],
@@ -30,18 +36,21 @@ def enrich_file_rows(
     return enriched
 
 
-def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int]:
+def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int | None]:
     pending = 0
     running = 0
     stalled = 0
     indexed = 0
     total_chunks = 0
+    queue_chunks = 0
     missing = 0
     for row in files:
         status = row.get("status", "")
         display = row.get("display_status", status)
         chunks = int(row.get("chunks_embedded") or 0)
         total_chunks += chunks
+        if status in ("pending", "queued", "running"):
+            queue_chunks += chunks
         if row.get("file_missing"):
             missing += 1
         if status in ("pending", "queued"):
@@ -54,7 +63,8 @@ def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int]:
             indexed += 1
         elif status == "failed":
             pass
-    return {
+    record_embed_progress(total_chunks)
+    stats = {
         "pending": pending,
         "running": running,
         "stalled": stalled,
@@ -62,7 +72,35 @@ def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int]:
         "missing": missing,
         "active": pending + running,
         "total_chunks": total_chunks,
+        "queue_chunks": queue_chunks,
     }
+    stats.update(embed_throughput_rates())
+    stats["velocity_text"] = ingest_velocity_text(stats)
+    return stats
+
+
+def ingest_velocity_text(stats: dict[str, int | None]) -> str:
+    """Single-line ingest velocity summary for Jobs page."""
+    if int(stats.get("active") or 0) <= 0:
+        indexed = int(stats.get("indexed") or 0)
+        total = int(stats.get("total_chunks") or 0)
+        return f"{indexed:,} indexed · {total:,} corpus chunks"
+
+    active = int(stats["active"])
+    total = int(stats.get("total_chunks") or 0)
+    running = int(stats.get("running") or 0)
+    pending = int(stats.get("pending") or 0)
+    parts = [f"{active} in queue", f"{total:,} corpus chunks"]
+    if running:
+        parts.append(f"{running} embedding")
+    parts.extend(
+        [
+            "now " + format_embed_rate(stats.get("embed_rate_now"), running=running, pending=pending, window="now"),
+            "5m " + format_embed_rate(stats.get("embed_rate_5m"), running=running, pending=pending, window="5m"),
+            "15m " + format_embed_rate(stats.get("embed_rate_15m"), running=running, pending=pending, window="15m"),
+        ]
+    )
+    return " · ".join(parts)
 
 
 def ingest_config_snapshot(worker: Any) -> dict[str, Any]:

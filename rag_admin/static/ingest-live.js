@@ -3,9 +3,6 @@
 
   var POLL_ACTIVE_MS = 8000;
   var POLL_IDLE_MS = 30000;
-  var WINDOW_5_MS = 5 * 60 * 1000;
-  var WINDOW_15_MS = 15 * 60 * 1000;
-  var MIN_ELAPSED_MS = 4800;
 
   var tbody = document.getElementById("ingest-files-body");
   if (!tbody) {
@@ -14,7 +11,6 @@
 
   var velocityEl = document.getElementById("ingest-velocity");
   var liveBadge = document.getElementById("ingest-live-badge");
-  var chunkSamples = [];
   var timerId = null;
 
   function escapeHtml(value) {
@@ -139,104 +135,51 @@
       .join("");
   }
 
-  function recordChunkSample(total, now) {
-    chunkSamples.push({ t: now, total: total });
-    var cutoff = now - WINDOW_15_MS;
-    while (chunkSamples.length > 1 && chunkSamples[0].t < cutoff) {
-      chunkSamples.shift();
+  function formatRate(rate, stats, window) {
+    if (rate !== null && rate !== undefined) {
+      return Number(rate).toLocaleString() + " chunks/min";
     }
+    if (window === "now" && !stats.running && stats.pending > 0) {
+      return "waiting";
+    }
+    return "—";
   }
 
-  function rateBetween(baseline, current) {
-    var elapsedMs = current.t - baseline.t;
-    if (elapsedMs < MIN_ELAPSED_MS) {
-      return null;
+  function buildVelocityText(stats) {
+    if (stats.velocity_text) {
+      return stats.velocity_text;
     }
-    var delta = current.total - baseline.total;
-    if (delta < 0) {
-      return null;
+    var active = stats.active || 0;
+    if (active <= 0) {
+      return (
+        (stats.indexed || 0).toLocaleString() +
+        " indexed · " +
+        (stats.total_chunks || 0).toLocaleString() +
+        " corpus chunks"
+      );
     }
-    return Math.round(delta / (elapsedMs / 60000));
-  }
-
-  function baselineForWindow(samples, windowMs) {
-    if (!samples.length) {
-      return null;
+    var parts = [
+      active + " in queue",
+      (stats.total_chunks || 0).toLocaleString() + " corpus chunks",
+    ];
+    if (stats.running) {
+      parts.push(stats.running + " embedding");
     }
-    var current = samples[samples.length - 1];
-    var targetT = current.t - windowMs;
-    var baseline = samples[0];
-    for (var i = 0; i < samples.length; i++) {
-      if (samples[i].t <= targetT) {
-        baseline = samples[i];
-      } else {
-        break;
-      }
-    }
-    return baseline;
-  }
-
-  function rateOverWindow(samples, windowMs) {
-    if (samples.length < 2) {
-      return null;
-    }
-    var current = samples[samples.length - 1];
-    var baseline = baselineForWindow(samples, windowMs);
-    if (!baseline || baseline.t === current.t) {
-      return null;
-    }
-    return rateBetween(baseline, current);
-  }
-
-  function formatRate(value) {
-    if (value === null) {
-      return "measuring...";
-    }
-    return value + " chunks/min";
+    parts.push("now " + formatRate(stats.embed_rate_now, stats, "now"));
+    parts.push("5m " + formatRate(stats.embed_rate_5m, stats, "5m"));
+    parts.push("15m " + formatRate(stats.embed_rate_15m, stats, "15m"));
+    return parts.join(" · ");
   }
 
   function updateVelocity(stats) {
     if (!velocityEl) {
       return;
     }
-
-    var total = stats.total_chunks || 0;
-    var active = stats.active || 0;
-    var now = Date.now();
-
-    if (active > 0) {
-      recordChunkSample(total, now);
-      var nowRate = null;
-      if (chunkSamples.length >= 2) {
-        nowRate = rateBetween(
-          chunkSamples[chunkSamples.length - 2],
-          chunkSamples[chunkSamples.length - 1]
-        );
-      }
-      var rate5m = rateOverWindow(chunkSamples, WINDOW_5_MS);
-      var rate15m = rateOverWindow(chunkSamples, WINDOW_15_MS);
-      velocityEl.textContent =
-        active +
-        " file(s) in queue · " +
-        total.toLocaleString() +
-        " chunks embedded · now " +
-        formatRate(nowRate) +
-        " · 5m " +
-        formatRate(rate5m) +
-        " · 15m " +
-        formatRate(rate15m);
-      velocityEl.hidden = false;
-    } else {
-      chunkSamples = [];
-      velocityEl.textContent =
-        (stats.indexed || 0) +
-        " indexed · " +
-        total.toLocaleString() +
-        " total chunks";
-      velocityEl.hidden = false;
-    }
+    velocityEl.textContent = buildVelocityText(stats);
+    velocityEl.hidden = false;
 
     if (liveBadge) {
+      var active = stats.active || 0;
       liveBadge.hidden = active === 0;
       liveBadge.textContent = active > 0 ? "Live" : "";
     }

@@ -10,13 +10,7 @@
     <h2 class="section-title" style="margin:0">Queue</h2>
     <span id="ingest-live-badge" class="live-badge" {% if ingest_queue.active == 0 %}hidden{% endif %} aria-live="polite">Live</span>
   </div>
-  <p id="ingest-velocity" class="ingest-velocity" aria-live="polite">
-    {% if ingest_queue.active > 0 %}
-      {{ ingest_queue.active }} file(s) in queue · {{ ingest_queue.total_chunks }} chunks embedded · now measuring... · 5m measuring... · 15m measuring...
-    {% else %}
-      {{ ingest_queue.indexed }} indexed · {{ ingest_queue.total_chunks }} total chunks
-    {% endif %}
-  </p>
+  <p id="ingest-velocity" class="ingest-velocity" aria-live="polite">{{ ingest_queue.velocity_text }}</p>
   <div class="actions-row">
     <form method="post" action="/api/ingest/sync-form">
       <button type="submit">Scan for new files</button>
