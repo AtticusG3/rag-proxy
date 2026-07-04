@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -22,13 +24,14 @@ from ingest.capacity_planner import (  # noqa: E402
     plan_ingest_capacity,
     render_capacity_env,
 )
-from ingest.embed_pool import load_embed_pool_config  # noqa: E402
+from ingest.embed_pool import EmbedPoolConfig, load_embed_pool_config  # noqa: E402
 from rag_proxy.env_parse import parse_bool  # noqa: E402
 
 DEFAULT_POOL_ENV = "/opt/ai/config/nomic-embed-pool.env"
 DEFAULT_SCALE_ENV = "/opt/ai/config/nomic-embed-scale.env"
 LEGACY_UNIT = "nomic-embed.service"
 TEMPLATE_UNIT = "nomic-embed@"
+EXTRA_PORT_BUFFER = 4
 
 
 def _run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -37,6 +40,10 @@ def _run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[s
 
 def _systemctl(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return _run(["systemctl", *args], check=check)
+
+
+def _pool_unit(port: int) -> str:
+    return f"{TEMPLATE_UNIT}{port}.service"
 
 
 def _probe_embed(url: str, *, timeout: float = 5.0) -> bool:
@@ -68,18 +75,165 @@ def _wait_for_health(urls: list[str], *, timeout_s: float | None = None) -> list
     return healthy
 
 
-def _stop_legacy_pool_instances(config) -> None:
-    _systemctl("stop", LEGACY_UNIT, check=False)
-    _systemctl("disable", LEGACY_UNIT, check=False)
-    for offset in range(config.max_instances):
-        port = config.port_base + offset
-        unit = f"{TEMPLATE_UNIT}{port}.service"
-        _systemctl("stop", unit, check=False)
-        _systemctl("disable", unit, check=False)
-    # Also stop ports we previously skipped in static deployments.
-    for port in range(config.port_base, config.port_base + config.max_instances + 4):
-        unit = f"{TEMPLATE_UNIT}{port}.service"
-        _systemctl("stop", unit, check=False)
+def _stop_disable_unit(unit: str) -> None:
+    _systemctl("stop", unit, check=False)
+    _systemctl("disable", unit, check=False)
+
+
+def _discover_pool_ports() -> set[int]:
+    """Return port numbers for all nomic-embed@ units systemd knows about."""
+    result = _systemctl(
+        "list-units",
+        "--all",
+        "--no-legend",
+        f"{TEMPLATE_UNIT}*",
+        check=False,
+    )
+    ports: set[int] = set()
+    for line in result.stdout.splitlines():
+        token = line.split()[0] if line.split() else ""
+        if "@" not in token:
+            continue
+        port_raw = token.split("@", 1)[1].removesuffix(".service")
+        try:
+            ports.add(int(port_raw))
+        except ValueError:
+            continue
+    return ports
+
+
+def _pool_port_range(config: EmbedPoolConfig) -> range:
+    return range(config.port_base, config.port_base + config.max_instances + EXTRA_PORT_BUFFER)
+
+
+def _retire_pool_units(*, keep_ports: set[int], config: EmbedPoolConfig) -> None:
+    """Stop and disable every pool unit outside keep_ports."""
+    candidates = _discover_pool_ports() | set(_pool_port_range(config))
+    for port in sorted(candidates):
+        if port in keep_ports:
+            continue
+        _stop_disable_unit(_pool_unit(port))
+
+
+def _prepare_pool_shutdown(config: EmbedPoolConfig) -> None:
+    """Stop legacy query embed and all known pool units before a fresh scale."""
+    _stop_disable_unit(LEGACY_UNIT)
+    _retire_pool_units(keep_ports=set(), config=config)
+
+
+def _unit_main_pid(unit: str) -> int | None:
+    result = _systemctl("show", unit, "-p", "MainPID", "--value", check=False)
+    raw = result.stdout.strip()
+    if not raw or raw == "0":
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _process_cmdline(pid: int) -> str:
+    try:
+        raw = Path(f"/proc/{pid}/cmdline").read_bytes()
+    except OSError:
+        return ""
+    return raw.replace(b"\0", b" ").decode("utf-8", errors="replace")
+
+
+def _is_embed_llama(pid: int) -> bool:
+    cmd = _process_cmdline(pid)
+    return "llama-server" in cmd and "--embedding" in cmd
+
+
+def _query_gpu_llama_pids() -> set[int]:
+    try:
+        result = _run(
+            [
+                "nvidia-smi",
+                "--query-compute-apps=pid,process_name",
+                "--format=csv,noheader,nounits",
+            ],
+            check=False,
+        )
+    except OSError:
+        return set()
+    if result.returncode != 0:
+        return set()
+
+    pids: set[int] = set()
+    for line in result.stdout.splitlines():
+        parts = [part.strip() for part in line.split(",", 1)]
+        if len(parts) != 2:
+            continue
+        pid_raw, name = parts
+        if "llama-server" not in name:
+            continue
+        try:
+            pids.add(int(pid_raw))
+        except ValueError:
+            continue
+    return pids
+
+
+def _expected_embed_pids(keep_ports: set[int]) -> set[int]:
+    pids: set[int] = set()
+    for port in keep_ports:
+        pid = _unit_main_pid(_pool_unit(port))
+        if pid is not None:
+            pids.add(pid)
+    legacy_pid = _unit_main_pid(LEGACY_UNIT)
+    legacy_active = _systemctl("is-active", LEGACY_UNIT, check=False)
+    if legacy_pid is not None and legacy_active.stdout.strip() == "active":
+        pids.add(legacy_pid)
+    return pids
+
+
+def _kill_stray_gpu_embeds(keep_ports: set[int]) -> list[int]:
+    """SIGTERM embed llama-server processes on GPU not owned by kept units."""
+    expected = _expected_embed_pids(keep_ports)
+    killed: list[int] = []
+    for pid in sorted(_query_gpu_llama_pids()):
+        if pid in expected or not _is_embed_llama(pid):
+            continue
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            continue
+        killed.append(pid)
+    if killed:
+        print(
+            f"reconciled stray gpu embed pids: {','.join(str(pid) for pid in killed)}",
+            file=sys.stderr,
+        )
+    return killed
+
+
+def _staging_suffix() -> str:
+    if hasattr(os, "getuid"):
+        return str(os.getuid())
+    return "local"
+
+
+def _write_pool_env(path: str, plan: IngestCapacityPlan) -> None:
+    content = render_capacity_env(plan)
+    target = Path(path)
+    try:
+        target.write_text(content, encoding="utf-8")
+        return
+    except PermissionError:
+        pass
+
+    staging = Path(tempfile.gettempdir()) / f"nomic-embed-pool.{_staging_suffix()}.env"
+    staging.write_text(content, encoding="utf-8")
+    sudo_copy = _run(["sudo", "-n", "cp", str(staging), str(target)], check=False)
+    if sudo_copy.returncode == 0:
+        _run(["sudo", "-n", "chmod", "644", str(target)], check=False)
+        return
+
+    raise PermissionError(
+        f"cannot write {target} (direct write and sudo -n cp failed); "
+        f"staged plan at {staging}"
+    )
 
 
 def shrink_plan_to_healthy(
@@ -110,27 +264,47 @@ def shrink_plan_to_healthy(
     )
 
 
+def _finalize_pool_units(
+    *,
+    planned_ports: set[int],
+    healthy_ports: set[int],
+    config: EmbedPoolConfig,
+) -> None:
+    """Disable crash-looping planned units and any other stray pool units."""
+    for port in sorted(planned_ports - healthy_ports):
+        _stop_disable_unit(_pool_unit(port))
+    _retire_pool_units(keep_ports=healthy_ports, config=config)
+    _kill_stray_gpu_embeds(healthy_ports)
+
+
 def apply_plan(plan: IngestCapacityPlan, *, pool_env_path: str, wait_health: bool) -> int:
     config = load_embed_pool_config()
     if not plan.embed_pool.use_gpu_pool:
         print("no GPU detected: writing capacity plan only (no systemd changes)")
-        Path(pool_env_path).write_text(render_capacity_env(plan), encoding="utf-8")
+        _write_pool_env(pool_env_path, plan)
         return 0
 
-    _stop_legacy_pool_instances(config)
+    planned_ports = set(plan.embed_pool.ports)
+    _prepare_pool_shutdown(config)
+    _kill_stray_gpu_embeds(set())
 
     target_urls = [f"http://127.0.0.1:{port}" for port in plan.embed_pool.ports]
     restart_cmds = " ".join(
-        f"systemctl restart {TEMPLATE_UNIT}{port}.service &"
-        for port in plan.embed_pool.ports
+        f"systemctl restart {_pool_unit(port)} &" for port in plan.embed_pool.ports
     )
     for port in plan.embed_pool.ports:
-        unit = f"{TEMPLATE_UNIT}{port}.service"
-        _systemctl("enable", unit, check=False)
+        _systemctl("enable", _pool_unit(port), check=False)
     if restart_cmds:
         _run(["bash", "-lc", f"{restart_cmds} wait"], check=False)
 
     healthy_urls = _wait_for_health(target_urls) if wait_health else target_urls
+    healthy_ports = {int(url.rsplit(":", 1)[-1]) for url in healthy_urls}
+    _finalize_pool_units(
+        planned_ports=planned_ports,
+        healthy_ports=healthy_ports,
+        config=config,
+    )
+
     if not healthy_urls:
         print("error: no healthy nomic-embed instances after scale", file=sys.stderr)
         return 1
@@ -141,7 +315,11 @@ def apply_plan(plan: IngestCapacityPlan, *, pool_env_path: str, wait_health: boo
         )
         plan = shrink_plan_to_healthy(plan, healthy_urls)
 
-    Path(pool_env_path).write_text(render_capacity_env(plan), encoding="utf-8")
+    try:
+        _write_pool_env(pool_env_path, plan)
+    except PermissionError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 

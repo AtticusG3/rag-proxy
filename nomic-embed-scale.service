@@ -5,10 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=kevyn
-WorkingDirectory=/opt/ai/rag_proxy
+# Root so --apply can write /opt/ai/config/nomic-embed-pool.env and manage units.
+User=root
+WorkingDirectory=/opt/ai/repo/rag_proxy
 EnvironmentFile=-/opt/ai/config/nomic-embed-scale.env
-ExecStart=/opt/ai/rag_proxy/.venv/bin/python scripts/scale_nomic_embed_pool.py --apply
+ExecStart=/opt/ai/venv/bin/python scripts/scale_ingest_capacity.py --apply
 RemainAfterExit=yes
 
 # Edit WorkingDirectory and ExecStart if repo lives elsewhere (e.g. /home/kevyn/rag_proxy).
