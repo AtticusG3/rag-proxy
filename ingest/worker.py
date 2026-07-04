@@ -17,7 +17,7 @@ import httpx
 
 from ingest.db import IngestDatabase
 from ingest.chunking import ChunkConfig, load_chunk_config
-from ingest.chunking import chunk_text
+from ingest.chunking import chunk_text, set_chunk_concurrency
 from ingest.chunking_strategy import ChunkContext
 from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.pdf_reader import iter_pdf_pages
@@ -52,6 +52,7 @@ class IngestConfig:
     stall_seconds: int = 900
     embed_urls: list[str] | None = None
     file_concurrency: int | None = None
+    chunk_concurrency: int | None = None
     chunk_config: ChunkConfig = field(default_factory=load_chunk_config)
 
 
@@ -215,8 +216,11 @@ class IngestWorker:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._paused = False
-        self._threads: list[threading.Thread] = []
+        self._workers: list[tuple[threading.Thread, threading.Event]] = []
+        self._worker_seq = 0
         self._embed_limiter = make_embed_semaphore(config.embed_concurrency)
+        if config.chunk_concurrency:
+            set_chunk_concurrency(config.chunk_concurrency)
 
     def _file_worker_count(self) -> int:
         urls = self.config.embed_urls or parse_ingest_embed_urls(
@@ -235,25 +239,53 @@ class IngestWorker:
         with self._lock:
             if config.embed_concurrency != self.config.embed_concurrency:
                 self._embed_limiter = make_embed_semaphore(config.embed_concurrency)
+            if (
+                config.chunk_concurrency
+                and config.chunk_concurrency != self.config.chunk_concurrency
+            ):
+                set_chunk_concurrency(config.chunk_concurrency)
             self.config = config
             self._sparse.config = config
+        if self._alive_workers():
+            self.resize_file_workers(self._file_worker_count())
+
+    def _alive_workers(self) -> list[tuple[threading.Thread, threading.Event]]:
+        return [(thread, event) for thread, event in self._workers if thread.is_alive()]
+
+    def resize_file_workers(self, target: int) -> None:
+        """Grow or shrink file worker threads; excess threads exit between files."""
+        target = max(1, target)
+        with self._lock:
+            self._workers = self._alive_workers()
+            current = len(self._workers)
+            if current > target:
+                for _, event in self._workers[target:]:
+                    event.set()
+                self._workers = self._workers[:target]
+                log.info("ingest file workers shrinking %d -> %d", current, target)
+                return
+            for _ in range(current, target):
+                event = threading.Event()
+                thread = threading.Thread(
+                    target=self._run_loop,
+                    args=(event,),
+                    daemon=True,
+                    name=f"ingest-worker-{self._worker_seq}",
+                )
+                self._worker_seq += 1
+                thread.start()
+                self._workers.append((thread, event))
+            if target > current:
+                log.info("ingest file workers growing %d -> %d", current, target)
 
     def start(self) -> None:
-        alive = [thread for thread in self._threads if thread.is_alive()]
-        if alive:
+        if self._alive_workers():
+            self.resize_file_workers(self._file_worker_count())
             return
         self._stop.clear()
         self._recover_interrupted_running()
-        worker_count = self._file_worker_count()
-        self._threads = []
-        for index in range(worker_count):
-            thread = threading.Thread(
-                target=self._run_loop,
-                daemon=True,
-                name=f"ingest-worker-{index}",
-            )
-            thread.start()
-            self._threads.append(thread)
+        self._workers = []
+        self.resize_file_workers(self._file_worker_count())
 
     def stop(self) -> None:
         self._stop.set()
@@ -368,8 +400,8 @@ class IngestWorker:
         self.db.upsert_file_state(file_path, status="pending")
         return job_id
 
-    def _run_loop(self) -> None:
-        while not self._stop.is_set():
+    def _run_loop(self, local_stop: threading.Event) -> None:
+        while not self._stop.is_set() and not local_stop.is_set():
             if self._paused:
                 time.sleep(1.0)
                 continue

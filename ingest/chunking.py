@@ -17,8 +17,27 @@ from rag_proxy.env_parse import parse_bool
 
 log = logging.getLogger("ingest.chunking")
 
-# lru_cached Chonkie runners are not thread-safe; serialize strategy execution.
-_chunk_runner_lock = threading.Lock()
+# Chonkie runners are not thread-safe when shared, so each thread builds its own
+# runner instances; a semaphore caps concurrent chunk executions (CPU-bound).
+_chunk_local = threading.local()
+
+DEFAULT_CHUNK_CONCURRENCY = max(1, min(4, (os.cpu_count() or 2) // 2))
+
+
+def _env_chunk_concurrency() -> int:
+    raw = os.getenv("INGEST_CHUNK_CONCURRENCY", "").strip()
+    if raw:
+        return max(1, int(raw))
+    return DEFAULT_CHUNK_CONCURRENCY
+
+
+_chunk_limiter = threading.BoundedSemaphore(_env_chunk_concurrency())
+
+
+def set_chunk_concurrency(concurrency: int) -> None:
+    """Replace the global chunk execution cap (hot-reload from admin settings)."""
+    global _chunk_limiter
+    _chunk_limiter = threading.BoundedSemaphore(max(1, concurrency))
 
 # nomic-embed-text-v1.5 is tuned for ~512-token inputs; 64 tokens ~= 12.5% overlap.
 DEFAULT_CHUNK_SIZE_TOKENS = 512
@@ -107,9 +126,17 @@ def resolve_tokenizer(preferred: str) -> str:
     return "word"
 
 
-@lru_cache(maxsize=16)
 def _counter_chunker(tokenizer: str) -> RecursiveChunker:
-    return RecursiveChunker(tokenizer=tokenizer, chunk_size=10_000_000)
+    """Per-thread token counter; Chonkie instances are not shared across threads."""
+    cache: dict[str, RecursiveChunker] | None = getattr(_chunk_local, "counters", None)
+    if cache is None:
+        cache = {}
+        _chunk_local.counters = cache
+    counter = cache.get(tokenizer)
+    if counter is None:
+        counter = RecursiveChunker(tokenizer=tokenizer, chunk_size=10_000_000)
+        cache[tokenizer] = counter
+    return counter
 
 
 def count_tokens(text: str, tokenizer: str) -> int:
@@ -183,8 +210,7 @@ def _code_chunker_available() -> bool:
     return True
 
 
-@lru_cache(maxsize=32)
-def _cached_runner(
+def _build_runner(
     strategy: str,
     tokenizer: str,
     chunk_size: int,
@@ -239,6 +265,26 @@ def _prepare_text(strategy: ChunkStrategy, text: str) -> str:
     return text
 
 
+def _thread_runner(
+    strategy: str,
+    tokenizer: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    semantic_model: str,
+) -> Any:
+    """Per-thread runner cache; each worker thread owns its Chonkie instances."""
+    cache: dict[tuple, Any] | None = getattr(_chunk_local, "runners", None)
+    if cache is None:
+        cache = {}
+        _chunk_local.runners = cache
+    key = (strategy, tokenizer, chunk_size, chunk_overlap, semantic_model)
+    runner = cache.get(key)
+    if runner is None:
+        runner = _build_runner(strategy, tokenizer, chunk_size, chunk_overlap, semantic_model)
+        cache[key] = runner
+    return runner
+
+
 def _run_strategy(
     strategy: ChunkStrategy,
     text: str,
@@ -246,8 +292,8 @@ def _run_strategy(
     tokenizer: str,
     config: ChunkConfig,
 ) -> list[str]:
-    with _chunk_runner_lock:
-        runner = _cached_runner(
+    with _chunk_limiter:
+        runner = _thread_runner(
             strategy.value,
             tokenizer,
             config.chunk_size,
@@ -424,6 +470,7 @@ def chunk_text(
 
 __all__ = [
     "ChunkConfig",
+    "DEFAULT_CHUNK_CONCURRENCY",
     "DEFAULT_CHUNK_OVERLAP",
     "DEFAULT_CHUNK_SIZE",
     "chunk_config_from_values",
@@ -432,5 +479,6 @@ __all__ = [
     "load_chunk_config",
     "merge_undersized_chunks",
     "resolve_tokenizer",
+    "set_chunk_concurrency",
     "warmup_chunking",
 ]
