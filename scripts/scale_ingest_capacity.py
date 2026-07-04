@@ -21,10 +21,14 @@ if str(REPO_ROOT) not in sys.path:
 
 from ingest.capacity_planner import (  # noqa: E402
     IngestCapacityPlan,
+    load_capacity_planner_config,
     plan_ingest_capacity,
     render_capacity_env,
+    resolve_semantic_chunking,
 )
+from ingest.bench_fit import fit_from_report_paths  # noqa: E402
 from ingest.embed_pool import EmbedPoolConfig, load_embed_pool_config  # noqa: E402
+from ingest.host_profile import probe_host  # noqa: E402
 from ingest.port_avoidance import (  # noqa: E402
     apply_config_env,
     describe_port_skips,
@@ -377,9 +381,26 @@ def build_plan(args: argparse.Namespace) -> IngestCapacityPlan:
         if args.semantic_requested is None
         else args.semantic_requested
     )
+    pool_cfg = load_embed_pool_config()
+    planner_cfg = load_capacity_planner_config()
+    host = probe_host(disk_paths=data_paths, gpu_index=pool_cfg.gpu_index)
+    semantic_for_bench = resolve_semantic_chunking(host, planner_cfg, semantic_requested)
+
+    bench = None
+    if args.chunk_bench or args.embed_bench:
+        bench = fit_from_report_paths(
+            args.chunk_bench or None,
+            args.embed_bench or None,
+            semantic_requested=semantic_for_bench,
+        )
+
     return plan_ingest_capacity(
+        host=host,
+        pool_config=pool_cfg,
+        planner_config=planner_cfg,
         semantic_requested=semantic_requested,
         data_paths=data_paths,
+        bench=bench,
     )
 
 
@@ -390,6 +411,8 @@ def main() -> int:
     )
     parser.add_argument("--pool-env", default=DEFAULT_POOL_ENV)
     parser.add_argument("--scale-env", default=DEFAULT_SCALE_ENV)
+    parser.add_argument("--chunk-bench", default="", help="chunk bench JSON report path")
+    parser.add_argument("--embed-bench", default="", help="embed bench JSON report path")
     parser.add_argument("--no-wait-health", action="store_true")
     parser.add_argument(
         "--semantic-requested",
@@ -420,6 +443,10 @@ def main() -> int:
     sparse_url = os.getenv("SPARSE_INDEX_URL", "").strip()
     if sparse_url:
         print(f"SPARSE_INDEX_URL={sparse_url}")
+    if args.chunk_bench:
+        print(f"chunk_bench={args.chunk_bench}")
+    if args.embed_bench:
+        print(f"embed_bench={args.embed_bench}")
     if pool.gpu_free_mib is not None:
         print(
             f"gpu_free_mib={pool.gpu_free_mib} "

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ingest.bench_fit import BenchFit
 from ingest.capacity_planner import (
     CapacityPlannerConfig,
     plan_ingest_capacity,
@@ -137,6 +138,32 @@ def test_missing_ram_probe_skips_ram_caps() -> None:
     )
     assert plan.ingest_file_concurrency == 8
     assert plan.ingest_chunk_semantic is True
+
+
+def test_plan_uses_bench_fit_for_chunk_embed_and_batch() -> None:
+    bench = BenchFit(
+        chunk_concurrency=2,
+        chunk_chunks_per_min=15082.0,
+        embed_concurrency=48,
+        batch_size=32,
+        embed_chunks_per_min=2250.0,
+        rationale={
+            "ingest_chunk_concurrency": "2 from bench knee (15082 chunks/min)",
+            "ingest_embed_concurrency": "48 from bench (2250 chunks/min)",
+            "ingest_batch_size": "32 from bench",
+        },
+    )
+    plan = plan_ingest_capacity(
+        host=_host(cores=16, ram_available=32768, gpu=_gpu()),
+        pool_config=POOL_CFG,
+        planner_config=PLANNER_CFG,
+        bench=bench,
+    )
+    assert plan.ingest_chunk_concurrency == 2
+    assert plan.ingest_embed_concurrency == 48
+    assert plan.ingest_batch_size == 32
+    assert "bench" in plan.rationale["ingest_chunk_concurrency"]
+    assert "bench" in plan.rationale["ingest_embed_concurrency"]
 
 
 def test_render_capacity_env_includes_all_knobs() -> None:

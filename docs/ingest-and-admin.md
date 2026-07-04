@@ -206,7 +206,7 @@ sudo systemctl restart nomic-embed-scale.service
 systemctl restart rag-admin.service
 ```
 
-The **Scale ingest capacity** button on the Settings ingest tab pauses ingest, waits for in-flight files to finish, then runs `scripts/run_ingest_capacity_scale.py` as a background job (chunk + embed benchmarks, apply pool plan, restore query embed on `:8089`). On success it syncs the resulting `INGEST_*` keys into the admin env, hot-reloads the worker, restores the prior pause state, and re-queues all files only if the plan changed semantic chunking.
+The **Scale ingest capacity** button on the Settings ingest tab pauses ingest, waits for in-flight files to finish, then runs `scripts/run_ingest_capacity_scale.py` as a background job (chunk + embed benchmarks, apply pool plan, restore query embed on `:8089`). Measured `chunks/min` from bench JSON drives chunk concurrency, embed concurrency, and batch size; VRAM probes still size the pool. On success it syncs the resulting `INGEST_*` keys into the admin env, hot-reloads the worker, restores the prior pause state, and re-queues all files only if the plan changed semantic chunking.
 
 Without `nvidia-smi`, the planner falls back to a single port (`NOMIC_POOL_PORT_BASE`) and skips systemd changes; missing CPU/RAM/disk probes simply skip those caps. The embedder fails over to alternate pool URLs on HTTP 404/5xx.
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, replace
 
+from ingest.bench_fit import BenchFit
 from ingest.embed_pool import EmbedPoolConfig, EmbedPoolPlan, load_embed_pool_config, plan_embed_pool
 from ingest.gpu_catalog import lookup_gpu_tier
 from ingest.host_profile import HostProfile, probe_host
@@ -82,6 +83,51 @@ def _pick_batch_size(embed_concurrency: int) -> int:
     return 128
 
 
+def _semantic_enabled(
+    host: HostProfile,
+    cfg: CapacityPlannerConfig,
+    semantic_requested: bool,
+) -> bool:
+    if not semantic_requested:
+        return False
+    if host.ram_available_mib is not None and host.ram_available_mib < cfg.semantic_ram_floor_mib:
+        return False
+    if host.cpu_logical_cores < cfg.semantic_cpu_floor:
+        return False
+    return True
+
+
+def _semantic_rationale(
+    host: HostProfile,
+    cfg: CapacityPlannerConfig,
+    semantic_requested: bool,
+) -> tuple[bool, str]:
+    if not semantic_requested:
+        return False, "disabled by operator setting"
+    if host.ram_available_mib is not None and host.ram_available_mib < cfg.semantic_ram_floor_mib:
+        return (
+            False,
+            f"disabled: {host.ram_available_mib} MiB RAM below "
+            f"{cfg.semantic_ram_floor_mib} MiB floor",
+        )
+    if host.cpu_logical_cores < cfg.semantic_cpu_floor:
+        return (
+            False,
+            f"disabled: {host.cpu_logical_cores} cores below "
+            f"{cfg.semantic_cpu_floor}-core floor",
+        )
+    return True, "enabled (host above RAM/CPU floors)"
+
+
+def resolve_semantic_chunking(
+    host: HostProfile,
+    cfg: CapacityPlannerConfig,
+    semantic_requested: bool,
+) -> bool:
+    """Whether semantic chunking will be enabled after RAM/CPU floors."""
+    return _semantic_enabled(host, cfg, semantic_requested)
+
+
 def plan_ingest_capacity(
     *,
     host: HostProfile | None = None,
@@ -89,6 +135,7 @@ def plan_ingest_capacity(
     planner_config: CapacityPlannerConfig | None = None,
     semantic_requested: bool = True,
     data_paths: tuple[str, ...] = (),
+    bench: BenchFit | None = None,
 ) -> IngestCapacityPlan:
     """Compute the full ingest capacity plan from a host snapshot."""
     pool_cfg = pool_config or load_embed_pool_config()
@@ -131,7 +178,11 @@ def plan_ingest_capacity(
         pool_reason = f"{pool_reason}; {skip_note}"
     rationale["embed_pool"] = pool_reason
 
+    semantic, semantic_reason = _semantic_rationale(host, cfg, semantic_requested)
+    rationale["ingest_chunk_semantic"] = semantic_reason
+
     embed_concurrency = embed_pool.ingest_embed_concurrency
+    pool_ceiling = instances * parallel
 
     # File concurrency: min() across every available dimension.
     caps: dict[str, int] = {"embed pool instances": max(1, instances)}
@@ -156,35 +207,50 @@ def plan_ingest_capacity(
     limiting = min(caps, key=lambda key: caps[key])
     rationale["ingest_file_concurrency"] = f"{file_concurrency}, limited by {limiting}"
 
-    chunk_concurrency = max(1, min(file_concurrency, cpu_cap))
-    rationale["ingest_chunk_concurrency"] = (
-        f"{chunk_concurrency} (min of file concurrency and cpu cap)"
-    )
-
-    batch_size = _pick_batch_size(embed_concurrency)
-    rationale["ingest_batch_size"] = (
-        f"{batch_size} for embed concurrency {embed_concurrency}"
-    )
-
-    # Only ever downgrade semantic chunking; never enable it against operator intent.
-    semantic = semantic_requested
-    if semantic:
-        if host.ram_available_mib is not None and host.ram_available_mib < cfg.semantic_ram_floor_mib:
-            semantic = False
-            rationale["ingest_chunk_semantic"] = (
-                f"disabled: {host.ram_available_mib} MiB RAM below "
-                f"{cfg.semantic_ram_floor_mib} MiB floor"
-            )
-        elif host.cpu_logical_cores < cfg.semantic_cpu_floor:
-            semantic = False
-            rationale["ingest_chunk_semantic"] = (
-                f"disabled: {host.cpu_logical_cores} cores below "
-                f"{cfg.semantic_cpu_floor}-core floor"
+    if bench and bench.chunk_concurrency is not None:
+        chunk_concurrency = max(1, min(bench.chunk_concurrency, file_concurrency))
+        if bench.rationale.get("ingest_chunk_concurrency"):
+            rationale["ingest_chunk_concurrency"] = (
+                f"{chunk_concurrency} ({bench.rationale['ingest_chunk_concurrency']}, "
+                f"capped by file concurrency {file_concurrency})"
             )
         else:
-            rationale["ingest_chunk_semantic"] = "enabled (host above RAM/CPU floors)"
+            rationale["ingest_chunk_concurrency"] = (
+                f"{chunk_concurrency} from bench, capped by file concurrency {file_concurrency}"
+            )
     else:
-        rationale["ingest_chunk_semantic"] = "disabled by operator setting"
+        chunk_concurrency = max(1, min(file_concurrency, cpu_cap))
+        rationale["ingest_chunk_concurrency"] = (
+            f"{chunk_concurrency} (min of file concurrency and cpu cap)"
+        )
+
+    if bench and bench.batch_size is not None:
+        batch_size = bench.batch_size
+        rationale["ingest_batch_size"] = bench.rationale.get(
+            "ingest_batch_size",
+            f"{batch_size} from bench",
+        )
+    else:
+        batch_size = _pick_batch_size(embed_concurrency)
+        rationale["ingest_batch_size"] = (
+            f"{batch_size} for embed concurrency {embed_concurrency}"
+        )
+
+    if bench and bench.embed_concurrency is not None:
+        embed_concurrency = max(instances, min(bench.embed_concurrency, pool_ceiling))
+        if bench.rationale.get("ingest_embed_concurrency"):
+            rationale["ingest_embed_concurrency"] = (
+                f"{embed_concurrency} ({bench.rationale['ingest_embed_concurrency']}, "
+                f"pool ceiling {pool_ceiling})"
+            )
+        else:
+            rationale["ingest_embed_concurrency"] = (
+                f"{embed_concurrency} from bench, pool ceiling {pool_ceiling}"
+            )
+    else:
+        rationale["ingest_embed_concurrency"] = (
+            f"{embed_concurrency} ({instances} instances x {parallel} parallel)"
+        )
 
     rationale["ingest_sparse_reindex"] = (
         f"{cfg.sparse_reindex_during_bulk} during bulk ingest (rebuild once at end)"

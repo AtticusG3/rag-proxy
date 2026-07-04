@@ -159,7 +159,9 @@ Planner caps are tunable via `INGEST_CAPACITY_*` env vars (see `.env.example`).
 | Batch 32 vs 64 at concurrency >= 16 | Equivalent (2,250 vs 2,205); planner picks 32 |
 
 These validate the shipped coefficients: `chunk_cpu_share=2`, embed concurrency
-`instances x parallel`, and the batch-size step function.
+`instances x parallel`, and the batch-size step function. When bench JSON is
+present during scale, measured `chunks_per_min` overrides chunk concurrency,
+embed concurrency, and batch size (see `ingest/bench_fit.py`).
 
 ## Success metrics
 

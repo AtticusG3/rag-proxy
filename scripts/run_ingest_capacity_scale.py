@@ -92,7 +92,14 @@ def restart_query_embed() -> None:
     scale._systemctl("restart", QUERY_EMBED_UNIT, check=False)
 
 
-def run_scale_apply(*, pool_env: Path, scale_env: Path, semantic_requested: str | None) -> int:
+def run_scale_apply(
+    *,
+    pool_env: Path,
+    scale_env: Path,
+    semantic_requested: str | None,
+    chunk_bench: Path | None = None,
+    embed_bench: Path | None = None,
+) -> int:
     cmd = [
         _python(),
         str(REPO_ROOT / "scripts" / "scale_ingest_capacity.py"),
@@ -104,6 +111,10 @@ def run_scale_apply(*, pool_env: Path, scale_env: Path, semantic_requested: str 
     ]
     if semantic_requested is not None:
         cmd += ["--semantic-requested", semantic_requested]
+    if chunk_bench is not None and chunk_bench.is_file():
+        cmd += ["--chunk-bench", str(chunk_bench)]
+    if embed_bench is not None and embed_bench.is_file():
+        cmd += ["--embed-bench", str(embed_bench)]
     return _run(cmd, check=False).returncode
 
 
@@ -195,6 +206,9 @@ def main() -> int:
     stop_embed_stack(scale_env)
     wait_gpu_clear()
 
+    chunk_bench = out_dir / "chunk.json"
+    embed_bench = out_dir / "embed.json"
+
     if not args.skip_bench:
         if run_chunk_bench(out_dir) != 0:
             print("warning: chunk benchmark failed", file=sys.stderr, flush=True)
@@ -204,6 +218,7 @@ def main() -> int:
         pool_env=pool_env,
         scale_env=scale_env,
         semantic_requested=args.semantic_requested,
+        chunk_bench=chunk_bench if chunk_bench.is_file() else None,
     ) != 0:
         print("error: initial scale apply failed", file=sys.stderr, flush=True)
         restart_query_embed()
@@ -220,6 +235,8 @@ def main() -> int:
         pool_env=pool_env,
         scale_env=scale_env,
         semantic_requested=args.semantic_requested,
+        chunk_bench=chunk_bench if chunk_bench.is_file() else None,
+        embed_bench=embed_bench if embed_bench.is_file() else None,
     ) != 0:
         print("error: final scale apply failed", file=sys.stderr, flush=True)
         restart_query_embed()
