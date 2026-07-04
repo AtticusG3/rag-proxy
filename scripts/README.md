@@ -9,7 +9,9 @@ Helper scripts for operators and homelab dev. Run from repo root unless noted.
 | [`build_memgraphrag_index.py`](build_memgraphrag_index.py) | Offline MemGraphRAG index from Qdrant or text files |
 | [`catalog_weekly_update.py`](catalog_weekly_update.py) | Cron: check catalog subscriptions and download updates |
 | [`requeue_all_ingest.py`](requeue_all_ingest.py) | Re-chunk and re-embed all tracked ingest files |
-| [`scale_nomic_embed_pool.py`](scale_nomic_embed_pool.py) | VRAM-aware nomic-embed pool sizing (`INGEST_EMBED_URLS`) |
+| [`scale_ingest_capacity.py`](scale_ingest_capacity.py) | Multi-resource ingest capacity planner (VRAM pool + CPU/RAM/disk caps) |
+| [`scale_nomic_embed_pool.py`](scale_nomic_embed_pool.py) | Legacy wrapper for `scale_ingest_capacity.py` (systemd compat) |
+| [`bench_ingest_capacity.py`](bench_ingest_capacity.py) | Benchmark chunk/embed throughput to tune planner coefficients |
 | [`export_finetune_dataset.py`](export_finetune_dataset.py) | Export transcript JSONL to fine-tuning message format |
 | [`promote_rag_corpus.py`](promote_rag_corpus.py) | Promote RAG improvement JSONL pairs to Qdrant |
 | [`update-buster-embed-gpu.sh`](update-buster-embed-gpu.sh) | Deploy GPU nomic-embed units on `/opt/ai` hosts |

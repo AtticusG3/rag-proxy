@@ -21,6 +21,7 @@ Diagrams in these guides use [Mermaid](https://mermaid.js.org/) (rendered on Git
 | [Deployment](deployment.md) | systemd, Docker, port layout |
 | [Troubleshooting](troubleshooting.md) | Symptom → fix table and diagnostic commands |
 | [Ingest and admin](ingest-and-admin.md) | RAG admin UI, ingest worker |
+| [Ingest capacity planning](ingest-capacity-planning.md) | Resource binding, knobs, multi-resource planner reference |
 | [MemGraphRAG](memgraphrag.md) | Offline index build, runtime enable, verify |
 | [Scripts](../scripts/README.md) | Operator and dev script index |
 

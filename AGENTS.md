@@ -34,6 +34,10 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag_admin/settings_store.py` | Persist Settings to env files + admin SQLite |
 | `ingest/worker.py` | Ingest queue worker (`IngestWorker`) |
 | `ingest/embed_pool.py` | VRAM-aware nomic-embed pool planner |
+| `ingest/capacity_planner.py` | Multi-resource ingest capacity planner (CPU/RAM/disk/GPU caps) |
+| `ingest/host_profile.py` | Host resource probing (CPU, RAM, disk, GPU via nvidia-smi) |
+| `scripts/scale_ingest_capacity.py` | Apply capacity plan (systemd pool + pool env); legacy wrapper `scale_nomic_embed_pool.py` |
+| `scripts/bench_ingest_capacity.py` | Chunk/embed throughput bench for planner coefficient tuning |
 | `docker/` | Compose profiles (proxy, cognitive sidecars) |
 | `ingest/` | ZIM/PDF/text ingest worker (Qdrant + sparse reindex) |
 | `ingest/chunking_strategy.py` | Per-document Chonkie strategy selection (recursive, sentence, semantic, token, code) |

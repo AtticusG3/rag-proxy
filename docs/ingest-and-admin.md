@@ -185,28 +185,30 @@ Bulk ZIM ingest uses `ingest/pipeline.py`: multiple embed batches run concurrent
 
 Chunking defaults to **512 tokens** with **64-token overlap** so each chunk fits nomic-embed-text-v1.5's effective range without diluting the vector. The embedder still bisects batches on `exceed_context_size` responses.
 
-### Multi-instance embed pool (VRAM auto-scale)
+### Ingest capacity planner (multi-resource auto-scale)
 
 For bulk ingest on a GPU host, run several `llama-server` embed instances (systemd template `nomic-embed@PORT.service`) and round-robin across them via `INGEST_EMBED_URLS`.
 
-`scripts/scale_nomic_embed_pool.py` sizes the pool from free VRAM:
+`scripts/scale_ingest_capacity.py` (legacy entry point `scale_nomic_embed_pool.py`) probes the host — free VRAM plus CPU cores, available RAM, and disk speed — and plans the whole ingest stack. GPU pool sizing is unchanged:
 
 ```text
 instances = clamp((gpu_free_mib - NOMIC_POOL_VRAM_RESERVE_MIB) / NOMIC_POOL_VRAM_PER_INSTANCE_MIB)
 ```
 
-It writes `/opt/ai/config/nomic-embed-pool.env` with `INGEST_EMBED_URLS` and `INGEST_EMBED_CONCURRENCY` (`instances * --parallel` per unit). Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example` in the repo). Default hard cap: `NOMIC_POOL_MAX_INSTANCES=12` (raise only if you need more throughput and stable VRAM headroom).
+On top of that it computes `INGEST_FILE_CONCURRENCY`, `INGEST_BATCH_SIZE`, `INGEST_CHUNK_CONCURRENCY`, semantic chunking on/off, and `NOMIC_POOL_PARALLEL` (capped for low-bandwidth GPUs), and writes everything to `/opt/ai/config/nomic-embed-pool.env` with a rationale comment per decision. Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example`) and `INGEST_CAPACITY_*` caps ([Configuration](configuration.md)). Full reference: [Ingest capacity planning](ingest-capacity-planning.md).
 
 ```bash
 # Dry-run plan
-python scripts/scale_nomic_embed_pool.py
+python scripts/scale_ingest_capacity.py
 
 # Apply via systemd (recommended on boot)
 systemctl start nomic-embed-scale.service
 systemctl restart rag-admin.service
 ```
 
-Without `nvidia-smi`, the planner falls back to a single port (`NOMIC_POOL_PORT_BASE`). The embedder fails over to alternate pool URLs on HTTP 404/5xx.
+The **Scale ingest capacity** button on the Settings ingest tab runs the same script as a background job, syncs the resulting `INGEST_*` keys into the admin env, hot-reloads the worker (including live file worker resize), and automatically re-queues all files if the plan changed the semantic chunking setting.
+
+Without `nvidia-smi`, the planner falls back to a single port (`NOMIC_POOL_PORT_BASE`) and skips systemd changes; missing CPU/RAM/disk probes simply skip those caps. The embedder fails over to alternate pool URLs on HTTP 404/5xx.
 
 Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `document`, `page_content` (proxy checks in that order).
 
@@ -218,13 +220,14 @@ Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `documen
 
 | Lever | Variable | Notes |
 | --- | --- | --- |
-| Parallel files | `INGEST_FILE_CONCURRENCY` | Default `max(1, min(4, embed pool size))`; one thread per file |
+| Parallel files | `INGEST_FILE_CONCURRENCY` | Default `max(1, min(4, embed pool size))`; one thread per file; resizes live |
+| Parallel chunking | `INGEST_CHUNK_CONCURRENCY` | Default `min(4, cores / 2)`; concurrent chunk executions |
 | Batch size | `INGEST_BATCH_SIZE` | Raise (e.g. `256`) when embed server supports large batches |
 | Parallel embeds | `INGEST_EMBED_CONCURRENCY` | Default `4`; raise if embed server keeps up |
 | GPU embed | `nomic-embed` `-ngl 99` | Default in shipped units; see [Deployment](deployment.md) |
 | Sparse rebuild | `INGEST_SPARSE_REINDEX=off` | Disable during bulk; reindex once at end |
 
-Effective values appear read-only on the Dashboard and Jobs pages. Restart admin after changing env vars.
+The capacity planner sets all of these automatically from the host profile; manual overrides still work. Effective values appear read-only on the Dashboard and Jobs pages.
 
 ## Qdrant ownership
 

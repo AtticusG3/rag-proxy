@@ -210,6 +210,8 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `INGEST_CHUNK_SEMANTIC` | `true` | Use semantic chunking when deps installed |
 | `INGEST_CHUNK_SEMANTIC_MODEL` | `minishlab/potion-base-32M` | Embedding model for semantic boundaries |
 | `INGEST_CHUNK_MIN_TOKENS` | `100` | Merge adjacent chunks below this token count before embed |
+| `INGEST_FILE_CONCURRENCY` | auto | Parallel file worker threads (planner-set; resizes live) |
+| `INGEST_CHUNK_CONCURRENCY` | `min(4, cores/2)` | Concurrent chunk executions across file workers |
 | `RAG_PROXY_URL` | `http://127.0.0.1:8081` | Proxy URL for admin smoke hooks |
 | `RAG_ADMIN_ENV_FILE` | `/opt/ai/config/rag-admin.env` | Admin/ingest env file (Settings UI writes here) |
 | `RAG_PROXY_ENV_FILE` | `/opt/ai/config/rag-proxy.env` | Proxy env file (Settings UI writes cognitive/proxy groups here) |
@@ -219,9 +221,9 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `RAG_ADMIN_RESTART_CMD` | `systemctl restart rag-admin` | Optional restart hook from Settings |
 | `ARXIV_USER_AGENT` | *(built-in default)* | User-Agent for arXiv catalog API |
 
-### NOMIC embed pool (bulk ingest)
+### Ingest capacity planner (bulk ingest)
 
-Used by `scripts/scale_nomic_embed_pool.py` and `nomic-embed-scale.service`. Defaults from `ingest/embed_pool.py`.
+Used by `scripts/scale_ingest_capacity.py` (legacy entry point `scale_nomic_embed_pool.py`) and `nomic-embed-scale.service`. GPU pool defaults from `ingest/embed_pool.py`, capacity caps from `ingest/capacity_planner.py`.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -230,12 +232,21 @@ Used by `scripts/scale_nomic_embed_pool.py` and `nomic-embed-scale.service`. Def
 | `NOMIC_POOL_PORT_BASE` | `18089` | First pool port (`nomic-embed@PORT`) |
 | `NOMIC_POOL_MAX_INSTANCES` | `12` | Hard cap on pool size |
 | `NOMIC_POOL_MIN_INSTANCES` | `1` | Floor when GPU sizing unavailable |
-| `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | `--parallel` per pool unit (planner output) |
+| `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | `--parallel` per pool unit (capped by GPU tier) |
 | `NOMIC_POOL_GPU_INDEX` | `0` | `nvidia-smi` GPU index |
+| `INGEST_CAPACITY_RAM_RESERVE_MIB` | `4096` | RAM headroom before file concurrency caps apply |
+| `INGEST_CAPACITY_RAM_PER_FILE_MIB` | `2048` | Assumed RAM per concurrent file |
+| `INGEST_CAPACITY_SEMANTIC_RAM_FLOOR_MIB` | `8192` | Below this available RAM, semantic chunking is disabled |
+| `INGEST_CAPACITY_SEMANTIC_CPU_FLOOR` | `4` | Below this core count, semantic chunking is disabled |
+| `INGEST_CAPACITY_CHUNK_CPU_SHARE` | `2` | Cores per concurrent chunking file |
+| `INGEST_CAPACITY_MAX_FILE_CONCURRENCY` | `8` | Hard cap on parallel files |
+| `INGEST_CAPACITY_MIN_DISK_MBPS` | `100` | Below this sequential read speed, file concurrency is capped |
+| `INGEST_CAPACITY_SLOW_DISK_FILE_CAP` | `2` | File cap applied on slow storage |
+| `INGEST_CAPACITY_SPARSE_REINDEX` | `off` | BM25 reindex mode written by the planner |
 
-The planner writes `INGEST_EMBED_URLS` and `INGEST_EMBED_CONCURRENCY` to the pool env file. `NOMIC_POOL_PARALLEL` in `nomic-embed-scale.env.example` is for **systemd** `nomic-embed@.service`, not read by the Python planner.
+The planner writes all `INGEST_*` throughput knobs plus `NOMIC_POOL_*` metadata to the pool env file; the admin scale job syncs the ingest keys into the admin env and hot-reloads the worker. `NOMIC_POOL_PARALLEL` is now written by the planner so systemd `nomic-embed@.service` and the concurrency math stay aligned.
 
-Details: [Ingest and admin](ingest-and-admin.md).
+Details: [Ingest and admin](ingest-and-admin.md) and [Ingest capacity planning](ingest-capacity-planning.md).
 
 ## Sidecar services (optional)
 
