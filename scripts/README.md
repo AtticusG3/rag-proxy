@@ -12,6 +12,7 @@ Helper scripts for operators and homelab dev. Run from repo root unless noted.
 | [`scale_ingest_capacity.py`](scale_ingest_capacity.py) | Multi-resource ingest capacity planner (VRAM pool + CPU/RAM/disk caps) |
 | [`scale_nomic_embed_pool.py`](scale_nomic_embed_pool.py) | Legacy wrapper for `scale_ingest_capacity.py` (systemd compat) |
 | [`bench_ingest_capacity.py`](bench_ingest_capacity.py) | Benchmark chunk/embed throughput to tune planner coefficients |
+| [`bench_ingest_capacity_host.sh`](bench_ingest_capacity_host.sh) | Stop ingest, free GPU, run chunk+embed benches, apply planner, restart admin (`--skip-restart` to leave services down) |
 | [`export_finetune_dataset.py`](export_finetune_dataset.py) | Export transcript JSONL to fine-tuning message format |
 | [`promote_rag_corpus.py`](promote_rag_corpus.py) | Promote RAG improvement JSONL pairs to Qdrant |
 | [`update-buster-embed-gpu.sh`](update-buster-embed-gpu.sh) | Deploy GPU nomic-embed units on `/opt/ai` hosts |

@@ -12,6 +12,7 @@ from dataclasses import dataclass, replace
 from ingest.embed_pool import EmbedPoolConfig, EmbedPoolPlan, load_embed_pool_config, plan_embed_pool
 from ingest.gpu_catalog import lookup_gpu_tier
 from ingest.host_profile import HostProfile, probe_host
+from ingest.port_avoidance import describe_port_skips, loopback_reserved_ports
 
 
 def _env_int(name: str, default: int) -> int:
@@ -116,11 +117,19 @@ def plan_ingest_capacity(
         memory=memory,
     )
     instances = embed_pool.instance_count
-    rationale["embed_pool"] = (
+    pool_reason = (
         f"{instances} instance(s) from {embed_pool.gpu_free_mib} MiB free VRAM"
         if embed_pool.use_gpu_pool
         else f"{instances} instance(s), no GPU probe (fallback)"
     )
+    skip_note = describe_port_skips(
+        requested_base=pool_cfg.port_base,
+        ports=embed_pool.ports,
+        reserved=loopback_reserved_ports(),
+    )
+    if skip_note:
+        pool_reason = f"{pool_reason}; {skip_note}"
+    rationale["embed_pool"] = pool_reason
 
     embed_concurrency = embed_pool.ingest_embed_concurrency
 

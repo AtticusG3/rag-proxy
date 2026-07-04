@@ -6,6 +6,8 @@ import os
 import subprocess
 from dataclasses import dataclass
 
+from ingest.port_avoidance import alloc_embed_pool_ports, loopback_reserved_ports
+
 
 @dataclass(frozen=True)
 class EmbedPoolConfig:
@@ -102,13 +104,18 @@ def plan_embed_pool(
         memory = query_gpu_memory_mib(cfg.gpu_index)
 
     if memory is None:
-        ports = tuple(range(cfg.port_base, cfg.port_base + cfg.min_instances))
+        reserved = loopback_reserved_ports()
+        ports = alloc_embed_pool_ports(
+            port_base=cfg.port_base,
+            count=cfg.min_instances,
+            reserved=reserved,
+        )
         urls = ",".join(f"http://127.0.0.1:{port}" for port in ports)
         return EmbedPoolPlan(
-            instance_count=cfg.min_instances,
+            instance_count=len(ports),
             ports=ports,
             ingest_embed_urls=urls,
-            ingest_embed_concurrency=cfg.min_instances * cfg.parallel_per_instance,
+            ingest_embed_concurrency=len(ports) * cfg.parallel_per_instance,
             gpu_total_mib=None,
             gpu_used_mib=None,
             gpu_free_mib=None,
@@ -117,13 +124,18 @@ def plan_embed_pool(
 
     total, used, free = memory
     count = compute_instance_count(gpu_free_mib=free, config=cfg)
-    ports = tuple(range(cfg.port_base, cfg.port_base + count))
+    reserved = loopback_reserved_ports()
+    ports = alloc_embed_pool_ports(
+        port_base=cfg.port_base,
+        count=count,
+        reserved=reserved,
+    )
     urls = ",".join(f"http://127.0.0.1:{port}" for port in ports)
     return EmbedPoolPlan(
-        instance_count=count,
+        instance_count=len(ports),
         ports=ports,
         ingest_embed_urls=urls,
-        ingest_embed_concurrency=count * cfg.parallel_per_instance,
+        ingest_embed_concurrency=len(ports) * cfg.parallel_per_instance,
         gpu_total_mib=total,
         gpu_used_mib=used,
         gpu_free_mib=free,

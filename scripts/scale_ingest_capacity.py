@@ -25,6 +25,7 @@ from ingest.capacity_planner import (  # noqa: E402
     render_capacity_env,
 )
 from ingest.embed_pool import EmbedPoolConfig, load_embed_pool_config  # noqa: E402
+from ingest.port_avoidance import apply_config_env, embed_pool_stop_ports, loopback_reserved_ports  # noqa: E402
 from rag_proxy.env_parse import parse_bool  # noqa: E402
 
 DEFAULT_POOL_ENV = "/opt/ai/config/nomic-embed-pool.env"
@@ -134,13 +135,20 @@ def _discover_pool_ports() -> set[int]:
     return ports
 
 
-def _pool_port_range(config: EmbedPoolConfig) -> range:
-    return range(config.port_base, config.port_base + config.max_instances + EXTRA_PORT_BUFFER)
+def _pool_port_range(config: EmbedPoolConfig) -> set[int]:
+    return set(
+        embed_pool_stop_ports(
+            config.port_base,
+            config.max_instances,
+            extra=EXTRA_PORT_BUFFER,
+            reserved=loopback_reserved_ports(),
+        )
+    )
 
 
 def _retire_pool_units(*, keep_ports: set[int], config: EmbedPoolConfig) -> None:
     """Stop and disable every pool unit outside keep_ports."""
-    candidates = _discover_pool_ports() | set(_pool_port_range(config))
+    candidates = _discover_pool_ports() | _pool_port_range(config)
     for port in sorted(candidates):
         if port in keep_ports:
             continue
@@ -388,13 +396,7 @@ def main() -> int:
     args = parser.parse_args()
 
     scale_env = Path(args.scale_env)
-    if scale_env.is_file():
-        for line in scale_env.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            os.environ.setdefault(key.strip(), value.strip())
+    apply_config_env(config_dir=scale_env.parent, scale_env=scale_env if scale_env.is_file() else None)
 
     plan = build_plan(args)
     pool = plan.embed_pool
