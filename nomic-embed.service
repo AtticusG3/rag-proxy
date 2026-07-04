@@ -10,18 +10,18 @@ Restart=always
 RestartSec=3
 EnvironmentFile=-/opt/ai/config/nomic-embed.env
 Environment=LLAMA_SERVER_BIN=/opt/ai/bin/llama-server
-Environment=NOMIC_EMBED_MODEL=/opt/ai/models/nomic-embed/nomic-embed-text-v1.5.Q8_0.gguf
+Environment=NOMIC_EMBED_MODEL=/opt/ai/models/embed/nomic-embed-text-v1.5.Q8_0.gguf
 Environment=NOMIC_GPU_LAYERS=99
 Environment=NOMIC_CONTEXT=8096
 Environment=NOMIC_PARALLEL=4
 
-ExecStart=${LLAMA_SERVER_BIN} \
-    -m ${NOMIC_EMBED_MODEL} \
+ExecStart=/opt/ai/bin/llama-server \
+    -m $NOMIC_EMBED_MODEL \
     --embedding \
     --pooling mean \
-    -ngl ${NOMIC_GPU_LAYERS} \
-    -c ${NOMIC_CONTEXT} \
-    --parallel ${NOMIC_PARALLEL} \
+    -ngl $NOMIC_GPU_LAYERS \
+    -c $NOMIC_CONTEXT \
+    --parallel $NOMIC_PARALLEL \
     -b 2048 \
     -ub 2048 \
     --host 127.0.0.1 \

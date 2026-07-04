@@ -24,6 +24,11 @@ if [[ ! -f "$CONFIG_DIR/nomic-embed.env" ]]; then
   sudo cp nomic-embed.env.example "$CONFIG_DIR/nomic-embed.env"
 else
   echo "[config] keeping existing $CONFIG_DIR/nomic-embed.env"
+  if grep -q 'models/nomic-embed/' "$CONFIG_DIR/nomic-embed.env" \
+    && [[ -f /opt/ai/models/embed/nomic-embed-text-v1.5.Q8_0.gguf ]]; then
+    echo "[config] fixing NOMIC_EMBED_MODEL path for /opt/ai/models/embed/"
+    sudo sed -i 's|models/nomic-embed/|models/embed/|g' "$CONFIG_DIR/nomic-embed.env"
+  fi
 fi
 
 if [[ ! -f "$CONFIG_DIR/nomic-embed-scale.env" ]]; then
