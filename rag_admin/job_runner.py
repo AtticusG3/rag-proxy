@@ -103,6 +103,7 @@ class BackgroundJobRunner:
                 cwd=self.repo_root,
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
             )
             self._running[job_type] = (job_id, proc)
             self.db.create_background_job(

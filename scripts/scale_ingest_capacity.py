@@ -53,8 +53,13 @@ def _running_as_root() -> bool:
     return geteuid() == 0
 
 
-def _run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, check=check, text=True, capture_output=True)
+def _run(
+    cmd: list[str],
+    *,
+    check: bool = True,
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, check=check, text=True, capture_output=True, timeout=timeout)
 
 
 def _pool_systemctl_wrapper_installed() -> bool:
@@ -328,22 +333,41 @@ def _finalize_pool_units(
 def apply_plan(plan: IngestCapacityPlan, *, pool_env_path: str, wait_health: bool) -> int:
     config = load_embed_pool_config()
     if not plan.embed_pool.use_gpu_pool:
-        print("no GPU detected: writing capacity plan only (no systemd changes)")
+        print("no GPU detected: writing capacity plan only (no systemd changes)", flush=True)
         _write_pool_env(pool_env_path, plan)
         return 0
 
     planned_ports = set(plan.embed_pool.ports)
+    target_urls = [f"http://127.0.0.1:{port}" for port in plan.embed_pool.ports]
+
+    print(
+        f"apply: stopping pool units, then starting {len(planned_ports)} instance(s)",
+        flush=True,
+    )
     _prepare_pool_shutdown(config)
     _kill_stray_gpu_embeds(set())
 
-    target_urls = [f"http://127.0.0.1:{port}" for port in plan.embed_pool.ports]
     ctl = _systemctl_shell()
     restart_cmds = " ".join(f"{ctl} restart {_pool_unit(port)} &" for port in plan.embed_pool.ports)
     for port in plan.embed_pool.ports:
         _systemctl("enable", _pool_unit(port), check=False)
     if restart_cmds:
-        _run(["bash", "-lc", f"{restart_cmds} wait"], check=False)
+        restart_timeout = max(120.0, 90.0 * len(plan.embed_pool.ports))
+        print(f"apply: restarting pool units (timeout {int(restart_timeout)}s)", flush=True)
+        try:
+            _run(
+                ["bash", "-lc", f"{restart_cmds} wait"],
+                check=False,
+                timeout=restart_timeout,
+            )
+        except subprocess.TimeoutExpired:
+            print(
+                "warning: pool unit restart timed out; continuing with health probe",
+                file=sys.stderr,
+                flush=True,
+            )
 
+    print("apply: waiting for embed health probes", flush=True)
     healthy_urls = _wait_for_health(target_urls) if wait_health else target_urls
     healthy_ports = {int(url.rsplit(":", 1)[-1]) for url in healthy_urls}
     _finalize_pool_units(
@@ -365,8 +389,20 @@ def apply_plan(plan: IngestCapacityPlan, *, pool_env_path: str, wait_health: boo
     try:
         _write_pool_env(pool_env_path, plan)
     except PermissionError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        print(f"error: {exc}", file=sys.stderr, flush=True)
         return 1
+    print(f"apply: pool env written to {pool_env_path}", flush=True)
+    return 0
+
+
+def write_plan_env(plan: IngestCapacityPlan, *, pool_env_path: str) -> int:
+    """Write the capacity plan without restarting systemd pool units."""
+    try:
+        _write_pool_env(pool_env_path, plan)
+    except PermissionError as exc:
+        print(f"error: {exc}", file=sys.stderr, flush=True)
+        return 1
+    print(f"write-env: pool env written to {pool_env_path} (no systemd restart)", flush=True)
     return 0
 
 
@@ -408,6 +444,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--apply", action="store_true", help="Start/stop systemd units and write pool env."
+    )
+    parser.add_argument(
+        "--write-env-only",
+        action="store_true",
+        help="Write pool env from the plan without restarting embed pool units.",
     )
     parser.add_argument("--pool-env", default=DEFAULT_POOL_ENV)
     parser.add_argument("--scale-env", default=DEFAULT_SCALE_ENV)
@@ -462,9 +503,12 @@ def main() -> int:
     for key, reason in sorted(plan.rationale.items()):
         print(f"rationale {key}: {reason}")
 
-    if not args.apply:
+    if not args.apply and not args.write_env_only:
         print(render_capacity_env(plan), end="")
         return 0
+
+    if args.write_env_only:
+        return write_plan_env(plan, pool_env_path=args.pool_env)
 
     return apply_plan(
         plan,

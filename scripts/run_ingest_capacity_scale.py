@@ -45,6 +45,10 @@ def _python() -> str:
     return os.environ.get("PYTHON", sys.executable)
 
 
+def _python_argv() -> list[str]:
+    return [_python(), "-u"]
+
+
 def _run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     print(f"+ {' '.join(cmd)}", flush=True)
     return subprocess.run(cmd, check=check, text=True, capture_output=False)
@@ -109,11 +113,17 @@ def run_scale_apply(
     semantic_requested: str | None,
     chunk_bench: Path | None = None,
     embed_bench: Path | None = None,
+    write_env_only: bool = False,
 ) -> int:
     cmd = [
-        _python(),
+        *_python_argv(),
         str(REPO_ROOT / "scripts" / "scale_ingest_capacity.py"),
-        "--apply",
+    ]
+    if write_env_only:
+        cmd.append("--write-env-only")
+    else:
+        cmd.append("--apply")
+    cmd += [
         "--pool-env",
         str(pool_env),
         "--scale-env",
@@ -133,7 +143,7 @@ def run_chunk_bench(out_dir: Path) -> int:
     print("[bench] chunk stage (offline CPU)", flush=True)
     return _run(
         [
-            _python(),
+            *_python_argv(),
             str(REPO_ROOT / "scripts" / "bench_ingest_capacity.py"),
             "--mode",
             "chunk",
@@ -157,7 +167,7 @@ def run_embed_bench(out_dir: Path, *, embed_urls: str) -> int:
     print("[bench] embed stage (live pool)", flush=True)
     return _run(
         [
-            _python(),
+            *_python_argv(),
             str(REPO_ROOT / "scripts" / "bench_ingest_capacity.py"),
             "--mode",
             "embed",
@@ -174,19 +184,6 @@ def run_embed_bench(out_dir: Path, *, embed_urls: str) -> int:
         ],
         check=False,
     ).returncode
-
-
-def run_planner_dry_run(*, scale_env: Path) -> None:
-    print("[plan] dry-run rationale", flush=True)
-    _run(
-        [
-            _python(),
-            str(REPO_ROOT / "scripts" / "scale_ingest_capacity.py"),
-            "--scale-env",
-            str(scale_env),
-        ],
-        check=False,
-    )
 
 
 def main() -> int:
@@ -239,16 +236,17 @@ def main() -> int:
         if run_embed_bench(out_dir, embed_urls=embed_urls) != 0:
             print("warning: embed benchmark failed", file=sys.stderr, flush=True)
             status = 1
-        run_planner_dry_run(scale_env=scale_env)
 
+    print("[plan] writing bench-tuned pool env (pool stays running)", flush=True)
     if run_scale_apply(
         pool_env=pool_env,
         scale_env=scale_env,
         semantic_requested=args.semantic_requested,
         chunk_bench=chunk_bench if chunk_bench.is_file() else None,
         embed_bench=embed_bench if embed_bench.is_file() else None,
+        write_env_only=True,
     ) != 0:
-        print("error: final scale apply failed", file=sys.stderr, flush=True)
+        print("error: final pool env write failed", file=sys.stderr, flush=True)
         restart_query_embed()
         return 1
 

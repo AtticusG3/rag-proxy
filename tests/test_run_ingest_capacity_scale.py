@@ -45,7 +45,7 @@ def test_main_skip_bench_runs_apply_twice(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         mod,
         "run_scale_apply",
-        lambda **kwargs: calls.append("apply") or 0,
+        lambda **kwargs: calls.append("write" if kwargs.get("write_env_only") else "apply") or 0,
     )
     monkeypatch.setattr(mod, "restart_query_embed", lambda: calls.append("query"))
 
@@ -63,4 +63,4 @@ def test_main_skip_bench_runs_apply_twice(tmp_path: Path, monkeypatch) -> None:
     ):
         assert mod.main() == 0
 
-    assert calls == ["stop", "wait", "apply", "apply", "query"]
+    assert calls == ["stop", "wait", "apply", "write", "query"]
