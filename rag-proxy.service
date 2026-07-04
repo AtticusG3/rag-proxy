@@ -7,13 +7,15 @@ Before=llama-swap.service
 [Service]
 Type=simple
 User=kevyn
-WorkingDirectory=/home/kevyn/rag_proxy
-EnvironmentFile=-/home/kevyn/rag_proxy/.env
-ExecStart=/home/kevyn/rag_proxy/.venv/bin/python rag_proxy.py
+WorkingDirectory=/home/kevyn/rag-proxy
+EnvironmentFile=-/opt/ai/config/rag-proxy.env
+ExecStart=/opt/ai/venv/bin/python rag_proxy.py
 Restart=always
 RestartSec=3
 TimeoutStopSec=30
 KillMode=mixed
+
+# Do not cp blindly — run: bash scripts/install-systemd-units.sh
 
 [Install]
 WantedBy=multi-user.target

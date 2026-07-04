@@ -16,7 +16,7 @@ Helper scripts for operators and homelab dev. Run from repo root unless noted.
 | [`bench_ingest_capacity_host.sh`](bench_ingest_capacity_host.sh) | Stop ingest, free GPU, run chunk+embed benches, apply planner, restart admin (`--skip-restart` to leave services down) |
 | [`export_finetune_dataset.py`](export_finetune_dataset.py) | Export transcript JSONL to fine-tuning message format |
 | [`promote_rag_corpus.py`](promote_rag_corpus.py) | Promote RAG improvement JSONL pairs to Qdrant |
-| [`update-buster-embed-gpu.sh`](update-buster-embed-gpu.sh) | Deploy GPU nomic-embed units on `/opt/ai` hosts |
+| [`install-systemd-units.sh`](install-systemd-units.sh) | Write `rag-proxy` / `rag-admin` units with correct repo + venv paths |
 | [`run-tests.ps1`](run-tests.ps1) | Offline pytest (Windows; uses `.venv` when present) |
 | [`check_ingest_queue.py`](check_ingest_queue.py) | Print ingest queue status counts from admin SQLite (`kb_ingest_state`) |
 | [`clear_qdrant_collection.py`](clear_qdrant_collection.py) | Drop and recreate ingest Qdrant collection (destructive; loads `rag-admin.env`) |

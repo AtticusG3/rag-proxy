@@ -67,13 +67,15 @@ Repository ships example units:
 
 **Edit paths before install** — `User`, `WorkingDirectory`, `LLAMA_SERVER_BIN`, model path, and `ExecStart` are placeholders.
 
-`rag-proxy.service` essentials (adjust paths):
+`rag-proxy.service` essentials — **run `bash scripts/install-systemd-units.sh`** on the host (detects repo path and venv). Example output:
 
 ```ini
-WorkingDirectory=/opt/rag_proxy
-EnvironmentFile=-/opt/rag_proxy/.env
-ExecStart=/opt/rag_proxy/.venv/bin/python rag_proxy.py
+WorkingDirectory=/home/kevyn/rag-proxy
+EnvironmentFile=-/opt/ai/config/rag-proxy.env
+ExecStart=/opt/ai/venv/bin/python rag_proxy.py
 ```
+
+Raw `cp` of the repo units fails with **status=203/EXEC** when `WorkingDirectory` or `ExecStart` paths do not exist (wrong clone dir name or missing `.venv`). Use the install script or edit paths before `systemctl enable`.
 
 ### Install
 
