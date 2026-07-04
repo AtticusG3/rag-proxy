@@ -24,7 +24,7 @@ GROUP_TUNING: dict[str, tuple[TuningSection, ...]] = {
     "ingest": (
         TuningSection(
             "GPU embed pool (planner inputs)",
-            "Edit max instances and VRAM below, save, then click Scale embed pool. Outputs land in nomic-embed-pool.env and hot-reload into the ingest worker.",
+            "Edit max instances and VRAM below, save, then click Scale ingest capacity. The planner also probes CPU, RAM, and disk; outputs land in nomic-embed-pool.env and hot-reload into the ingest worker.",
             (
                 TuningItem(
                     "NOMIC_POOL_MAX_INSTANCES",
@@ -58,7 +58,7 @@ GROUP_TUNING: dict[str, tuple[TuningSection, ...]] = {
                 ),
                 TuningItem(
                     "INGEST_EMBED_URLS",
-                    "GPU pool endpoints (ports 18089+). Usually written by scale_nomic_embed_pool.py.",
+                    "GPU pool endpoints (ports 18089+). Usually written by scale_ingest_capacity.py.",
                 ),
                 TuningItem(
                     "EMBED_URL",

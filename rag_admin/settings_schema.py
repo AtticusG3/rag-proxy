@@ -54,6 +54,16 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         help_text="Worker threads, one file each. Leave empty for auto: max(1, min(4, pool URL count)).",
     ),
     SettingField(
+        "INGEST_CHUNK_CONCURRENCY",
+        "Parallel chunk runners",
+        "ingest",
+        "int",
+        "admin",
+        "",
+        hot=True,
+        help_text="Concurrent chunking files (CPU-bound). Leave empty for auto: min(4, cores / 2). Set by the capacity planner.",
+    ),
+    SettingField(
         "INGEST_SPARSE_REINDEX",
         "BM25 reindex mode",
         "ingest",

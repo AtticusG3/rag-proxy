@@ -158,7 +158,7 @@ class BackgroundJobRunner:
         on_success: Callable[[], None] | None = None,
     ) -> str:
         python = sys.executable
-        script = os.path.join(self.repo_root, "scripts", "scale_nomic_embed_pool.py")
+        script = os.path.join(self.repo_root, "scripts", "scale_ingest_capacity.py")
         cmd = [
             python,
             script,
@@ -168,11 +168,13 @@ class BackgroundJobRunner:
             "--scale-env",
             str(params["scale_env_path"]),
         ]
+        if params.get("semantic_requested") is not None:
+            cmd += ["--semantic-requested", str(params["semantic_requested"]).lower()]
         return self._start_job(
             JOB_EMBED_POOL_SCALE,
             cmd,
             params=params,
-            message="Embed pool scale started",
+            message="Ingest capacity scale started",
             on_success=on_success,
         )
 

@@ -55,10 +55,10 @@
 {% if active_tab == 'ingest' %}
 <section class="card card--compact">
   <div class="section-head">
-    <h2 class="section-title">Embed pool (planner output)</h2>
+    <h2 class="section-title">Ingest capacity plan</h2>
     <div class="page-header__actions">
       <form method="post" action="/settings/embed-pool/scale" class="inline">
-        <button type="submit" class="btn" {% if pool_scale_job %}disabled{% endif %}>Scale embed pool</button>
+        <button type="submit" class="btn" {% if pool_scale_job %}disabled{% endif %}>Scale ingest capacity</button>
       </form>
       <form method="post" action="/settings/embed-pool/stop" class="inline">
         <button type="submit" class="btn btn--ghost" {% if not pool_scale_job %}disabled{% endif %}>Stop scale</button>
@@ -73,11 +73,20 @@
     <div><dt>Instances</dt><dd class="mono">{{ pool_env.instance_count or '?' }}</dd></div>
     <div><dt>Ports</dt><dd class="mono">{{ pool_env.ports or '-' }}</dd></div>
     <div><dt>Pool concurrency</dt><dd class="mono">{{ pool_env.embed_concurrency or '-' }}</dd></div>
+    {% if pool_env.file_concurrency %}<div><dt>Parallel files</dt><dd class="mono">{{ pool_env.file_concurrency }}</dd></div>{% endif %}
+    {% if pool_env.batch_size %}<div><dt>Batch size</dt><dd class="mono">{{ pool_env.batch_size }}</dd></div>{% endif %}
+    {% if pool_env.chunk_concurrency %}<div><dt>Chunk runners</dt><dd class="mono">{{ pool_env.chunk_concurrency }}</dd></div>{% endif %}
+    {% if pool_env.chunk_semantic %}<div><dt>Semantic chunking</dt><dd class="mono">{{ pool_env.chunk_semantic }}</dd></div>{% endif %}
+    {% if pool_env.sparse_reindex %}<div><dt>BM25 during bulk</dt><dd class="mono">{{ pool_env.sparse_reindex }}</dd></div>{% endif %}
+    {% if pool_env.cpu_cores %}<div><dt>CPU cores</dt><dd class="mono">{{ pool_env.cpu_cores }}{% if pool_env.cpu_model %} ({{ pool_env.cpu_model }}){% endif %}</dd></div>{% endif %}
+    {% if pool_env.ram_available_mib %}<div><dt>RAM available (last scale)</dt><dd class="mono">{{ pool_env.ram_available_mib }} MiB</dd></div>{% endif %}
+    {% if pool_env.gpu_name %}<div><dt>GPU</dt><dd class="mono">{{ pool_env.gpu_name }}</dd></div>{% endif %}
     {% if pool_env.gpu_free_mib %}<div><dt>GPU free (last scale)</dt><dd class="mono">{{ pool_env.gpu_free_mib }} MiB</dd></div>{% endif %}
     <div><dt>URLs</dt><dd class="mono">{{ pool_env.embed_urls or '-' }}</dd></div>
+    {% if pool_env.probed_at %}<div><dt>Probed</dt><dd class="mono">{{ pool_env.probed_at }}</dd></div>{% endif %}
   </dl>
   {% else %}
-  <p class="muted">No pool env file yet at <code>{{ pool_env.path }}</code>. Save pool planner fields below, then click <strong>Scale embed pool</strong>.</p>
+  <p class="muted">No capacity plan yet at <code>{{ pool_env.path }}</code>. Save pool planner fields below, then click <strong>Scale ingest capacity</strong>.</p>
   {% endif %}
   {% if pool_scale_history and not pool_scale_job %}
   <div class="table-wrap table-wrap--spaced">

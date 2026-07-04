@@ -18,7 +18,18 @@ from rag_admin.settings_schema import (
     SettingField,
 )
 
-POOL_OUTPUT_KEYS: frozenset[str] = frozenset({"INGEST_EMBED_URLS", "INGEST_EMBED_CONCURRENCY"})
+# Keys the capacity planner writes to the pool env; synced into admin env on scale.
+POOL_OUTPUT_KEYS: frozenset[str] = frozenset(
+    {
+        "INGEST_EMBED_URLS",
+        "INGEST_EMBED_CONCURRENCY",
+        "INGEST_FILE_CONCURRENCY",
+        "INGEST_BATCH_SIZE",
+        "INGEST_CHUNK_CONCURRENCY",
+        "INGEST_CHUNK_SEMANTIC",
+        "INGEST_SPARSE_REINDEX",
+    }
+)
 from rag_proxy.env_parse import parse_bool
 
 
@@ -183,6 +194,9 @@ class SettingsStore:
             file_concurrency=int(values["INGEST_FILE_CONCURRENCY"])
             if values.get("INGEST_FILE_CONCURRENCY", "").strip()
             else None,
+            chunk_concurrency=int(values["INGEST_CHUNK_CONCURRENCY"])
+            if values.get("INGEST_CHUNK_CONCURRENCY", "").strip()
+            else None,
             chunk_config=chunk_config_from_values(values),
         )
 
@@ -283,6 +297,16 @@ class SettingsStore:
             "embed_urls": env.get("INGEST_EMBED_URLS", ""),
             "embed_concurrency": env.get("INGEST_EMBED_CONCURRENCY", ""),
             "gpu_free_mib": env.get("NOMIC_POOL_GPU_FREE_MIB", ""),
+            "file_concurrency": env.get("INGEST_FILE_CONCURRENCY", ""),
+            "batch_size": env.get("INGEST_BATCH_SIZE", ""),
+            "chunk_concurrency": env.get("INGEST_CHUNK_CONCURRENCY", ""),
+            "chunk_semantic": env.get("INGEST_CHUNK_SEMANTIC", ""),
+            "sparse_reindex": env.get("INGEST_SPARSE_REINDEX", ""),
+            "cpu_cores": env.get("CAPACITY_CPU_CORES", ""),
+            "cpu_model": env.get("CAPACITY_CPU_MODEL", ""),
+            "ram_available_mib": env.get("CAPACITY_RAM_AVAILABLE_MIB", ""),
+            "gpu_name": env.get("CAPACITY_GPU_NAME", ""),
+            "probed_at": env.get("CAPACITY_PROBED_AT", ""),
         }
 
     def sync_pool_ingest_from_pool_env(self) -> list[str]:
@@ -304,6 +328,7 @@ class SettingsStore:
         return {
             "pool_env_path": self.pool_env_path,
             "scale_env_path": self.pool_scale_env_path,
+            "semantic_requested": self.get_value("INGEST_CHUNK_SEMANTIC", "true"),
         }
 
     def memgraph_build_params(self) -> dict[str, Any]:

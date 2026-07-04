@@ -130,7 +130,7 @@ async def settings_save(request: Request, group: str):
 
     message = f"Saved {len(result.updated)} setting(s)."
     if result.pool_scale_updated:
-        message += " Use Scale embed pool on the ingest tab, or save and click Scale embed pool."
+        message += " Click Scale ingest capacity on the ingest tab to apply pool changes."
     if result.restart_proxy:
         message += " Restart rag-proxy to apply proxy env changes."
     if result.restart_admin:
@@ -172,6 +172,7 @@ async def embed_pool_scale_start(request: Request):
     store = _store(request)
     job_runner = request.app.state.job_runner
     worker = request.app.state.worker
+    semantic_before = store.get_value("INGEST_CHUNK_SEMANTIC", "true").lower()
 
     def on_success() -> None:
         synced = store.sync_pool_ingest_from_pool_env()
@@ -181,7 +182,19 @@ async def embed_pool_scale_start(request: Request):
             upload_dir=settings.upload_dir,
         )
         if synced:
-            log.info("embed pool scale synced ingest keys: %s", ", ".join(synced))
+            log.info("capacity scale synced ingest keys: %s", ", ".join(synced))
+        semantic_after = store.get_value("INGEST_CHUNK_SEMANTIC", "true").lower()
+        if semantic_after != semantic_before:
+            # Chunk boundaries change with the semantic setting; existing points
+            # must be rebuilt or retrieval mixes incompatible chunk profiles.
+            job_id = worker.requeue_all_files()
+            log.warning(
+                "capacity scale changed INGEST_CHUNK_SEMANTIC %s -> %s; "
+                "requeued all ingest files (job %s)",
+                semantic_before,
+                semantic_after,
+                job_id[:8],
+            )
 
     try:
         job_id = job_runner.start_embed_pool_scale(
@@ -192,7 +205,8 @@ async def embed_pool_scale_start(request: Request):
         return flash_redirect("/settings?tab=ingest", str(exc), level="error")
     return flash_redirect(
         "/settings?tab=ingest",
-        f"Embed pool scale started (job {job_id[:8]}). This may restart nomic-embed units.",
+        f"Ingest capacity scale started (job {job_id[:8]}). "
+        "This may restart nomic-embed units and update ingest settings.",
     )
 
 

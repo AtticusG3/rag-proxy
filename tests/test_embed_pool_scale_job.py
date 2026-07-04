@@ -33,6 +33,41 @@ def test_sync_pool_ingest_from_pool_env_writes_admin_env(tmp_path: Path) -> None
     assert len(config.embed_urls or []) == 2
 
 
+def test_sync_pool_ingest_syncs_capacity_plan_keys(tmp_path: Path) -> None:
+    pool_env = tmp_path / "pool.env"
+    admin_env = tmp_path / "admin.env"
+    pool_env.write_text(
+        "INGEST_EMBED_URLS=http://127.0.0.1:18089\n"
+        "INGEST_EMBED_CONCURRENCY=12\n"
+        "INGEST_FILE_CONCURRENCY=3\n"
+        "INGEST_BATCH_SIZE=32\n"
+        "INGEST_CHUNK_CONCURRENCY=2\n"
+        "INGEST_CHUNK_SEMANTIC=false\n"
+        "INGEST_SPARSE_REINDEX=off\n"
+        "CAPACITY_CPU_CORES=16\n",
+        encoding="utf-8",
+    )
+    store = SettingsStore(
+        AdminDatabase(str(tmp_path / "admin.sqlite")),
+        admin_env_path=str(admin_env),
+        proxy_env_path=str(tmp_path / "proxy.env"),
+        pool_scale_env_path=str(tmp_path / "scale.env"),
+        pool_env_path=str(pool_env),
+    )
+    synced = store.sync_pool_ingest_from_pool_env()
+    # All planner-owned ingest knobs sync; host snapshot keys stay in the pool env.
+    assert "INGEST_FILE_CONCURRENCY" in synced
+    assert "INGEST_CHUNK_CONCURRENCY" in synced
+    assert "INGEST_CHUNK_SEMANTIC" in synced
+    assert "CAPACITY_CPU_CORES" not in synced
+    config = store.build_ingest_config(zim_dir=str(tmp_path), upload_dir=str(tmp_path))
+    assert config.file_concurrency == 3
+    assert config.chunk_concurrency == 2
+    assert config.batch_size == 32
+    assert config.chunk_config.semantic_enabled is False
+    assert config.sparse_reindex_mode == "off"
+
+
 @patch("rag_admin.job_runner.subprocess.Popen")
 def test_start_embed_pool_scale_registers_job(mock_popen: MagicMock, tmp_path: Path) -> None:
     mock_proc = MagicMock()
@@ -51,6 +86,7 @@ def test_start_embed_pool_scale_registers_job(mock_popen: MagicMock, tmp_path: P
         {
             "pool_env_path": "/opt/ai/config/nomic-embed-pool.env",
             "scale_env_path": "/opt/ai/config/nomic-embed-scale.env",
+            "semantic_requested": "true",
         }
     )
     assert job_id
@@ -58,5 +94,6 @@ def test_start_embed_pool_scale_registers_job(mock_popen: MagicMock, tmp_path: P
     assert active is not None
     assert active["job_type"] == JOB_EMBED_POOL_SCALE
     cmd = mock_popen.call_args[0][0]
-    assert any("scale_nomic_embed_pool.py" in part for part in cmd)
+    assert any("scale_ingest_capacity.py" in part for part in cmd)
     assert "--apply" in cmd
+    assert "--semantic-requested" in cmd
