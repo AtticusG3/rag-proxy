@@ -16,7 +16,12 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from core import DEFAULT_COLLECTION as _DEFAULT_COLLECTION
-from core import IndexRegistry
+from core import IndexRegistry, SparseIndex
+
+try:
+    from rag_proxy.chunk_text import PAYLOAD_TEXT_KEYS
+except ImportError:
+    from chunk_text import PAYLOAD_TEXT_KEYS  # noqa: F401 — Docker flat layout
 
 log = logging.getLogger("sparse-sidecar")
 
@@ -29,52 +34,81 @@ PORT = int(os.getenv("SPARSE_PORT", "8096"))
 # 0 = index everything. Otherwise stop after N points (BM25 sampling for large collections).
 MAX_POINTS = int(os.getenv("SPARSE_MAX_POINTS", "0"))
 
+# Payload keys fetched from Qdrant (text + recency metadata only).
+_SCROLL_PAYLOAD_KEYS = tuple(
+    dict.fromkeys(
+        (*PAYLOAD_TEXT_KEYS, "updated_at", "mtime", "timestamp"),
+    )
+)
+
 registry = IndexRegistry()
 
 
-async def fetch_qdrant_points(collection: str) -> list[dict[str, Any]]:
-    points: list[dict[str, Any]] = []
-    offset: str | int | None = None
-    truncated = False
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        while True:
-            # If MAX_POINTS is set, request only what we still need
-            remaining = SCROLL_BATCH
-            if MAX_POINTS > 0:
-                remaining = min(SCROLL_BATCH, MAX_POINTS - len(points))
-                if remaining <= 0:
-                    break
-            body: dict[str, Any] = {
-                "limit": remaining,
-                "with_payload": True,
-                "with_vector": False,
-            }
-            if offset is not None:
-                body["offset"] = offset
-            response = await client.post(
-                f"{QDRANT_URL}/collections/{collection}/points/scroll",
-                json=body,
-            )
-            response.raise_for_status()
-            result = response.json().get("result", {})
-            batch = result.get("points", [])
-            points.extend(batch)
-            offset = result.get("next_page_offset")
-            if offset is None:
-                break
-            if MAX_POINTS > 0 and len(points) >= MAX_POINTS:
-                truncated = True
-                break
-    if truncated:
-        log.info("fetch_qdrant_points: stopped at MAX_POINTS=%d", MAX_POINTS)
-    return points
+async def _scroll_page(
+    client: httpx.AsyncClient,
+    collection: str,
+    offset: str | int | None,
+    limit: int,
+) -> tuple[list[dict[str, Any]], str | int | None]:
+    body: dict[str, Any] = {
+        "limit": limit,
+        "with_payload": list(_SCROLL_PAYLOAD_KEYS),
+        "with_vector": False,
+    }
+    if offset is not None:
+        body["offset"] = offset
+    response = await client.post(
+        f"{QDRANT_URL}/collections/{collection}/points/scroll",
+        json=body,
+    )
+    response.raise_for_status()
+    result = response.json().get("result", {})
+    batch = result.get("points", [])
+    return batch, result.get("next_page_offset")
 
 
 async def sync_collection(collection: str) -> int:
-    points = await fetch_qdrant_points(collection)
-    count = await asyncio.to_thread(registry.rebuild, collection, points)
-    log.info("Sparse index synced collection=%s docs=%d", collection, count)
+    index = SparseIndex()
+    indexed = 0
+    truncated = False
+    offset: str | int | None = None
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        while True:
+            remaining = SCROLL_BATCH
+            if MAX_POINTS > 0:
+                remaining = min(SCROLL_BATCH, MAX_POINTS - indexed)
+                if remaining <= 0:
+                    truncated = True
+                    break
+
+            batch, offset = await _scroll_page(client, collection, offset, remaining)
+            if batch:
+                await asyncio.to_thread(index.add_points, batch)
+                indexed += len(batch)
+
+            if offset is None:
+                break
+            if MAX_POINTS > 0 and indexed >= MAX_POINTS:
+                truncated = True
+                break
+
+    count = await asyncio.to_thread(_finalize_and_install, collection, index)
+    if truncated:
+        log.info(
+            "Sparse index synced collection=%s docs=%d (truncated at MAX_POINTS=%d)",
+            collection,
+            count,
+            MAX_POINTS,
+        )
+    else:
+        log.info("Sparse index synced collection=%s docs=%d", collection, count)
     return count
+
+
+def _finalize_and_install(collection: str, index: SparseIndex) -> int:
+    index.finalize(collection)
+    return registry.install(collection, index)
 
 
 class SearchRequest(BaseModel):
