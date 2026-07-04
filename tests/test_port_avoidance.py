@@ -106,6 +106,28 @@ def test_plan_embed_pool_skips_loopback_conflict(monkeypatch):
     assert len(plan.ports) == 4
 
 
+def test_plan_embed_pool_skips_sparse_port_18096(monkeypatch):
+    """Buster homelab: sparse sidecar on 18096 must not get an embed pool unit."""
+    monkeypatch.setenv("NOMIC_POOL_PORT_BASE", "18089")
+    monkeypatch.setenv("SPARSE_INDEX_URL", "http://127.0.0.1:18096")
+    monkeypatch.setattr(
+        "ingest.embed_pool.query_gpu_memory_mib",
+        lambda _index=0: (32768, 8000, 24768),
+    )
+    plan = plan_embed_pool(
+        EmbedPoolConfig(port_base=18089, max_instances=8, min_instances=1),
+        memory=(32768, 8000, 24768),
+    )
+    assert 18096 not in plan.ports
+    assert len(plan.ports) >= 1
+
+
+def test_loopback_reserved_ports_ignores_ingest_embed_urls(monkeypatch):
+    monkeypatch.setenv("INGEST_EMBED_URLS", "http://127.0.0.1:18096")
+    reserved = loopback_reserved_ports(include_defaults=False)
+    assert 18096 not in reserved
+
+
 def test_merge_config_dir_env_overlays_files(tmp_path: Path):
     config_dir = tmp_path / "config"
     config_dir.mkdir()

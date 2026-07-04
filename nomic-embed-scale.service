@@ -9,6 +9,8 @@ Type=oneshot
 User=root
 WorkingDirectory=/opt/ai/repo/rag_proxy
 EnvironmentFile=-/opt/ai/config/nomic-embed-scale.env
+EnvironmentFile=-/opt/ai/config/rag-proxy.env
+EnvironmentFile=-/opt/ai/config/rag-admin.env
 ExecStart=/opt/ai/venv/bin/python scripts/scale_ingest_capacity.py --apply
 RemainAfterExit=yes
 

@@ -114,12 +114,12 @@ def apply_config_env(
     config_dir: str | Path | None = None,
     scale_env: str | Path | None = None,
 ) -> None:
-    """Load scale + homelab env files into os.environ without overriding existing vars."""
+    """Load homelab config env files into os.environ without overriding existing vars."""
+    base = Path(config_dir or os.getenv("CONFIG_DIR", "/opt/ai/config"))
     if scale_env is not None:
         for key, value in load_env_file(scale_env).items():
             os.environ.setdefault(key, value)
-    base = Path(config_dir or os.getenv("CONFIG_DIR", "/opt/ai/config"))
-    for name in ("nomic-embed.env", "rag-admin.env", "rag-proxy.env"):
+    for name in CONFIG_ENV_FILES:
         for key, value in load_env_file(base / name).items():
             os.environ.setdefault(key, value)
 
@@ -149,7 +149,7 @@ def loopback_reserved_ports(
         if port is not None:
             ports.add(port)
 
-    ports.update(ports_from_embed_urls(values.get("INGEST_EMBED_URLS", "")))
+    # Do not block on INGEST_EMBED_URLS — those are prior pool outputs, not fixed services.
 
     for key in _PORT_ENV_KEYS:
         raw = values.get(key, "").strip()
