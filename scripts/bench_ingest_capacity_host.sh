@@ -102,8 +102,8 @@ _stop_phase() {
 }
 
 _start_pool_systemd() {
-  if sudo -n systemctl start nomic-embed-scale.service 2>/dev/null; then
-    echo "[pool] started via nomic-embed-scale.service"
+  if sudo -n systemctl restart nomic-embed-scale.service 2>/dev/null; then
+    echo "[pool] restarted via nomic-embed-scale.service"
     sleep 5
     return 0
   fi

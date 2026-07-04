@@ -202,7 +202,7 @@ On top of that it computes `INGEST_FILE_CONCURRENCY`, `INGEST_BATCH_SIZE`, `INGE
 python scripts/scale_ingest_capacity.py
 
 # Apply via systemd (recommended on boot)
-systemctl start nomic-embed-scale.service
+sudo systemctl restart nomic-embed-scale.service
 systemctl restart rag-admin.service
 ```
 

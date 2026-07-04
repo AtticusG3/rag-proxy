@@ -25,7 +25,12 @@ from ingest.capacity_planner import (  # noqa: E402
     render_capacity_env,
 )
 from ingest.embed_pool import EmbedPoolConfig, load_embed_pool_config  # noqa: E402
-from ingest.port_avoidance import apply_config_env, embed_pool_stop_ports, loopback_reserved_ports  # noqa: E402
+from ingest.port_avoidance import (  # noqa: E402
+    apply_config_env,
+    describe_port_skips,
+    embed_pool_stop_ports,
+    loopback_reserved_ports,
+)
 from rag_proxy.env_parse import parse_bool  # noqa: E402
 
 DEFAULT_POOL_ENV = "/opt/ai/config/nomic-embed-pool.env"
@@ -156,8 +161,7 @@ def _retire_pool_units(*, keep_ports: set[int], config: EmbedPoolConfig) -> None
 
 
 def _prepare_pool_shutdown(config: EmbedPoolConfig) -> None:
-    """Stop legacy query embed and all known pool units before a fresh scale."""
-    _stop_disable_unit(LEGACY_UNIT)
+    """Stop all pool units before a fresh scale (query embed on :8089 stays up)."""
     _retire_pool_units(keep_ports=set(), config=config)
 
 
@@ -400,10 +404,22 @@ def main() -> int:
 
     plan = build_plan(args)
     pool = plan.embed_pool
+    pool_cfg = load_embed_pool_config()
+    reserved = loopback_reserved_ports()
+    skip_note = describe_port_skips(
+        requested_base=pool_cfg.port_base,
+        ports=pool.ports,
+        reserved=reserved,
+    )
     print(
         f"instances={pool.instance_count} "
         f"ports={','.join(str(p) for p in pool.ports)}"
     )
+    if skip_note:
+        print(f"port_plan: {skip_note}")
+    sparse_url = os.getenv("SPARSE_INDEX_URL", "").strip()
+    if sparse_url:
+        print(f"SPARSE_INDEX_URL={sparse_url}")
     if pool.gpu_free_mib is not None:
         print(
             f"gpu_free_mib={pool.gpu_free_mib} "

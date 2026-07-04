@@ -58,11 +58,13 @@ sudo systemctl daemon-reload
 
 echo "[systemd] enable query embed (:8089)"
 sudo systemctl enable nomic-embed.service
-sudo systemctl restart nomic-embed.service
 
-echo "[systemd] scale GPU pool and restart instances"
+echo "[systemd] scale GPU pool (restart oneshot so --apply re-runs)"
 sudo systemctl enable nomic-embed-scale.service
-sudo systemctl start nomic-embed-scale.service
+sudo systemctl restart nomic-embed-scale.service
+
+echo "[systemd] ensure query embed (:8089) after pool scale"
+sudo systemctl restart nomic-embed.service
 
 if systemctl is-active --quiet rag-admin.service 2>/dev/null; then
   echo "[systemd] restart rag-admin"
@@ -83,6 +85,39 @@ done
 
 if [[ -f "$CONFIG_DIR/nomic-embed-pool.env" ]]; then
   echo "[pool] $(grep -E '^INGEST_EMBED_URLS=|^INGEST_EMBED_CONCURRENCY=' "$CONFIG_DIR/nomic-embed-pool.env" || true)"
+  if /opt/ai/venv/bin/python - "$CONFIG_DIR" "$CONFIG_DIR/nomic-embed-pool.env" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path("/opt/ai/repo/rag_proxy")))
+from ingest.port_avoidance import (
+    apply_config_env,
+    load_env_file,
+    loopback_reserved_ports,
+    port_from_url,
+    ports_from_embed_urls,
+)
+
+config_dir = Path(sys.argv[1])
+pool_env = load_env_file(sys.argv[2])
+apply_config_env(config_dir=config_dir)
+reserved = loopback_reserved_ports()
+pool_ports = ports_from_embed_urls(pool_env.get("INGEST_EMBED_URLS", ""))
+overlap = sorted(pool_ports & reserved)
+if overlap:
+    print(f"error: pool env uses reserved loopback port(s): {','.join(str(p) for p in overlap)}", file=sys.stderr)
+    sparse = os.getenv("SPARSE_INDEX_URL", "")
+    if sparse:
+        print(f"  SPARSE_INDEX_URL={sparse}", file=sys.stderr)
+    sys.exit(1)
+PY
+  then
+    :
+  else
+    echo "[error] pool env conflicts with a reserved loopback service port; check journalctl -u nomic-embed-scale" >&2
+    exit 1
+  fi
 fi
 
 echo "[units] running pool:"
