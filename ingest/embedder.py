@@ -6,6 +6,8 @@ import time
 
 import httpx
 
+from ingest.embed_lifecycle import ensure_embed_urls, touch_embed_activity
+
 DEFAULT_EMBED_MODEL = "nomic-embed-text-v1.5"
 DEFAULT_MAX_CHARS = 2000
 _CONTEXT_SHRINK_LIMITS = (400, 300, 200, 100)
@@ -107,28 +109,34 @@ def embed_texts(
                 candidates.append(normalized)
 
     last_err: Exception | None = None
+    ensure_embed_urls(candidates, query_url=embed_url)
+
     for attempt in range(retries + 1):
         if attempt:
             time.sleep(1.0)
         for url in candidates:
             try:
                 if client is not None:
-                    return _embed_batch_resilient(
+                    result = _embed_batch_resilient(
                         client,
                         embed_url=url,
                         model=model,
                         texts=texts,
                         max_chars=max_chars,
                     )
+                    touch_embed_activity()
+                    return result
                 owned = httpx.Client(timeout=120.0)
                 try:
-                    return _embed_batch_resilient(
+                    result = _embed_batch_resilient(
                         owned,
                         embed_url=url,
                         model=model,
                         texts=texts,
                         max_chars=max_chars,
                     )
+                    touch_embed_activity()
+                    return result
                 finally:
                     owned.close()
             except Exception as exc:

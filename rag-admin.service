@@ -1,0 +1,20 @@
+[Unit]
+Description=RAG admin UI and dense ingest worker
+After=network.target qdrant.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=kevyn
+WorkingDirectory=/home/kevyn/rag_proxy
+EnvironmentFile=-/opt/ai/config/rag-admin.env
+ExecStart=/home/kevyn/rag_proxy/.venv/bin/python -m rag_admin
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+KillMode=mixed
+
+# Edit User, WorkingDirectory, and EnvironmentFile for your host.
+
+[Install]
+WantedBy=multi-user.target

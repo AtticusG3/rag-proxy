@@ -19,12 +19,13 @@ from ingest.db import IngestDatabase
 from ingest.chunking import ChunkConfig, load_chunk_config
 from ingest.chunking import chunk_text, set_chunk_concurrency
 from ingest.chunking_strategy import ChunkContext
+from ingest.embed_lifecycle import ensure_embed_urls
 from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.pdf_reader import iter_pdf_pages
 from ingest.pipeline import make_embed_semaphore, run_ingest_pipeline
 from ingest.qdrant_writer import delete_by_source
 from ingest.scanner import scan_storage
-from ingest.types import determine_file_type
+from ingest.types import determine_file_type, IngestAborted
 from ingest.zim_reader import iter_zim_articles
 
 from ingest.stall import interrupt_error_message, is_stalled, stall_error_message
@@ -136,6 +137,7 @@ def process_file(
     *,
     on_progress: UpdateStateFn | None = None,
     embed_limiter: threading.Semaphore | None = None,
+    should_abort: Callable[[], bool] | None = None,
 ) -> int:
     """Embed one file into Qdrant. Returns total chunks embedded."""
     chunk_iter = _iter_chunks_for_file(
@@ -155,6 +157,7 @@ def process_file(
         embed_concurrency=config.embed_concurrency,
         embed_limiter=embed_limiter,
         on_progress=on_progress,
+        should_abort=should_abort,
     )
 
 
@@ -215,6 +218,7 @@ class IngestWorker:
         self._sparse = SparseReindexScheduler(config)
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._abort = threading.Event()
         self._paused = False
         self._workers: list[tuple[threading.Thread, threading.Event]] = []
         self._worker_seq = 0
@@ -234,6 +238,13 @@ class IngestWorker:
 
     def set_paused(self, paused: bool) -> None:
         self._paused = paused
+        if paused:
+            self._abort.set()
+        else:
+            self._abort.clear()
+
+    def _should_abort(self) -> bool:
+        return self._stop.is_set() or self._abort.is_set()
 
     def update_config(self, config: IngestConfig) -> None:
         with self._lock:
@@ -287,9 +298,12 @@ class IngestWorker:
         self._workers = []
         self.resize_file_workers(self._file_worker_count())
 
-    def stop(self) -> None:
+    def stop(self, *, flush_sparse: bool = False) -> None:
+        """Signal workers to exit. Skip BM25 flush on shutdown (can block minutes)."""
         self._stop.set()
-        self._sparse.flush()
+        self._abort.set()
+        if flush_sparse:
+            self._sparse.flush()
 
     def enqueue_sync(self) -> str:
         """Scan storage and queue only new or previously failed files."""
@@ -406,6 +420,7 @@ class IngestWorker:
     def running_file_count(self) -> int:
         return len(self.db.list_running_files())
 
+    def enqueue_file(self, file_path: str) -> str:
         job_id = str(uuid.uuid4())
         self.db.create_job(job_id, job_type="file", message=file_path)
         self.db.upsert_file_state(file_path, status="pending")
@@ -429,6 +444,15 @@ class IngestWorker:
                 continue
             try:
                 self._process_one(file_path)
+            except IngestAborted:
+                if self._stop.is_set():
+                    return
+                self.db.update_file_state(
+                    file_path,
+                    status="pending",
+                    last_error="paused mid-ingest",
+                )
+                log.info("ingest paused mid-file, re-queued: %s", file_path)
             except Exception as exc:
                 log.exception("ingest failed for %s", file_path)
                 self.db.update_file_state(
@@ -439,6 +463,11 @@ class IngestWorker:
                 )
 
     def _process_one(self, file_path: str) -> None:
+        urls = self.config.embed_urls or parse_ingest_embed_urls(
+            embed_url=self.config.embed_url
+        )
+        ensure_embed_urls(urls, query_url=self.config.embed_url)
+
         def on_progress(**kwargs: object) -> None:
             chunks = kwargs.get("chunks_embedded")
             if isinstance(chunks, int):
@@ -449,6 +478,7 @@ class IngestWorker:
             self.config,
             on_progress=on_progress,
             embed_limiter=self._embed_limiter,
+            should_abort=self._should_abort,
         )
 
         with self._lock:

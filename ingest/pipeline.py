@@ -13,6 +13,8 @@ import httpx
 from ingest.embedder import embed_texts
 from ingest.qdrant_writer import build_point, ensure_collection, upsert_points
 
+from ingest.types import IngestAborted
+
 log = logging.getLogger("ingest.pipeline")
 
 
@@ -165,6 +167,7 @@ def run_ingest_pipeline(
     embed_concurrency: int,
     embed_limiter: EmbedLimiter | None = None,
     on_progress: UpdateStateFn | None = None,
+    should_abort: Callable[[], bool] | None = None,
 ) -> int:
     """Embed batches concurrently and upsert to Qdrant in chunk order."""
     urls = embed_urls or ([embed_url] if embed_url else [])
@@ -191,6 +194,8 @@ def run_ingest_pipeline(
             thread_name_prefix="ingest-embed",
         ) as pool:
             for batch in chunk_batches(chunks, batch_size):
+                if should_abort and should_abort():
+                    raise IngestAborted("ingest aborted before batch")
                 texts = [chunk[2] for chunk in batch]
                 target_url = urls[next_seq % len(urls)]
                 future = pool.submit(
@@ -217,6 +222,8 @@ def run_ingest_pipeline(
                 )
 
                 while (next_seq - next_upsert) > concurrency:
+                    if should_abort and should_abort():
+                        raise IngestAborted("ingest aborted while waiting for embed")
                     total, next_upsert = _drain_next_upsert(
                         pending,
                         next_upsert,
@@ -228,6 +235,8 @@ def run_ingest_pipeline(
                     )
 
             while next_upsert < next_seq:
+                if should_abort and should_abort():
+                    raise IngestAborted("ingest aborted while draining embeds")
                 total, next_upsert = _drain_next_upsert(
                     pending,
                     next_upsert,

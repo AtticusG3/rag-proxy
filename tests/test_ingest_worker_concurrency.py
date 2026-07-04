@@ -43,6 +43,7 @@ def test_worker_processes_multiple_files_in_parallel() -> None:
         *,
         on_progress=None,
         embed_limiter=None,
+        should_abort=None,
     ) -> int:
         nonlocal active, peak_active
         with lock:
@@ -79,3 +80,70 @@ def test_worker_processes_multiple_files_in_parallel() -> None:
             worker.stop()
 
         assert peak_active >= 2
+
+
+def test_pause_aborts_in_flight_file_and_requeues() -> None:
+    started = threading.Event()
+
+    def blocking_process_file(
+        file_path: str,
+        config: IngestConfig,
+        *,
+        on_progress=None,
+        embed_limiter=None,
+        should_abort=None,
+    ) -> int:
+        started.set()
+        while should_abort is None or not should_abort():
+            time.sleep(0.02)
+        from ingest.types import IngestAborted
+
+        raise IngestAborted("paused")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "admin.sqlite")
+        db = IngestDatabase(db_path)
+        file_path = os.path.join(tmp, "doc.txt")
+        with open(file_path, "w", encoding="utf-8") as handle:
+            handle.write("content")
+        db.upsert_file_state(file_path, status="pending", file_type="text")
+
+        worker = _worker(db, file_concurrency=1)
+        with patch("ingest.worker.process_file", side_effect=blocking_process_file):
+            worker.start()
+            assert started.wait(timeout=5.0)
+            worker.set_paused(True)
+            deadline = time.time() + 5.0
+            while time.time() < deadline:
+                row = db.get_file_state(file_path)
+                if row and row["status"] == "pending":
+                    break
+                time.sleep(0.05)
+            worker.stop()
+
+        row = db.get_file_state(file_path)
+        assert row is not None
+        assert row["status"] == "pending"
+        assert "paused" in (row.get("last_error") or "").lower()
+
+
+def test_stop_skips_sparse_flush_by_default() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "admin.sqlite")
+        db = IngestDatabase(db_path)
+        config = IngestConfig(
+            zim_dir="/tmp",
+            upload_dir="/tmp",
+            embed_url="http://127.0.0.1:1",
+            qdrant_url="http://127.0.0.1:1",
+            qdrant_collection="test",
+            sparse_index_url="http://127.0.0.1:1",
+            sparse_reindex_mode="idle",
+        )
+        worker = IngestWorker(config, db)
+        worker._sparse._dirty = True
+        with patch("ingest.worker.trigger_sparse_reindex") as trigger:
+            worker.stop()
+            trigger.assert_not_called()
+            worker.stop(flush_sparse=True)
+            trigger.assert_called_once()

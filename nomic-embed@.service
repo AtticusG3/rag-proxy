@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=kevyn
-Restart=always
+Restart=on-failure
 RestartSec=3
 EnvironmentFile=-/opt/ai/config/nomic-embed.env
 EnvironmentFile=-/opt/ai/config/nomic-embed-scale.env

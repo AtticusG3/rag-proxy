@@ -10,6 +10,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from ingest.worker import trigger_sparse_reindex
+from ingest.embed_lifecycle import ensure_embed_urls, on_demand_enabled
+from ingest.embed_urls import parse_ingest_embed_urls
 from rag_admin.job_runner import JOB_EMBED_POOL_SCALE, JOB_MEMGRAPH_BUILD
 from rag_admin.config import settings
 from rag_admin.helpers import flash_redirect
@@ -106,6 +108,7 @@ async def settings_page(request: Request, tab: str = "ingest") -> HTMLResponse:
             "pool_env": store.pool_env_snapshot(),
             "can_restart_proxy": bool(settings.proxy_restart_cmd.strip()),
             "can_restart_admin": bool(settings.admin_restart_cmd.strip()),
+            "can_restart_embed_pool": bool(settings.embed_pool_restart_cmd.strip()),
         },
     )
 
@@ -150,8 +153,16 @@ async def ingest_pause(request: Request):
 @router.post("/settings/ingest/resume")
 async def ingest_resume(request: Request):
     store = _store(request)
+    worker = request.app.state.worker
+    if on_demand_enabled():
+        config = store.build_ingest_config(
+            zim_dir=settings.zim_dir,
+            upload_dir=settings.upload_dir,
+        )
+        urls = config.embed_urls or parse_ingest_embed_urls(embed_url=config.embed_url)
+        ensure_embed_urls(urls, query_url=config.embed_url)
     store.set_ingest_paused(False)
-    request.app.state.worker.set_paused(False)
+    worker.set_paused(False)
     return flash_redirect("/settings?tab=ingest", "Dense ingest resumed.")
 
 
@@ -325,4 +336,15 @@ async def restart_admin_service(request: Request):
     return flash_redirect(
         "/settings",
         f"rag-admin restart scheduled; refresh this page in a few seconds. {msg}",
+    )
+
+
+@router.post("/settings/restart/embed-pool")
+async def restart_embed_pool_service(request: Request):
+    ok, msg = schedule_restart(settings.embed_pool_restart_cmd)
+    if not ok:
+        return flash_redirect("/settings?tab=ingest", msg, level="error")
+    return flash_redirect(
+        "/settings?tab=ingest",
+        f"Embed pool restart scheduled (re-applies pool env). {msg}",
     )

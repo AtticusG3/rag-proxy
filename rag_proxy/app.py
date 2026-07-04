@@ -243,4 +243,5 @@ def main() -> None:
             f"  -> metrics     : http://{settings.proxy_host}:{settings.proxy_port}/metrics"
         )
 
-    uvicorn.run(app, host=settings.proxy_host, port=settings.proxy_port, log_level="warning")
+    uvicorn.run(app, host=settings.proxy_host, port=settings.proxy_port, log_level="warning",
+                timeout_graceful_shutdown=settings.proxy_graceful_shutdown_sec)

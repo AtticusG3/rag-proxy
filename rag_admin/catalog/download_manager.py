@@ -217,8 +217,13 @@ class CatalogDownloadManager:
                 response.raise_for_status()
                 with open(tmp_path, "wb") as handle:
                     for chunk in response.iter_bytes(chunk_size=1024 * 1024):
+                        if self._stop.is_set():
+                            raise InterruptedError("catalog download stopped")
                         if chunk:
                             handle.write(chunk)
+        if os.path.isfile(tmp_path) and self._stop.is_set():
+            os.remove(tmp_path)
+            raise InterruptedError("catalog download stopped")
         os.replace(tmp_path, local_path)
 
         self.db.update_subscription(

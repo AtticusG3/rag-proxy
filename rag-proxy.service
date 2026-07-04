@@ -1,8 +1,7 @@
 [Unit]
 Description=RAG proxy for llama-swap (Qdrant context injection)
-After=network.target nomic-embed.service
-Wants=nomic-embed.service
-# Start before clients use it; llama-swap can start in parallel
+After=network.target
+# nomic-embed starts on demand (EMBED_ON_DEMAND) when RAG or ingest needs it
 Before=llama-swap.service
 
 [Service]
@@ -13,6 +12,8 @@ EnvironmentFile=-/home/kevyn/rag_proxy/.env
 ExecStart=/home/kevyn/rag_proxy/.venv/bin/python rag_proxy.py
 Restart=always
 RestartSec=3
+TimeoutStopSec=30
+KillMode=mixed
 
 [Install]
 WantedBy=multi-user.target

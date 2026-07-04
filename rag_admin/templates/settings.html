@@ -60,6 +60,11 @@
       <form method="post" action="/settings/embed-pool/scale" class="inline">
         <button type="submit" class="btn" {% if pool_scale_job %}disabled{% endif %}>Scale ingest capacity</button>
       </form>
+      {% if can_restart_embed_pool %}
+      <form method="post" action="/settings/restart/embed-pool" class="inline">
+        <button type="submit" class="btn btn--ghost">Restart embed pool</button>
+      </form>
+      {% endif %}
       <form method="post" action="/settings/embed-pool/stop" class="inline">
         <button type="submit" class="btn btn--ghost" {% if not pool_scale_job %}disabled{% endif %}>Stop scale</button>
       </form>
@@ -114,7 +119,7 @@
       <form method="post" action="/settings/sparse/reindex" class="inline"><button type="submit" class="btn btn--ghost">Rebuild BM25 now</button></form>
     </div>
   </div>
-  <p class="muted">Dense ingest is {% if ingest_paused %}<strong>paused</strong>{% else %}<strong>running</strong>{% endif %}. BM25 mode: <code>{{ ingest_config.sparse_reindex_mode }}</code>.</p>
+  <p class="muted">Dense ingest is {% if ingest_paused %}<strong>paused</strong>{% else %}<strong>running</strong>{% endif %}. BM25 mode: <code>{{ ingest_config.sparse_reindex_mode }}</code>. With <code>EMBED_ON_DEMAND=true</code> (default on Linux), nomic embed units unload from VRAM when idle; resume ingest or send a RAG query to warm them again.</p>
 </section>
 {% endif %}
 

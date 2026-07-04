@@ -19,6 +19,7 @@ from rag_proxy.clients.retrieval_core import (
     prepare_embed_text,
     sparse_search_payload,
 )
+from ingest.embed_lifecycle import ensure_embed_urls, touch_embed_activity
 from rag_proxy.config import settings
 from rag_proxy.observability import record_embed_cache_hit, record_embed_cache_miss
 from rag_proxy.sidecar_client import get_embed_client, get_qdrant_client, get_sparse_client
@@ -43,6 +44,7 @@ def _cache_key(text: str) -> str:
 
 async def get_embedding(text: str) -> list[float] | None:
     """Embed text via the standalone nomic-embed server."""
+    ensure_embed_urls([settings.embed_url.rstrip("/")], query_url=settings.embed_url)
     char_limits = [settings.embed_max_chars]
     if settings.embed_max_chars > 1200:
         char_limits.append(1200)
@@ -73,6 +75,7 @@ async def get_embedding(text: str) -> list[float] | None:
                         )
                         continue
                 r.raise_for_status()
+                touch_embed_activity()
                 return parse_embedding(r.json())
             except httpx.HTTPStatusError as e:
                 body = (e.response.text or "")[:200]

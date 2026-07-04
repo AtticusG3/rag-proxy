@@ -38,7 +38,7 @@ flowchart TB
   RP --> LS
 ```
 
-This repository ships `rag-proxy.service`, `nomic-embed.service`, `nomic-embed@.service`, and `nomic-embed-scale.service` examples only. Provide your own systemd unit (or process manager) for `python -m rag_admin` if needed. Cron helpers load admin env via `RAG_ADMIN_ENV_FILE` (default `/opt/ai/config/rag-admin.env`); `catalog_weekly_update.py` also accepts legacy alias `RAG_ADMIN_ENV`.
+This repository ships `rag-proxy.service`, `rag-admin.service`, `nomic-embed.service`, `nomic-embed@.service`, and `nomic-embed-scale.service` examples. Edit paths and `User=` before install. Cron helpers load admin env via `RAG_ADMIN_ENV_FILE` (default `/opt/ai/config/rag-admin.env`); `catalog_weekly_update.py` also accepts legacy alias `RAG_ADMIN_ENV`.
 
 ## Components
 

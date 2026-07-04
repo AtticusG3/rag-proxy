@@ -35,6 +35,7 @@ def test_process_one_releases_lock_during_process_file() -> None:
         *,
         on_progress=None,
         embed_limiter=None,
+        should_abort=None,
     ) -> int:
         process_started.set()
         release_process.wait(timeout=5.0)

@@ -169,13 +169,13 @@ sudo systemctl enable --now nomic-embed-scale.service
 sudo systemctl restart rag-admin.service   # picks up INGEST_EMBED_URLS from pool env
 ```
 
-Query RAG uses `:8089` (`nomic-embed.service`). Bulk ingest uses the pool on `18089+` (`nomic-embed@PORT`). Raise `NOMIC_POOL_VRAM_RESERVE_MIB` if chat models need more headroom on the same GPU.
+Query RAG uses `:8089` (`nomic-embed.service`). Bulk ingest uses the pool on `18089+` (`nomic-embed@PORT`). With `EMBED_ON_DEMAND=true` (default on Linux), both stop and disable when idle; ingest or a RAG query starts them again automatically.
 
 On `/opt/ai` hosts, `scripts/update-buster-embed-gpu.sh` pulls the repo, installs nomic-embed units and scale env, starts the GPU pool, and smoke-checks `:8089` (override `REPO_ROOT` / `CONFIG_DIR` as needed).
 
 ## Optional admin / ingest
 
-`rag_admin` and the ingest worker are separate from the proxy — same machine or another host. See [Ingest and admin](ingest-and-admin.md). This repository does not ship a `rag-admin.service` unit.
+`rag_admin` and the ingest worker are separate from the proxy — same machine or another host. See [Ingest and admin](ingest-and-admin.md). Example unit: `rag-admin.service` in the repo root.
 
 ## Dev / host-specific scripts
 

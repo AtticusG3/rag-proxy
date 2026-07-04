@@ -53,6 +53,7 @@ def _admin_settings(**overrides: object) -> AdminSettings:
         "job_log_dir": "/tmp/admin_jobs",
         "proxy_restart_cmd": "systemctl restart rag-proxy",
         "admin_restart_cmd": "systemctl restart rag-admin",
+        "embed_pool_restart_cmd": "systemctl restart nomic-embed-scale",
         "pool_scale_env_path": "/tmp/nomic-embed-scale.env",
         "pool_env_path": "/tmp/nomic-embed-pool.env",
         "env_example_path": "",

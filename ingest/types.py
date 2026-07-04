@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+
+class IngestAborted(Exception):
+    """Ingest stopped cooperatively (pause or shutdown)."""
+
+
 EMBEDDABLE_SUFFIXES = {
     ".zim": "zim",
     ".txt": "text",

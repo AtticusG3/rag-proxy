@@ -219,6 +219,15 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `RAG_ADMIN_JOB_LOG_DIR` | `/var/lib/rag_proxy/admin_jobs` | MemGraph build job logs |
 | `RAG_PROXY_RESTART_CMD` | `systemctl restart rag-proxy` | Optional restart hook from Settings |
 | `RAG_ADMIN_RESTART_CMD` | `systemctl restart rag-admin` | Optional restart hook from Settings |
+| `RAG_EMBED_POOL_RESTART_CMD` | `systemctl restart nomic-embed-scale` | Re-apply pool env (`nomic-embed@*` units) from Settings ingest tab |
+| `PROXY_GRACEFUL_SHUTDOWN_SEC` | `15` | Max seconds uvicorn waits for open connections on proxy stop |
+| `EMBED_IDLE_POLL_SEC` | `15` | Admin idle-guard poll interval |
+| `EMBED_STARTUP_TIMEOUT_SEC` | `120` | Max wait for embed health after on-demand start |
+| `EMBED_ACTIVITY_STAMP_PATH` | `/var/lib/rag_proxy/embed_last_activity` | Shared last-embed timestamp (ingest + proxy) |
+| `EMBED_ON_DEMAND` | `true` | Start/stop nomic systemd units around embed work (Linux + systemctl) |
+| `EMBED_IDLE_STOP_SEC` | `180` | Unload all nomic units after this many idle seconds (queue empty) |
+| `EMBED_IDLE_PAUSED_SEC` | `30` | Unload after pause when no embed activity |
+| `ADMIN_GRACEFUL_SHUTDOWN_SEC` | `15` | Max seconds uvicorn waits for open connections on admin stop |
 | `NOMIC_EMBED_SCALE_ENV_FILE` | `/opt/ai/config/nomic-embed-scale.env` | Planner tuning caps (`NOMIC_POOL_*`, `INGEST_CAPACITY_*`) |
 | `NOMIC_EMBED_POOL_ENV_FILE` | `/opt/ai/config/nomic-embed-pool.env` | Written plan (`INGEST_EMBED_URLS`, `INGEST_*`, `NOMIC_POOL_PARALLEL`) |
 | `ARXIV_USER_AGENT` | *(built-in default)* | User-Agent for arXiv catalog API |

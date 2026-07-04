@@ -25,6 +25,7 @@ from rag_admin.config import settings, validate_settings
 from rag_admin.db import AdminDatabase
 from rag_admin.rate_limit import LoginRateLimiter
 from rag_admin.catalog import CatalogDownloadManager
+from rag_admin.embed_idle_guard import EmbedIdleGuard
 from rag_admin.job_runner import BackgroundJobRunner
 from rag_admin.routes import dashboard, explorer, ingest, settings as settings_routes, zim
 from rag_admin.settings_store import SettingsStore
@@ -72,20 +73,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db, settings.zim_dir, settings.upload_dir, worker
     )
     catalog_manager.start()
+    embed_idle_guard = EmbedIdleGuard(
+        worker,
+        job_runner,
+        pool_env_path=settings.pool_env_path,
+    )
+    embed_idle_guard.start()
 
     app.state.db = db
     app.state.worker = worker
     app.state.settings_store = settings_store
     app.state.job_runner = job_runner
     app.state.catalog_manager = catalog_manager
+    app.state.embed_idle_guard = embed_idle_guard
     app.state.login_rate_limiter = LoginRateLimiter(
         max_attempts=settings.login_max_attempts,
         lockout_minutes=settings.login_lockout_minutes,
     )
     log.info("rag-admin started zim_dir=%s port=%s", settings.zim_dir, settings.port)
     yield
+    embed_idle_guard.stop()
     catalog_manager.stop()
-    worker.stop()
+    worker.stop(flush_sparse=False)
 
 
 def create_app() -> FastAPI:
@@ -166,6 +175,7 @@ def main() -> None:
         host=settings.host,
         port=settings.port,
         log_level="info",
+        timeout_graceful_shutdown=int(os.getenv("ADMIN_GRACEFUL_SHUTDOWN_SEC", "15")),
     )
 
 
