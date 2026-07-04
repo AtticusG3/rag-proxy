@@ -87,10 +87,19 @@ def compute_instance_count(
     return max(config.min_instances, min(config.max_instances, count))
 
 
-def plan_embed_pool(config: EmbedPoolConfig | None = None) -> EmbedPoolPlan:
-    """Build an embed pool plan from config and current GPU memory."""
+def plan_embed_pool(
+    config: EmbedPoolConfig | None = None,
+    *,
+    memory: tuple[int, int, int] | None | str = "probe",
+) -> EmbedPoolPlan:
+    """Build an embed pool plan from config and current GPU memory.
+
+    Pass memory=(total, used, free) to reuse an existing probe, or None to force
+    the no-GPU fallback.
+    """
     cfg = config or load_embed_pool_config()
-    memory = query_gpu_memory_mib(cfg.gpu_index)
+    if memory == "probe":
+        memory = query_gpu_memory_mib(cfg.gpu_index)
 
     if memory is None:
         ports = tuple(range(cfg.port_base, cfg.port_base + cfg.min_instances))
