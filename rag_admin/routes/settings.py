@@ -160,7 +160,7 @@ async def ingest_resume(request: Request):
             upload_dir=settings.upload_dir,
         )
         urls = config.embed_urls or parse_ingest_embed_urls(embed_url=config.embed_url)
-        ensure_embed_urls(urls, query_url=config.embed_url)
+        ensure_embed_urls(urls)
     store.set_ingest_paused(False)
     worker.set_paused(False)
     return flash_redirect("/settings?tab=ingest", "Dense ingest resumed.")

@@ -466,7 +466,7 @@ class IngestWorker:
         urls = self.config.embed_urls or parse_ingest_embed_urls(
             embed_url=self.config.embed_url
         )
-        ensure_embed_urls(urls, query_url=self.config.embed_url)
+        ensure_embed_urls(urls)
 
         def on_progress(**kwargs: object) -> None:
             chunks = kwargs.get("chunks_embedded")

@@ -87,6 +87,16 @@ def wait_gpu_clear(*, timeout_s: float = 90.0) -> None:
 
 def restart_query_embed() -> None:
     scale = _load_module("scale_ingest_capacity", REPO_ROOT / "scripts" / "scale_ingest_capacity.py")
+    try:
+        from ingest.embed_lifecycle import uses_dedicated_query_embed_unit
+    except ImportError:
+        uses_dedicated_query_embed_unit = lambda: True  # type: ignore[assignment,misc]
+    if not uses_dedicated_query_embed_unit():
+        print(
+            "[skip] nomic-embed.service (:8089) not started; EMBED_URL uses pool port",
+            flush=True,
+        )
+        return
     print("[restart] query embed (:8089)", flush=True)
     scale._systemctl("enable", QUERY_EMBED_UNIT, check=False)
     scale._systemctl("restart", QUERY_EMBED_UNIT, check=False)

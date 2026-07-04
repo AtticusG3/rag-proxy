@@ -20,6 +20,14 @@ def test_unit_for_embed_url_maps_query_and_pool() -> None:
     assert unit_for_embed_url("http://127.0.0.1:18089") == "nomic-embed@18089.service"
 
 
+def test_embed_url_on_pool_port_uses_pool_unit_not_legacy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """EMBED_URL on 18091 must start nomic-embed@18091, not nomic-embed.service (:8089)."""
+    monkeypatch.setenv("EMBED_URL", "http://127.0.0.1:18091")
+    assert unit_for_embed_url("http://127.0.0.1:18091") == "nomic-embed@18091.service"
+
+
 def test_units_for_embed_urls_deduplicates() -> None:
     units = units_for_embed_urls(
         [

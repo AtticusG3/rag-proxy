@@ -109,7 +109,7 @@ def embed_texts(
                 candidates.append(normalized)
 
     last_err: Exception | None = None
-    ensure_embed_urls(candidates, query_url=embed_url)
+    ensure_embed_urls(candidates)
 
     for attempt in range(retries + 1):
         if attempt:

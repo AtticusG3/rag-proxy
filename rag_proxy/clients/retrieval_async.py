@@ -44,7 +44,7 @@ def _cache_key(text: str) -> str:
 
 async def get_embedding(text: str) -> list[float] | None:
     """Embed text via the standalone nomic-embed server."""
-    ensure_embed_urls([settings.embed_url.rstrip("/")], query_url=settings.embed_url)
+    ensure_embed_urls([settings.embed_url.rstrip("/")])
     char_limits = [settings.embed_max_chars]
     if settings.embed_max_chars > 1200:
         char_limits.append(1200)

@@ -21,6 +21,7 @@ log = logging.getLogger("ingest.embed_lifecycle")
 
 QUERY_EMBED_UNIT = "nomic-embed.service"
 POOL_UNIT_PREFIX = "nomic-embed@"
+DEFAULT_QUERY_EMBED_PORT = 8089
 DEFAULT_QUERY_EMBED_URL = "http://127.0.0.1:8089"
 DEFAULT_ACTIVITY_PATH = "/var/lib/rag_proxy/embed_last_activity"
 DEFAULT_POOL_ENV = "/opt/ai/config/nomic-embed-pool.env"
@@ -94,25 +95,35 @@ def embed_port(url: str) -> int | None:
     return None
 
 
+def dedicated_query_embed_port() -> int:
+    """Port bound by nomic-embed.service (fixed in unit file, not EMBED_URL)."""
+    return _env_int("NOMIC_QUERY_EMBED_PORT", DEFAULT_QUERY_EMBED_PORT)
+
+
 def query_embed_url() -> str:
     return os.getenv("EMBED_URL", DEFAULT_QUERY_EMBED_URL).rstrip("/")
 
 
-def unit_for_embed_url(url: str, *, query_url: str | None = None) -> str | None:
+def uses_dedicated_query_embed_unit() -> bool:
+    """True when EMBED_URL targets nomic-embed.service (:8089), not a pool port."""
+    port = embed_port(query_embed_url())
+    return port == dedicated_query_embed_port()
+
+
+def unit_for_embed_url(url: str) -> str | None:
     port = embed_port(url)
     if port is None:
         return None
-    query_port = embed_port((query_url or query_embed_url()).rstrip("/"))
-    if query_port is not None and port == query_port:
+    if port == dedicated_query_embed_port():
         return QUERY_EMBED_UNIT
     return f"{POOL_UNIT_PREFIX}{port}.service"
 
 
-def units_for_embed_urls(urls: list[str], *, query_url: str | None = None) -> list[str]:
+def units_for_embed_urls(urls: list[str]) -> list[str]:
     seen: set[str] = set()
     ordered: list[str] = []
     for url in urls:
-        unit = unit_for_embed_url(url, query_url=query_url)
+        unit = unit_for_embed_url(url)
         if unit is None or unit in seen:
             continue
         seen.add(unit)
@@ -241,7 +252,9 @@ def collect_embed_stop_units(*, pool_env_path: str | None = None) -> list[str]:
         "NOMIC_EMBED_POOL_ENV_FILE", DEFAULT_POOL_ENV
     )
     config = load_embed_pool_config()
-    units: set[str] = {QUERY_EMBED_UNIT}
+    units: set[str] = set()
+    if uses_dedicated_query_embed_unit():
+        units.add(QUERY_EMBED_UNIT)
     for url in _read_env_urls(pool_env_path):
         unit = unit_for_embed_url(url)
         if unit:
@@ -254,14 +267,13 @@ def collect_embed_stop_units(*, pool_env_path: str | None = None) -> list[str]:
 def ensure_embed_urls(
     urls: list[str],
     *,
-    query_url: str | None = None,
     wait_health: bool = True,
 ) -> list[str]:
     """Enable/start embed units for URLs and optionally wait until healthy."""
     if not on_demand_enabled() or not urls:
         return urls
     normalized = [url.rstrip("/") for url in urls if url.strip()]
-    for unit in units_for_embed_urls(normalized, query_url=query_url):
+    for unit in units_for_embed_urls(normalized):
         log.info("embed on-demand: starting %s", unit)
         _enable_start_unit(unit)
     if not wait_health:
