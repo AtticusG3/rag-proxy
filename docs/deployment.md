@@ -62,7 +62,7 @@ Repository ships example units:
 - `rag-proxy.service` — FastAPI proxy
 - `nomic-embed.service` — llama-server with nomic-embed on GPU (`-ngl 99`, ~1 GiB VRAM)
 - `nomic-embed@.service` — template for bulk-ingest pool (`nomic-embed@18089.service`, …)
-- `nomic-embed-scale.service` — oneshot pool sizing via `scripts/scale_nomic_embed_pool.py`
+- `nomic-embed-scale.service` — oneshot capacity plan via `scripts/scale_ingest_capacity.py --apply` (legacy wrapper `scale_nomic_embed_pool.py`)
 - `nomic-embed.env.example` / `nomic-embed-scale.env.example` — copy to `/opt/ai/config/`
 
 **Edit paths before install** — `User`, `WorkingDirectory`, `LLAMA_SERVER_BIN`, model path, and `ExecStart` are placeholders.

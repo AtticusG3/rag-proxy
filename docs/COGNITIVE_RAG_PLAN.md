@@ -56,7 +56,7 @@ Enable individually; re-run the same test query after each change:
 | 2 | `ENABLE_QUERY_REWRITE=true` | — | `rewrite` in `stage_trace` |
 | 3 | `ENABLE_HYBRID_RETRIEVAL=true` | `SPARSE_INDEX_URL` sidecar | hybrid hits in trace |
 | 4 | `ENABLE_RERANKER=true` | `RERANKER_URL` sidecar | rerank stage, reordered scores |
-| 5 | Tier 3 flags | graph/tools/memory DB paths | see External services |
+| 5 | Tier 3 flags (`ENABLE_GRAPH_LOOKUP`, `ENABLE_MEMGRAPHRAG`, `ENABLE_TOOLS`, `ENABLE_ROLLING_MEMORY`) | graph/tools/memory DB paths; MemGraphRAG index — [memgraphrag.md](memgraphrag.md) | see External services |
 
 After each flag: `sudo systemctl restart rag-proxy` (systemd) or restart `python rag_proxy.py`.
 

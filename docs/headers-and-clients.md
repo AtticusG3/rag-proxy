@@ -89,8 +89,9 @@ Send on chat `POST` requests only. Header names are case-insensitive.
 | `X-RAG-Mode` | `auto` | Default pipeline behavior (omit header = auto) |
 | `X-No-Cache` | `true` | Bypass embed cache when `ENABLE_EMBED_CACHE=true` |
 | `X-Conversation-Id` | string | Session key for rolling memory when `ENABLE_ROLLING_MEMORY=true` |
+| `X-Capture-Log` | `true` | Opt in to transcript capture when `ENABLE_TRANSCRIPT_CAPTURE=true` and `TRANSCRIPT_HEADER_OPT_IN=true` |
 
-Parsed in `orchestrator.py` from incoming request headers and forwarded upstream as-is (except host/connection stripping).
+Parsed in `orchestrator.py` from incoming request headers and forwarded upstream as-is (except host/connection stripping). Transcript capture is evaluated in `app.py` from the same headers (`capture_enabled` in `capture.py`).
 
 ### Force retrieval (one shot)
 
@@ -122,6 +123,16 @@ When `ENABLE_ROLLING_MEMORY=true`, send a stable id per conversation:
 ```bash
 -H "X-Conversation-Id: session-abc-123"
 ```
+
+### Transcript capture opt-in
+
+When `ENABLE_TRANSCRIPT_CAPTURE=true` and `TRANSCRIPT_HEADER_OPT_IN=true`, only requests with the header are captured (subject to `TRANSCRIPT_SAMPLE_RATE`):
+
+```bash
+-H "X-Capture-Log: true"
+```
+
+When `TRANSCRIPT_HEADER_OPT_IN=false` (default), capture does not require this header. See [Configuration — Transcript capture](configuration.md#transcript-capture).
 
 ## Legacy mode headers
 

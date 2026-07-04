@@ -46,10 +46,9 @@ Two tiers, both worker-global:
 
 | Ceiling | Location | Effect |
 | --- | --- | --- |
-| Global chunk runner lock | `_chunk_runner_lock` in `ingest/chunking.py` | Only one file chunks at a time, regardless of file concurrency |
-| Fixed worker thread count | `IngestWorker.start()` | `INGEST_FILE_CONCURRENCY` hot-reloads config but not running thread count |
-| Duplicate parallel knobs | `NOMIC_POOL_PARALLEL` (systemd) vs `NOMIC_POOL_PARALLEL_PER_INSTANCE` (planner) | Values can drift; concurrency math assumes they match |
+| Chunk concurrency cap | `INGEST_CHUNK_CONCURRENCY` semaphore in `ingest/chunking.py` | Caps parallel Chonkie executions across files (per-thread runners) |
 | Chunk profile changes need requeue | `scripts/requeue_all_ingest.py` | Changing `INGEST_CHUNK_*` has no effect on already-indexed files without a requeue |
+| Manual pool env drift | `NOMIC_POOL_PARALLEL_PER_INSTANCE` in scale env vs written `NOMIC_POOL_PARALLEL` | Re-run the scale job after editing scale env; planner writes aligned values to the pool env |
 
 ## Knob inventory
 
@@ -59,7 +58,7 @@ Two tiers, both worker-global:
 | --- | --- | --- |
 | `INGEST_BATCH_SIZE` | `64` | Texts per embed HTTP request / Qdrant upsert batch |
 | `INGEST_EMBED_CONCURRENCY` | `4` | Global cap on concurrent embed batches |
-| `INGEST_FILE_CONCURRENCY` | auto | Worker thread count (thread count itself needs restart today) |
+| `INGEST_FILE_CONCURRENCY` | auto | Worker thread count; hot-reloads via `IngestWorker.resize_file_workers()` when the worker is running |
 | `INGEST_EMBED_URLS` | empty | Embed pool endpoints, round-robin |
 | `INGEST_SPARSE_REINDEX` | `idle` | BM25 rebuild trigger (`off` / `each` / `idle`) |
 | `INGEST_STALL_MINUTES` | `15` | Stall detection window |
@@ -90,26 +89,18 @@ Two tiers, both worker-global:
 | `NOMIC_POOL_PORT_BASE` | `18089` | First pool port |
 | `NOMIC_POOL_GPU_INDEX` | `0` | `nvidia-smi` target |
 
-## Current planner input/output
+## Capacity planner (current)
 
-The VRAM planner (`ingest/embed_pool.py` + `scripts/scale_nomic_embed_pool.py`):
+Entry point: `scripts/scale_ingest_capacity.py` (legacy wrapper `scripts/scale_nomic_embed_pool.py`; `nomic-embed-scale.service` runs it with `--apply`).
 
-- **Inputs:** `NOMIC_POOL_*` env plus live `nvidia-smi` free memory.
-- **Formula:** `instances = clamp((free - reserve) / per_instance, min, max)`.
-- **Outputs:** `INGEST_EMBED_URLS`, `INGEST_EMBED_CONCURRENCY`, `NOMIC_POOL_INSTANCE_COUNT`,
-  `NOMIC_POOL_PORTS`, `NOMIC_POOL_GPU_FREE_MIB` written to the pool env file, then synced
-  into the admin env and hot-reloaded into the worker.
+Modules:
 
-### Gaps addressed by the capacity planner
+- `ingest/host_profile.py` — CPU, RAM, disk, and GPU probes
+- `ingest/embed_pool.py` — VRAM pool sizing (`instances = clamp((free - reserve) / per_instance, min, max)`)
+- `ingest/capacity_planner.py` — merges pool plan with CPU/RAM/disk caps and GPU bandwidth tiering
+- `ingest/bench_fit.py` — optional bench JSON overrides for chunk/embed concurrency and batch size
 
-1. Single dimension: only free VRAM. CPU cores, RAM headroom, and disk throughput are
-   never consulted, so `INGEST_FILE_CONCURRENCY`, `INGEST_BATCH_SIZE`, and chunking
-   settings are left to the operator.
-2. GPU identity is ignored: a low-bandwidth GPU gets the same `--parallel` as a
-   high-bandwidth one.
-3. No rationale: the plan is applied without explaining which resource limited it.
-4. Semantic chunking can silently exhaust RAM on small hosts.
-5. Sparse reindex during bulk ingest competes for CPU and disk.
+The VRAM-only embed pool planner still lives inside `embed_pool.py`; `scale_ingest_capacity.py` wraps it with multi-resource caps, rationale comments in the pool env file, and optional benchmark fit from the admin **Scale ingest capacity** job.
 
 ## Host signals used by the capacity planner
 

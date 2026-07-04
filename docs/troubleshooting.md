@@ -83,7 +83,7 @@ Set `ENABLE_METRICS=true`. Hit `http://<proxy_host>:<PROXY_PORT>/metrics` — no
 
 ## No trace logs
 
-`ENABLE_REQUEST_TRACE=true` and `LOG_LEVEL=INFO`. Cognitive mode required for `trace=` lines; legacy uses `RAG: injected ...` only.
+`ENABLE_REQUEST_TRACE=true` and `LOG_LEVEL=INFO`. Pipeline summaries use `trace=` in both legacy and cognitive modes; injected chunks also log `RAG: injected ...` at INFO.
 
 ## Docker / sidecars
 

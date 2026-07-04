@@ -189,6 +189,10 @@ services:
       - qdrant_data:/qdrant/storage
     networks:
       - rag_stack
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
 
 networks:
   rag_stack:

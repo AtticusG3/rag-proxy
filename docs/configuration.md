@@ -210,7 +210,7 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `INGEST_CHUNK_SEMANTIC` | `true` | Use semantic chunking when deps installed |
 | `INGEST_CHUNK_SEMANTIC_MODEL` | `minishlab/potion-base-32M` | Embedding model for semantic boundaries |
 | `INGEST_CHUNK_MIN_TOKENS` | `100` | Merge adjacent chunks below this token count before embed |
-| `INGEST_FILE_CONCURRENCY` | auto | Parallel file worker threads (planner-set; resizes live) |
+| `INGEST_FILE_CONCURRENCY` | auto | Parallel file worker threads (planner-set; hot-reloads via `resize_file_workers`) |
 | `INGEST_CHUNK_CONCURRENCY` | `min(4, cores/2)` | Concurrent chunk executions across file workers |
 | `RAG_PROXY_URL` | `http://127.0.0.1:8081` | Proxy URL for admin smoke hooks |
 | `RAG_ADMIN_ENV_FILE` | `/opt/ai/config/rag-admin.env` | Admin/ingest env file (Settings UI writes here) |
@@ -219,6 +219,8 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `RAG_ADMIN_JOB_LOG_DIR` | `/var/lib/rag_proxy/admin_jobs` | MemGraph build job logs |
 | `RAG_PROXY_RESTART_CMD` | `systemctl restart rag-proxy` | Optional restart hook from Settings |
 | `RAG_ADMIN_RESTART_CMD` | `systemctl restart rag-admin` | Optional restart hook from Settings |
+| `NOMIC_EMBED_SCALE_ENV_FILE` | `/opt/ai/config/nomic-embed-scale.env` | Planner tuning caps (`NOMIC_POOL_*`, `INGEST_CAPACITY_*`) |
+| `NOMIC_EMBED_POOL_ENV_FILE` | `/opt/ai/config/nomic-embed-pool.env` | Written plan (`INGEST_EMBED_URLS`, `INGEST_*`, `NOMIC_POOL_PARALLEL`) |
 | `ARXIV_USER_AGENT` | *(built-in default)* | User-Agent for arXiv catalog API |
 
 ### Ingest capacity planner (bulk ingest)
@@ -256,7 +258,7 @@ Not loaded by `rag_proxy/config.py`. Set in Docker compose or sidecar unit env.
 | --- | --- | --- |
 | Rerank (`sidecars/rerank/`) | `RERANK_MODEL`, `RERANK_HOST`, `RERANK_PORT` | `8095` |
 | Sparse BM25 (`sidecars/sparse/`) | `SPARSE_HOST`, `SPARSE_PORT`, `SPARSE_REFRESH_SEC`, `SPARSE_SCROLL_BATCH`, `SPARSE_MAX_POINTS` | `8096` |
-| MCP RAG (`sidecars/mcp_rag/`) | `MCP_HOST`, `MCP_PORT`, `MCP_TRANSPORT`, `MCP_RAG_USER_AGENT` | `8097` |
+| MCP RAG (`sidecars/mcp_rag/`) | `MCP_HOST`, `MCP_PORT`, `MCP_TRANSPORT`, `MCP_RAG_USER_AGENT` | `9001` |
 
 Proxy references rerank/sparse via `RERANKER_URL` and `SPARSE_INDEX_URL` only.
 

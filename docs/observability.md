@@ -2,9 +2,9 @@
 
 Logs, request traces, and optional Prometheus-style counters on the main proxy port.
 
-## Request traces (cognitive mode)
+## Request traces
 
-`ENABLE_REQUEST_TRACE=true` (default) emits one summary line per cognitive request at INFO.
+`ENABLE_REQUEST_TRACE=true` (default) emits one summary line per augmented chat request at INFO (legacy and cognitive).
 
 Text format example:
 
@@ -22,6 +22,8 @@ trace=a1b2c3d4e5f6 tier=tier2_retrieval intent=infra retrieval=full chunks=3 lat
 | `stages` | Stages that actually ran (disabled/budget-skipped omitted) |
 | `latency_ms` | Per-stage milliseconds |
 
+Legacy mode (`ENABLE_COGNITIVE_PIPELINE=false`) uses the same `trace=` summary format; `stages` is typically `retrieve,context` and `intent` stays `unknown`.
+
 ### JSON logs
 
 Set `ENABLE_JSON_LOGS=true` for machine-readable JSON including `gating_would_skip`, `scores`, `errors`, `stage_trace`, and `cache_hits`.
@@ -33,7 +35,7 @@ Useful during gating bake-in (`GATING_LOG_ONLY=true`).
 With `ENABLE_COGNITIVE_PIPELINE=false`:
 
 ```text
-RAG: injected 3 chunk(s) (scores: [0.82, 0.71, 0.68]) | query: 'how do I restart rag-proxy'
+RAG: injected 3 chunk(s) (scores: [0.82, 0.71, 0.68]) | trace=a1b2c3d4e5f6 | query: 'how do I restart rag-proxy'
 ```
 
 Other legacy lines:

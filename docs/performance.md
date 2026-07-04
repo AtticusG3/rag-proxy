@@ -93,7 +93,7 @@ python -m cProfile -o proxy.prof rag_proxy.py
 
 ## Benchmark regression checks
 
-Phase 3 adds optional micro-benchmarks in `tests/test_benchmarks.py` using `pytest-benchmark`.
+Optional micro-benchmarks live in `tests/test_benchmarks.py` (requires `pytest-benchmark`).
 
 Install dev dependencies, then run only benchmark tests:
 

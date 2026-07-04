@@ -87,7 +87,7 @@ Paths default to `/opt/ai/config/rag-admin.env` and `/opt/ai/config/rag-proxy.en
 
 **Env-only (not in Settings UI):** `UPSTREAM_*`, model registry JSON, transcript capture (except `ENABLE_TRANSCRIPT_CAPTURE`), and most latency-budget knobs — set in env and restart. Chunk size changes require `python scripts/requeue_all_ingest.py` for existing files.
 
-**Port topology:** Settings defaults **Primary embed URL** to `http://127.0.0.1:8089` (query RAG; mirrored to `rag-proxy.env`). Bulk GPU ingest uses **Ingest embed pool URLs** on ports `18089+` (`INGEST_EMBED_URLS`); the pool planner writes those via `scripts/scale_nomic_embed_pool.py`.
+**Port topology:** Settings defaults **Primary embed URL** to `http://127.0.0.1:8089` (query RAG; mirrored to `rag-proxy.env`). Bulk GPU ingest uses **Ingest embed pool URLs** on ports `18089+` (`INGEST_EMBED_URLS`); the capacity planner writes those via `scripts/scale_ingest_capacity.py` (legacy wrapper `scale_nomic_embed_pool.py`).
 
 Status API: `GET /api/settings/status` (service reachability for the Settings page).
 
@@ -99,7 +99,9 @@ Default bind: `127.0.0.1:8087`. Primary embed defaults to `:8089`; set **Ingest 
 
 ## Environment variables
 
-Proxy and admin share many vars (`EMBED_URL`, `QDRANT_URL`, `QDRANT_COLLECTION`). Admin-specific (from `.env.example` comments and `rag_admin/config.py`):
+Proxy and admin share many vars (`EMBED_URL`, `QDRANT_URL`, `QDRANT_COLLECTION`). When unset, defaults differ: `rag_proxy/config.py` uses `QDRANT_URL=http://192.168.1.36:6333`; `rag_admin/config.py` uses `http://127.0.0.1:6333`. Set explicitly in `.env` for both services.
+
+Admin-specific (from `.env.example` comments and `rag_admin/config.py`):
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -220,7 +222,7 @@ Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `documen
 
 | Lever | Variable | Notes |
 | --- | --- | --- |
-| Parallel files | `INGEST_FILE_CONCURRENCY` | Default `max(1, min(4, embed pool size))`; one thread per file; resizes live |
+| Parallel files | `INGEST_FILE_CONCURRENCY` | Default `max(1, min(4, embed pool size))`; hot-reloads when the worker is running |
 | Parallel chunking | `INGEST_CHUNK_CONCURRENCY` | Default `min(4, cores / 2)`; concurrent chunk executions |
 | Batch size | `INGEST_BATCH_SIZE` | Raise (e.g. `256`) when embed server supports large batches |
 | Parallel embeds | `INGEST_EMBED_CONCURRENCY` | Default `4`; raise if embed server keeps up |
