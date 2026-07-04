@@ -68,13 +68,17 @@ def test_sync_pool_ingest_syncs_capacity_plan_keys(tmp_path: Path) -> None:
     assert config.sparse_reindex_mode == "off"
 
 
+@patch("rag_admin.job_runner.threading.Thread")
 @patch("rag_admin.job_runner.subprocess.Popen")
-def test_start_embed_pool_scale_registers_job(mock_popen: MagicMock, tmp_path: Path) -> None:
+def test_start_embed_pool_scale_registers_job(
+    mock_popen: MagicMock, mock_thread: MagicMock, tmp_path: Path
+) -> None:
     mock_proc = MagicMock()
     mock_proc.pid = 4242
     mock_proc.poll.return_value = None
     mock_proc.wait.return_value = 0
     mock_popen.return_value = mock_proc
+    mock_thread.return_value.start = MagicMock()
 
     db = AdminDatabase(str(tmp_path / "admin.sqlite"))
     runner = BackgroundJobRunner(
@@ -94,6 +98,5 @@ def test_start_embed_pool_scale_registers_job(mock_popen: MagicMock, tmp_path: P
     assert active is not None
     assert active["job_type"] == JOB_EMBED_POOL_SCALE
     cmd = mock_popen.call_args[0][0]
-    assert any("scale_ingest_capacity.py" in part for part in cmd)
-    assert "--apply" in cmd
+    assert any("run_ingest_capacity_scale.py" in part for part in cmd)
     assert "--semantic-requested" in cmd

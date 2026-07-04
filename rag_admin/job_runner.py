@@ -51,6 +51,7 @@ class BackgroundJobRunner:
         log_handle,
         *,
         on_success: Callable[[], None] | None = None,
+        on_failure: Callable[[], None] | None = None,
     ) -> None:
         exit_code = 1
         try:
@@ -69,6 +70,11 @@ class BackgroundJobRunner:
                 on_success()
             except Exception:
                 log.exception("background job %s on_success failed", job_id)
+        elif on_failure is not None and exit_code != 0:
+            try:
+                on_failure()
+            except Exception:
+                log.exception("background job %s on_failure failed", job_id)
         log.info("background job %s (%s) finished: %s", job_id, job_type, message)
 
     def _start_job(
@@ -79,6 +85,7 @@ class BackgroundJobRunner:
         params: dict[str, Any],
         message: str,
         on_success: Callable[[], None] | None = None,
+        on_failure: Callable[[], None] | None = None,
     ) -> str:
         with self._lock:
             active = self.db.get_active_background_job(job_type)
@@ -110,7 +117,7 @@ class BackgroundJobRunner:
             thread = threading.Thread(
                 target=self._monitor,
                 args=(job_type, job_id, proc, log_handle),
-                kwargs={"on_success": on_success},
+                kwargs={"on_success": on_success, "on_failure": on_failure},
                 daemon=True,
                 name=f"{job_type}-{job_id[:8]}",
             )
@@ -156,26 +163,32 @@ class BackgroundJobRunner:
         params: dict[str, Any],
         *,
         on_success: Callable[[], None] | None = None,
+        on_failure: Callable[[], None] | None = None,
     ) -> str:
         python = sys.executable
-        script = os.path.join(self.repo_root, "scripts", "scale_ingest_capacity.py")
+        script = os.path.join(self.repo_root, "scripts", "run_ingest_capacity_scale.py")
+        out_dir = str(Path(self.log_dir) / f"capacity_scale_{uuid.uuid4().hex[:8]}")
         cmd = [
             python,
             script,
-            "--apply",
             "--pool-env",
             str(params["pool_env_path"]),
             "--scale-env",
             str(params["scale_env_path"]),
+            "--out-dir",
+            out_dir,
         ]
         if params.get("semantic_requested") is not None:
             cmd += ["--semantic-requested", str(params["semantic_requested"]).lower()]
+        if params.get("skip_bench"):
+            cmd.append("--skip-bench")
         return self._start_job(
             JOB_EMBED_POOL_SCALE,
             cmd,
-            params=params,
-            message="Ingest capacity scale started",
+            params={**params, "out_dir": out_dir},
+            message="Ingest capacity scale started (bench + apply)",
             on_success=on_success,
+            on_failure=on_failure,
         )
 
     def stop_active(self, job_type: str) -> bool:

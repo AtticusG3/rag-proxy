@@ -394,7 +394,18 @@ class IngestWorker:
         self.db.update_job(job_id, status="queued", message=message)
         return job_id
 
-    def enqueue_file(self, file_path: str) -> str:
+    def drain_active_files(self, *, timeout_s: float = 3600.0, poll_s: float = 2.0) -> bool:
+        """Wait until no files are mid-ingest (status=running)."""
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if not self.db.list_running_files():
+                return True
+            time.sleep(poll_s)
+        return False
+
+    def running_file_count(self) -> int:
+        return len(self.db.list_running_files())
+
         job_id = str(uuid.uuid4())
         self.db.create_job(job_id, job_type="file", message=file_path)
         self.db.upsert_file_state(file_path, status="pending")

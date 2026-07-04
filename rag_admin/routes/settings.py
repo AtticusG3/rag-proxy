@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -173,6 +174,25 @@ async def embed_pool_scale_start(request: Request):
     job_runner = request.app.state.job_runner
     worker = request.app.state.worker
     semantic_before = store.get_value("INGEST_CHUNK_SEMANTIC", "true").lower()
+    was_paused = store.ingest_paused() or worker.paused
+
+    drain_timeout_s = float(os.getenv("INGEST_SCALE_DRAIN_TIMEOUT_SEC", "3600"))
+    store.set_ingest_paused(True)
+    worker.set_paused(True)
+    if not worker.drain_active_files(timeout_s=drain_timeout_s):
+        running = worker.running_file_count()
+        store.set_ingest_paused(was_paused)
+        worker.set_paused(was_paused)
+        return flash_redirect(
+            "/settings?tab=ingest",
+            f"Cannot scale: {running} file(s) still ingesting after {int(drain_timeout_s)}s. "
+            "Wait for them to finish or pause ingest manually, then retry.",
+            level="error",
+        )
+
+    def restore_pause_state() -> None:
+        store.set_ingest_paused(was_paused)
+        worker.set_paused(was_paused)
 
     def on_success() -> None:
         synced = store.sync_pool_ingest_from_pool_env()
@@ -185,8 +205,6 @@ async def embed_pool_scale_start(request: Request):
             log.info("capacity scale synced ingest keys: %s", ", ".join(synced))
         semantic_after = store.get_value("INGEST_CHUNK_SEMANTIC", "true").lower()
         if semantic_after != semantic_before:
-            # Chunk boundaries change with the semantic setting; existing points
-            # must be rebuilt or retrieval mixes incompatible chunk profiles.
             job_id = worker.requeue_all_files()
             log.warning(
                 "capacity scale changed INGEST_CHUNK_SEMANTIC %s -> %s; "
@@ -195,18 +213,25 @@ async def embed_pool_scale_start(request: Request):
                 semantic_after,
                 job_id[:8],
             )
+        restore_pause_state()
+
+    def on_failure() -> None:
+        restore_pause_state()
 
     try:
         job_id = job_runner.start_embed_pool_scale(
             store.embed_pool_scale_params(),
             on_success=on_success,
+            on_failure=on_failure,
         )
     except RuntimeError as exc:
+        restore_pause_state()
         return flash_redirect("/settings?tab=ingest", str(exc), level="error")
     return flash_redirect(
         "/settings?tab=ingest",
         f"Ingest capacity scale started (job {job_id[:8]}). "
-        "This may restart nomic-embed units and update ingest settings.",
+        "Ingest is paused while benchmarks run and the embed pool is resized; "
+        "it resumes automatically when the job completes.",
     )
 
 

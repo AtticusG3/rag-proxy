@@ -24,7 +24,7 @@ GROUP_TUNING: dict[str, tuple[TuningSection, ...]] = {
     "ingest": (
         TuningSection(
             "GPU embed pool (planner inputs)",
-            "Edit max instances and VRAM below, save, then click Scale ingest capacity. The planner also probes CPU, RAM, and disk; outputs land in nomic-embed-pool.env and hot-reload into the ingest worker.",
+            "Edit max instances and VRAM below, save, then click Scale ingest capacity. That pauses ingest, runs chunk+embed benchmarks, applies the plan to the embed pool, and resumes ingest with updated settings.",
             (
                 TuningItem(
                     "NOMIC_POOL_MAX_INSTANCES",
