@@ -1,0 +1,10 @@
+# Passwordless sudo for ingest capacity scale (admin UI + scale_ingest_capacity.py).
+# Installed by scripts/update-buster-embed-gpu.sh as /etc/sudoers.d/rag-proxy-nomic-pool
+# Validate with: sudo visudo -cf /etc/sudoers.d/rag-proxy-nomic-pool
+#
+# Placeholders @DEPLOY_USER@, @BIN_DIR@, @CONFIG_DIR@, @CP_BIN@, @CHMOD_BIN@ are
+# substituted at install time.
+
+@DEPLOY_USER@ ALL=(root) NOPASSWD: @BIN_DIR@/nomic-pool-systemctl *
+@DEPLOY_USER@ ALL=(root) NOPASSWD: @CP_BIN@ /tmp/nomic-embed-pool*.env @CONFIG_DIR@/nomic-embed-pool.env
+@DEPLOY_USER@ ALL=(root) NOPASSWD: @CHMOD_BIN@ 644 @CONFIG_DIR@/nomic-embed-pool.env

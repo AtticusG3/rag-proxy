@@ -32,14 +32,46 @@ DEFAULT_SCALE_ENV = "/opt/ai/config/nomic-embed-scale.env"
 LEGACY_UNIT = "nomic-embed.service"
 TEMPLATE_UNIT = "nomic-embed@"
 EXTRA_PORT_BUFFER = 4
+POOL_SYSTEMCTL_WRAPPER = Path("/opt/ai/bin/nomic-pool-systemctl")
+_MUTATING_SYSTEMCTL = frozenset({"start", "stop", "restart", "enable", "disable"})
+
+
+def _running_as_root() -> bool:
+    geteuid = getattr(os, "geteuid", None)
+    if geteuid is None:
+        return False
+    return geteuid() == 0
 
 
 def _run(cmd: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, check=check, text=True, capture_output=True)
 
 
+def _pool_systemctl_wrapper_installed() -> bool:
+    return POOL_SYSTEMCTL_WRAPPER.is_file()
+
+
+def _systemctl_argv(*args: str) -> list[str]:
+    if not args:
+        return ["systemctl"]
+    privileged = args[0] in _MUTATING_SYSTEMCTL
+    if _running_as_root() or not privileged:
+        return ["systemctl", *args]
+    if _pool_systemctl_wrapper_installed():
+        return ["sudo", "-n", str(POOL_SYSTEMCTL_WRAPPER), *args]
+    return ["sudo", "-n", "systemctl", *args]
+
+
+def _systemctl_shell() -> str:
+    if _running_as_root():
+        return "systemctl"
+    if _pool_systemctl_wrapper_installed():
+        return f"sudo -n {POOL_SYSTEMCTL_WRAPPER}"
+    return "sudo -n systemctl"
+
+
 def _systemctl(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return _run(["systemctl", *args], check=check)
+    return _run(_systemctl_argv(*args), check=check)
 
 
 def _pool_unit(port: int) -> str:
@@ -289,9 +321,8 @@ def apply_plan(plan: IngestCapacityPlan, *, pool_env_path: str, wait_health: boo
     _kill_stray_gpu_embeds(set())
 
     target_urls = [f"http://127.0.0.1:{port}" for port in plan.embed_pool.ports]
-    restart_cmds = " ".join(
-        f"systemctl restart {_pool_unit(port)} &" for port in plan.embed_pool.ports
-    )
+    ctl = _systemctl_shell()
+    restart_cmds = " ".join(f"{ctl} restart {_pool_unit(port)} &" for port in plan.embed_pool.ports)
     for port in plan.embed_pool.ports:
         _systemctl("enable", _pool_unit(port), check=False)
     if restart_cmds:

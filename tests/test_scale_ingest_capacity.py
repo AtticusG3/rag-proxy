@@ -48,6 +48,27 @@ def test_retire_pool_units_disables_everything_outside_keep_set() -> None:
     assert disabled >= {18089, 18092, 18093, 18095}
 
 
+def test_systemctl_argv_uses_sudo_wrapper_for_mutating_commands() -> None:
+    scale = _load_scale_module()
+    with patch.object(scale, "_running_as_root", return_value=False):
+        with patch.object(scale, "_pool_systemctl_wrapper_installed", return_value=True):
+            argv = scale._systemctl_argv("disable", "nomic-embed@18095.service")
+    assert argv == [
+        "sudo",
+        "-n",
+        str(scale.POOL_SYSTEMCTL_WRAPPER),
+        "disable",
+        "nomic-embed@18095.service",
+    ]
+
+
+def test_systemctl_argv_skips_sudo_for_read_only_commands() -> None:
+    scale = _load_scale_module()
+    with patch.object(scale, "_running_as_root", return_value=False):
+        argv = scale._systemctl_argv("show", "nomic-embed@18089.service", "-p", "MainPID")
+    assert argv == ["systemctl", "show", "nomic-embed@18089.service", "-p", "MainPID"]
+
+
 def test_is_embed_llama_requires_embedding_flag() -> None:
     scale = _load_scale_module()
     with patch.object(
