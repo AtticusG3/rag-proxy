@@ -14,6 +14,7 @@ from ingest.embed_pool import EmbedPoolConfig, EmbedPoolPlan, load_embed_pool_co
 from ingest.gpu_catalog import lookup_gpu_tier
 from ingest.host_profile import HostProfile, probe_host
 from ingest.port_avoidance import describe_port_skips, loopback_reserved_ports
+from ingest.qdrant_profile import QdrantCollectionProfile, probe_qdrant_collection
 
 
 def _env_int(name: str, default: int) -> int:
@@ -41,6 +42,9 @@ class CapacityPlannerConfig:
     min_disk_seq_read_mbps: float = 100.0
     slow_disk_file_cap: int = 2
     sparse_reindex_during_bulk: str = "off"
+    qdrant_ram_budget_mib: int = 8192
+    qdrant_large_collection_points: int = 500_000
+    qdrant_huge_collection_points: int = 2_000_000
 
 
 def load_capacity_planner_config() -> CapacityPlannerConfig:
@@ -57,6 +61,13 @@ def load_capacity_planner_config() -> CapacityPlannerConfig:
             "INGEST_CAPACITY_SPARSE_REINDEX", "off"
         ).strip().lower()
         or "off",
+        qdrant_ram_budget_mib=_env_int("INGEST_CAPACITY_QDRANT_RAM_BUDGET_MIB", 8192),
+        qdrant_large_collection_points=_env_int(
+            "INGEST_CAPACITY_QDRANT_LARGE_COLLECTION_POINTS", 500_000
+        ),
+        qdrant_huge_collection_points=_env_int(
+            "INGEST_CAPACITY_QDRANT_HUGE_COLLECTION_POINTS", 2_000_000
+        ),
     )
 
 
@@ -72,6 +83,7 @@ class IngestCapacityPlan:
     nomic_pool_parallel: int
     host: HostProfile
     rationale: dict[str, str]
+    qdrant: QdrantCollectionProfile | None = None
 
 
 def _pick_batch_size(embed_concurrency: int) -> int:
@@ -128,6 +140,64 @@ def resolve_semantic_chunking(
     return _semantic_enabled(host, cfg, semantic_requested)
 
 
+@dataclass(frozen=True)
+class QdrantIngestLimits:
+    file_concurrency_cap: int | None
+    batch_size_cap: int | None
+    embed_concurrency_cap: int | None
+
+
+def qdrant_ingest_limits(
+    profile: QdrantCollectionProfile,
+    *,
+    host: HostProfile,
+    cfg: CapacityPlannerConfig,
+) -> tuple[dict[str, int], QdrantIngestLimits]:
+    """Derive ingest caps from Qdrant collection size and host CPU."""
+    caps: dict[str, int] = {}
+    points = profile.points_count
+    limits = QdrantIngestLimits(
+        file_concurrency_cap=None,
+        batch_size_cap=None,
+        embed_concurrency_cap=None,
+    )
+
+    if points >= cfg.qdrant_huge_collection_points:
+        caps[f"qdrant huge collection ({points:,} points)"] = 1
+        limits = QdrantIngestLimits(
+            file_concurrency_cap=1,
+            batch_size_cap=32,
+            embed_concurrency_cap=16,
+        )
+    elif points >= cfg.qdrant_large_collection_points:
+        caps[f"qdrant large collection ({points:,} points)"] = 2
+        limits = QdrantIngestLimits(
+            file_concurrency_cap=2,
+            batch_size_cap=64,
+            embed_concurrency_cap=24,
+        )
+
+    if host.cpu_logical_cores <= 6 and points >= cfg.qdrant_large_collection_points:
+        caps[
+            f"qdrant slow cpu ({host.cpu_logical_cores} cores) + {points:,} points"
+        ] = 1
+        limits = QdrantIngestLimits(
+            file_concurrency_cap=1,
+            batch_size_cap=min(limits.batch_size_cap or 32, 32),
+            embed_concurrency_cap=min(limits.embed_concurrency_cap or 16, 16),
+        )
+
+    if profile.optimizer_status and profile.optimizer_status.lower() not in ("ok", ""):
+        caps[f"qdrant optimizer {profile.optimizer_status}"] = 1
+        limits = QdrantIngestLimits(
+            file_concurrency_cap=1,
+            batch_size_cap=min(limits.batch_size_cap or 32, 32),
+            embed_concurrency_cap=min(limits.embed_concurrency_cap or 12, 12),
+        )
+
+    return caps, limits
+
+
 def plan_ingest_capacity(
     *,
     host: HostProfile | None = None,
@@ -136,6 +206,8 @@ def plan_ingest_capacity(
     semantic_requested: bool = True,
     data_paths: tuple[str, ...] = (),
     bench: BenchFit | None = None,
+    qdrant_url: str | None = None,
+    qdrant_collection: str | None = None,
 ) -> IngestCapacityPlan:
     """Compute the full ingest capacity plan from a host snapshot."""
     pool_cfg = pool_config or load_embed_pool_config()
@@ -144,6 +216,22 @@ def plan_ingest_capacity(
         host = probe_host(disk_paths=data_paths, gpu_index=pool_cfg.gpu_index)
 
     rationale: dict[str, str] = {}
+
+    qdrant_profile: QdrantCollectionProfile | None = None
+    qdrant_url = (qdrant_url or os.getenv("QDRANT_URL", "")).strip()
+    qdrant_collection = (
+        qdrant_collection or os.getenv("QDRANT_COLLECTION", "nomad_knowledge_base")
+    ).strip()
+    if qdrant_url and qdrant_collection:
+        qdrant_profile = probe_qdrant_collection(qdrant_url, qdrant_collection)
+        if qdrant_profile is None:
+            rationale["qdrant"] = "probe failed; skipping Qdrant ingest caps"
+        else:
+            rationale["qdrant"] = (
+                f"{qdrant_profile.points_count:,} points, "
+                f"{qdrant_profile.segment_count} segments, "
+                f"status={qdrant_profile.status or 'unknown'}"
+            )
 
     # GPU tier caps per-instance parallel on low-bandwidth cards.
     tier = lookup_gpu_tier(host.gpu.name if host.gpu else None)
@@ -207,6 +295,19 @@ def plan_ingest_capacity(
     limiting = min(caps, key=lambda key: caps[key])
     rationale["ingest_file_concurrency"] = f"{file_concurrency}, limited by {limiting}"
 
+    qdrant_limits = QdrantIngestLimits(None, None, None)
+    if qdrant_profile is not None:
+        qdrant_caps, qdrant_limits = qdrant_ingest_limits(
+            qdrant_profile, host=host, cfg=cfg
+        )
+        if qdrant_caps:
+            file_concurrency = max(1, min(file_concurrency, min(qdrant_caps.values())))
+            q_limit = min(qdrant_caps, key=lambda key: qdrant_caps[key])
+            rationale["ingest_file_concurrency"] = (
+                f"{file_concurrency}, limited by {q_limit} "
+                f"(was {limiting} before Qdrant caps)"
+            )
+
     if bench and bench.chunk_concurrency is not None:
         chunk_concurrency = max(1, min(bench.chunk_concurrency, file_concurrency))
         if bench.rationale.get("ingest_chunk_concurrency"):
@@ -252,6 +353,24 @@ def plan_ingest_capacity(
             f"{embed_concurrency} ({instances} instances x {parallel} parallel)"
         )
 
+    if qdrant_limits.embed_concurrency_cap is not None:
+        capped = min(embed_concurrency, qdrant_limits.embed_concurrency_cap)
+        if capped < embed_concurrency:
+            rationale["ingest_embed_concurrency"] = (
+                f"{capped} (Qdrant cap {qdrant_limits.embed_concurrency_cap}, "
+                f"was {embed_concurrency})"
+            )
+            embed_concurrency = capped
+
+    if qdrant_limits.batch_size_cap is not None:
+        capped_batch = min(batch_size, qdrant_limits.batch_size_cap)
+        if capped_batch < batch_size:
+            rationale["ingest_batch_size"] = (
+                f"{capped_batch} (Qdrant cap {qdrant_limits.batch_size_cap}, "
+                f"was {batch_size})"
+            )
+            batch_size = capped_batch
+
     rationale["ingest_sparse_reindex"] = (
         f"{cfg.sparse_reindex_during_bulk} during bulk ingest (rebuild once at end)"
     )
@@ -267,6 +386,7 @@ def plan_ingest_capacity(
         nomic_pool_parallel=parallel,
         host=host,
         rationale=rationale,
+        qdrant=qdrant_profile,
     )
 
 
@@ -294,6 +414,9 @@ def render_capacity_env(plan: IngestCapacityPlan) -> str:
         lines.append(f"NOMIC_POOL_GPU_FREE_MIB={plan.embed_pool.gpu_free_mib}")
     if plan.host.gpu and plan.host.gpu.name:
         lines.append(f"CAPACITY_GPU_NAME={plan.host.gpu.name}")
+    if plan.qdrant is not None:
+        lines.append(f"CAPACITY_QDRANT_POINTS={plan.qdrant.points_count}")
+        lines.append(f"CAPACITY_QDRANT_SEGMENTS={plan.qdrant.segment_count}")
     lines.append(f"CAPACITY_PROBED_AT={plan.host.probed_at}")
     for key, reason in sorted(plan.rationale.items()):
         lines.append(f"# rationale {key}: {reason}")

@@ -27,6 +27,7 @@ from rag_admin.rate_limit import LoginRateLimiter
 from rag_admin.catalog import CatalogDownloadManager
 from rag_admin.embed_idle_guard import EmbedIdleGuard
 from rag_admin.job_runner import BackgroundJobRunner
+from rag_admin.sidecar_lifecycle_guard import SidecarLifecycleGuard
 from rag_admin.routes import dashboard, explorer, ingest, settings as settings_routes, zim
 from rag_admin.settings_store import SettingsStore
 from rag_admin.helpers import client_ip, templates
@@ -79,6 +80,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         pool_env_path=settings.pool_env_path,
     )
     embed_idle_guard.start()
+    sidecar_guard = SidecarLifecycleGuard(
+        worker,
+        sparse_index_url=settings.sparse_index_url
+        or store.get_value("SPARSE_INDEX_URL", ""),
+    )
+    sidecar_guard.start()
 
     app.state.db = db
     app.state.worker = worker
@@ -86,6 +93,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.job_runner = job_runner
     app.state.catalog_manager = catalog_manager
     app.state.embed_idle_guard = embed_idle_guard
+    app.state.sidecar_guard = sidecar_guard
     app.state.login_rate_limiter = LoginRateLimiter(
         max_attempts=settings.login_max_attempts,
         lockout_minutes=settings.login_lockout_minutes,
@@ -93,6 +101,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("rag-admin started zim_dir=%s port=%s", settings.zim_dir, settings.port)
     yield
     embed_idle_guard.stop()
+    sidecar_guard.stop()
     catalog_manager.stop()
     worker.stop(flush_sparse=False)
 

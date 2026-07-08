@@ -142,7 +142,14 @@ def embed_texts(
             except Exception as exc:
                 last_err = exc
                 retryable = isinstance(
-                    exc, (httpx.HTTPStatusError, httpx.ConnectError, httpx.ReadTimeout)
+                    exc,
+                    (
+                        httpx.HTTPStatusError,
+                        httpx.ConnectError,
+                        httpx.ReadTimeout,
+                        httpx.RemoteProtocolError,
+                        httpx.ReadError,
+                    ),
                 )
                 if isinstance(exc, httpx.HTTPStatusError):
                     retryable = exc.response.status_code in (

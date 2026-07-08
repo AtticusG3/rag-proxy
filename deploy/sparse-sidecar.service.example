@@ -1,0 +1,27 @@
+[Unit]
+Description=BM25 sparse index sidecar for rag-proxy
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=kevyn
+WorkingDirectory=/opt/ai/repo/rag_proxy/sidecars/sparse
+Environment=PYTHONPATH=/opt/ai/repo/rag_proxy
+ExecStart=/opt/ai/venv-sidecars/bin/python app.py
+Restart=on-failure
+RestartSec=30
+StartLimitBurst=3
+StartLimitIntervalSec=600
+Environment=SPARSE_PORT=18096
+Environment=SPARSE_HOST=127.0.0.1
+Environment=QDRANT_URL=http://127.0.0.1:6333
+Environment=QDRANT_COLLECTION=nomad_knowledge_base
+Environment=LOG_LEVEL=INFO
+Environment=SPARSE_REFRESH_SEC=3600
+Environment=SPARSE_SCROLL_BATCH=256
+# 0 = full corpus (large RAM). Cap on memory-constrained hosts, e.g. 500000.
+Environment=SPARSE_MAX_POINTS=0
+
+[Install]
+WantedBy=multi-user.target

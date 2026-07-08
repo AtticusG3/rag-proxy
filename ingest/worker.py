@@ -201,6 +201,9 @@ class SparseReindexScheduler:
             if not self._dirty:
                 return
             self._dirty = False
+        from ingest.sidecar_lifecycle import ensure_sparse_sidecar
+
+        ensure_sparse_sidecar(self.config.sparse_index_url, wait_health=True)
         log.info("sparse reindex flush (ingest queue idle)")
         trigger_sparse_reindex(self.config)
 

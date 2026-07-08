@@ -3,11 +3,107 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import os
+import time
 from typing import Any
 
 import httpx
 
+log = logging.getLogger("ingest.qdrant")
+
 DEFAULT_VECTOR_SIZE = 768
+DEFAULT_UPSERT_TIMEOUT_SEC = 180.0
+DEFAULT_UPSERT_RETRIES = 4
+DEFAULT_UPSERT_BACKOFF_SEC = 2.0
+
+_RETRYABLE_HTTP = frozenset({408, 429, 500, 502, 503, 504})
+
+
+def qdrant_upsert_timeout_sec() -> float:
+    return float(os.getenv("QDRANT_UPSERT_TIMEOUT_SEC", str(DEFAULT_UPSERT_TIMEOUT_SEC)))
+
+
+def qdrant_upsert_retries() -> int:
+    return max(0, int(os.getenv("QDRANT_UPSERT_RETRIES", str(DEFAULT_UPSERT_RETRIES))))
+
+
+def qdrant_upsert_backoff_sec() -> float:
+    return float(os.getenv("QDRANT_UPSERT_BACKOFF_SEC", str(DEFAULT_UPSERT_BACKOFF_SEC)))
+
+
+def _is_retryable_qdrant_error(exc: Exception) -> bool:
+    if isinstance(
+        exc,
+        (
+            httpx.ConnectError,
+            httpx.ReadTimeout,
+            httpx.WriteTimeout,
+            httpx.RemoteProtocolError,
+            httpx.ReadError,
+            httpx.WriteError,
+            httpx.PoolTimeout,
+        ),
+    ):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _RETRYABLE_HTTP
+    return False
+
+
+def _put_points_once(
+    client: httpx.Client,
+    url: str,
+    points: list[dict[str, Any]],
+) -> None:
+    response = client.put(url, json={"points": points})
+    response.raise_for_status()
+
+
+def _upsert_points_resilient(
+    client: httpx.Client,
+    url: str,
+    points: list[dict[str, Any]],
+    *,
+    retries: int,
+    backoff_sec: float,
+) -> None:
+    last_err: Exception | None = None
+    for attempt in range(retries + 1):
+        if attempt:
+            delay = backoff_sec * (2 ** (attempt - 1))
+            log.warning(
+                "qdrant upsert retry %d/%d for %d points after %.1fs (%s)",
+                attempt,
+                retries,
+                len(points),
+                delay,
+                last_err,
+            )
+            time.sleep(delay)
+        try:
+            _put_points_once(client, url, points)
+            return
+        except Exception as exc:
+            last_err = exc
+            if not _is_retryable_qdrant_error(exc):
+                raise
+    if len(points) > 1:
+        mid = len(points) // 2
+        log.warning(
+            "qdrant upsert bisecting batch of %d points after retries exhausted",
+            len(points),
+        )
+        _upsert_points_resilient(
+            client, url, points[:mid], retries=retries, backoff_sec=backoff_sec
+        )
+        _upsert_points_resilient(
+            client, url, points[mid:], retries=retries, backoff_sec=backoff_sec
+        )
+        return
+    raise RuntimeError(
+        f"qdrant upsert failed after {retries + 1} attempts: {last_err}"
+    ) from last_err
 
 
 def make_point_id(text: str, source: str, chunk_idx: int) -> str:
@@ -59,18 +155,23 @@ def upsert_points(
     points: list[dict[str, Any]],
     *,
     client: httpx.Client | None = None,
+    retries: int | None = None,
+    backoff_sec: float | None = None,
 ) -> None:
     if not points:
         return
     url = f"{qdrant_url.rstrip('/')}/collections/{collection}/points"
-    payload = {"points": points}
+    max_retries = qdrant_upsert_retries() if retries is None else max(0, retries)
+    backoff = qdrant_upsert_backoff_sec() if backoff_sec is None else backoff_sec
     if client is not None:
-        response = client.put(url, json=payload)
-        response.raise_for_status()
+        _upsert_points_resilient(
+            client, url, points, retries=max_retries, backoff_sec=backoff
+        )
         return
-    with httpx.Client(timeout=120.0) as owned:
-        response = owned.put(url, json=payload)
-        response.raise_for_status()
+    with httpx.Client(timeout=qdrant_upsert_timeout_sec()) as owned:
+        _upsert_points_resilient(
+            owned, url, points, retries=max_retries, backoff_sec=backoff
+        )
 
 
 def delete_by_source(qdrant_url: str, collection: str, source: str) -> None:

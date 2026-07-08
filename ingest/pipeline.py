@@ -11,7 +11,12 @@ from typing import Protocol
 import httpx
 
 from ingest.embedder import embed_texts
-from ingest.qdrant_writer import build_point, ensure_collection, upsert_points
+from ingest.qdrant_writer import (
+    build_point,
+    ensure_collection,
+    qdrant_upsert_timeout_sec,
+    upsert_points,
+)
 
 from ingest.types import IngestAborted
 
@@ -185,7 +190,7 @@ def run_ingest_pipeline(
         max_connections=concurrency,
         max_keepalive_connections=concurrency,
     )
-    qdrant_client = httpx.Client(timeout=120.0)
+    qdrant_client = httpx.Client(timeout=qdrant_upsert_timeout_sec())
     embed_client = httpx.Client(timeout=120.0, limits=limits)
     try:
         ensure_collection(qdrant_url, qdrant_collection, client=qdrant_client)

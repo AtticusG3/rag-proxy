@@ -1,0 +1,55 @@
+# Qdrant + Redis for rag-proxy homelab hosts (localhost only).
+# Copy to /opt/ai/rag/docker-compose.yaml and adjust budgets for your RAM.
+#
+# Suggested budgets on a 64 GiB host:
+#   qdrant  12 GiB / 4 CPUs  (dense vector store + optimizers)
+#   redis    512 MiB / 0.5 CPU (admin job queue / cache)
+# Leave headroom for embed pool, sparse sidecar, and OS page cache.
+
+name: buster-rag
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.13.2
+    container_name: rag_qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    mem_limit: 12g
+    cpus: 4.0
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  redis:
+    image: redis:7-alpine
+    container_name: rag_redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    mem_limit: 512m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  qdrant_data:
+  redis_data:

@@ -7,7 +7,7 @@ SYSTEMCTL="${SYSTEMCTL:-/usr/bin/systemctl}"
 
 _allowed_unit() {
   case "$1" in
-    nomic-embed@*.service | nomic-embed.service | nomic-embed-scale.service) return 0 ;;
+    nomic-embed@*.service | nomic-embed.service | nomic-embed-scale.service | sparse-sidecar.service | rerank-sidecar.service) return 0 ;;
   esac
   return 1
 }
