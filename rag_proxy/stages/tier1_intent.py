@@ -40,6 +40,8 @@ def _rules_intent(query: str) -> tuple[IntentLabel, float]:
         return IntentLabel.RETRIEVAL_HEAVY, 0.65
     if any(w in q for w in ("step by step", "reason", "prove")):
         return IntentLabel.REASONING_HEAVY, 0.65
+    if any(w in q for w in ("what is", "what's", "who is", "tell me about", "how does", "explain", "describe")):
+        return IntentLabel.RESEARCH, 0.7
     if len(query) < 60:
         return IntentLabel.SIMPLE_CHAT, 0.6
     return IntentLabel.UNKNOWN, 0.0

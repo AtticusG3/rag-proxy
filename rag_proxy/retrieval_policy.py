@@ -20,8 +20,7 @@ INFRA_SIGNAL = re.compile(
     re.I,
 )
 _SIMPLE_FAQ = re.compile(
-    r"^what is [a-z][a-z0-9 -]{0,40}\??$",
-    re.I,
+    r"^what is [a-z][a-z ]{0,30}\??$",
 )
 
 PolicyPhase = Literal["tier0", "gating"]
