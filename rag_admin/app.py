@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     sidecar_guard = SidecarLifecycleGuard(
         worker,
         sparse_index_url=settings.sparse_index_url
-        or store.get_value("SPARSE_INDEX_URL", ""),
+        or settings_store.get_value("SPARSE_INDEX_URL", ""),
     )
     sidecar_guard.start()
 
