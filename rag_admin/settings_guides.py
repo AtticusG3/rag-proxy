@@ -117,7 +117,9 @@ GROUP_TUNING: dict[str, tuple[TuningSection, ...]] = {
             "Master switch ENABLE_COGNITIVE_PIPELINE, then enable stages one at a time. Use GATING_LOG_ONLY to observe gating without skipping retrieval.",
             (
                 TuningItem("COGNITIVE_LATENCY_BUDGET_MS", "Total pipeline time cap; stages skip when budget is low."),
-                TuningItem("INTENT_MODEL", "llama-swap model id at LLAMA_SWAP_URL (not the MemGraph build LLM)."),
+                TuningItem("INTENT_MODEL", "Model id, or 'auto' to reuse llama-swap's loaded model via /running (not the MemGraph build LLM)."),
+                TuningItem("INTENT_MODEL_URL", "Optional dedicated intent endpoint; empty uses LLAMA_SWAP_URL."),
+                TuningItem("INTENT_MODEL_AUTO_TTL_SEC", "Cache window for 'auto' /running lookups; keep short to track swaps."),
             ),
         ),
     ),

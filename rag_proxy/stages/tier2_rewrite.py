@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from rag_proxy.clients.llama_swap import rewrite_query_via_model
+from rag_proxy.clients.llama_swap import resolve_intent_model, rewrite_query_via_model
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext, RetrievalDecision
 
@@ -84,15 +84,18 @@ async def run_rewrite(ctx: RequestContext) -> None:
     ctx.stage_trace.append("rewrite:deterministic")
 
     if settings.enable_query_rewrite_llm and settings.intent_model:
-        data = await rewrite_query_via_model(
-            settings.intent_model,
-            ctx.query_text,
-            settings.intent_timeout_ms,
-        )
-        if data:
-            llm_q = _rewrite_query_from_dict(data)
-            if llm_q and _is_safe_rewrite(ctx.query_text, llm_q):
-                rewritten = llm_q
-                ctx.stage_trace.append("rewrite:llm")
+        model = await resolve_intent_model()
+        if model:
+            data = await rewrite_query_via_model(
+                model,
+                ctx.query_text,
+                settings.intent_timeout_ms,
+                base_url=settings.intent_base_url(),
+            )
+            if data:
+                llm_q = _rewrite_query_from_dict(data)
+                if llm_q and _is_safe_rewrite(ctx.query_text, llm_q):
+                    rewritten = llm_q
+                    ctx.stage_trace.append("rewrite:llm")
 
     ctx.retrieval_query = rewritten

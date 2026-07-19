@@ -169,6 +169,10 @@ class Settings:
 
     # Intent
     intent_model: str = field(default_factory=lambda: os.getenv("INTENT_MODEL", ""))
+    intent_model_url: str = field(default_factory=lambda: os.getenv("INTENT_MODEL_URL", ""))
+    intent_model_auto_ttl_sec: int = field(
+        default_factory=lambda: _env_int("INTENT_MODEL_AUTO_TTL_SEC", 10)
+    )
     intent_confidence_threshold: float = field(
         default_factory=lambda: _env_float("INTENT_CONFIDENCE_THRESHOLD", 0.55)
     )
@@ -321,6 +325,10 @@ class Settings:
             return json.loads(raw)
         except json.JSONDecodeError:
             return {}
+
+    def intent_base_url(self) -> str:
+        """Endpoint for intent/rewrite model calls; falls back to the chat upstream."""
+        return (self.intent_model_url or self.llama_swap_url).rstrip("/")
 
     def tool_roots(self) -> list[str]:
         """Split TOOL_ALLOWED_ROOTS into a path list."""

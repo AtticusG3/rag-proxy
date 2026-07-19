@@ -89,7 +89,9 @@ Rerank and tools use `RERANK_TIMEOUT_MS` and `TOOL_BUDGET_MS` as their stage min
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `INTENT_MODEL` | *(empty)* | Optional model id on the upstream API for intent classification |
+| `INTENT_MODEL` | *(empty)* | Model id for intent/rewrite calls, or `auto` to reuse the model llama-swap currently has loaded (via `/running`). Skips the LLM call when nothing is loaded, so it never forces a model swap |
+| `INTENT_MODEL_URL` | *(empty)* | Optional dedicated endpoint for intent/rewrite calls; empty falls back to `LLAMA_SWAP_URL` |
+| `INTENT_MODEL_AUTO_TTL_SEC` | `10` | Cache window for `auto` `/running` lookups; keep short so it tracks model swaps |
 | `INTENT_CONFIDENCE_THRESHOLD` | `0.55` | Below this, intent may not gate retrieval |
 | `INTENT_TIMEOUT_MS` | `150` | Intent call timeout |
 

@@ -92,7 +92,7 @@ def test_llm_rewrite_rejects_dropped_literal(monkeypatch):
     monkeypatch.setattr(settings, "enable_query_rewrite_llm", True)
     monkeypatch.setattr(settings, "intent_model", "test-model")
 
-    async def fake_llm(_model, _query, _timeout):
+    async def fake_llm(_model, _query, _timeout, **_kwargs):
         """Stub LLM rewrite that drops the IP literal."""
         return {"query": "kubernetes pod scheduling"}
 

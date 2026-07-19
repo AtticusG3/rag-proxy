@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from rag_proxy.registry.models import ModelRegistry
-from rag_proxy.clients.llama_swap import classify_intent_via_model
+from rag_proxy.clients.llama_swap import classify_intent_via_model, resolve_intent_model
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, RequestContext
 
@@ -67,13 +67,16 @@ async def run_intent(ctx: RequestContext, _registry: ModelRegistry) -> None:
 
     label, conf = _rules_intent(ctx.query_text)
     if label == IntentLabel.UNKNOWN and settings.intent_model:
-        data = await classify_intent_via_model(
-            settings.intent_model,
-            ctx.query_text,
-            settings.intent_timeout_ms,
-        )
-        if data:
-            label, conf = _intent_from_dict(data)
+        model = await resolve_intent_model()
+        if model:
+            data = await classify_intent_via_model(
+                model,
+                ctx.query_text,
+                settings.intent_timeout_ms,
+                base_url=settings.intent_base_url(),
+            )
+            if data:
+                label, conf = _intent_from_dict(data)
 
     if conf < settings.intent_confidence_threshold:
         label = IntentLabel.UNKNOWN
