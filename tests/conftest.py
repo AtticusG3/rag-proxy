@@ -68,6 +68,21 @@ def pooled_ctor_side_effect(upstream_client: MagicMock) -> list[MagicMock]:
 
 
 @pytest.fixture(autouse=True)
+def _offline_on_demand_lifecycle(monkeypatch):
+    """Keep unit tests offline and host-independent.
+
+    On-demand gating (`on_demand_enabled` / `sidecar_on_demand_enabled`) is True on
+    Linux hosts with systemctl, so `embed_texts`/`ensure_embed_urls` and the sidecar
+    guards perform real systemd calls and network health waits (up to minutes) — they
+    silently no-op on Windows but wedge the suite on Linux CI/deploy hosts. Force the
+    flags off so behavior is identical everywhere; tests that exercise the on-demand
+    paths opt back in via their own monkeypatching of the gate functions.
+    """
+    monkeypatch.setenv("EMBED_ON_DEMAND", "false")
+    monkeypatch.setenv("SIDECAR_ON_DEMAND", "false")
+
+
+@pytest.fixture(autouse=True)
 def _reset_upstream_client():
     """Isolate upstream pool singleton between tests."""
     uc._upstream_client = None
