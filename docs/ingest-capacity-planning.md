@@ -87,7 +87,7 @@ Two tiers, both worker-global:
 | `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | Concurrency multiplier in the plan |
 | `NOMIC_POOL_PARALLEL` | `16` | `llama-server --parallel` in systemd units |
 | `NOMIC_POOL_PORT_BASE` | `18089` | First pool port |
-| `NOMIC_POOL_GPU_INDEX` | `0` | `nvidia-smi` target |
+| `NOMIC_POOL_GPU_INDEX` | `0` | `nvidia-smi --id` target (physical index); match `CUDA_VISIBLE_DEVICES` in `nomic-embed.env` to size the card embedding actually runs on |
 
 ## Capacity planner (current)
 

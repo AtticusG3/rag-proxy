@@ -173,6 +173,28 @@ sudo systemctl restart rag-admin.service   # picks up INGEST_EMBED_URLS from poo
 
 Query RAG uses `:8089` (`nomic-embed.service`). Bulk ingest uses the pool on `18089+` (`nomic-embed@PORT`). With `EMBED_ON_DEMAND=true` (default on Linux), both stop and disable when idle; ingest or a RAG query starts them again automatically.
 
+#### Pin embedding to a specific GPU
+
+By default llama-server lands on the first CUDA device. On a multi-GPU host you can keep a large card free for LLM inference and run the tiny embed model on a smaller one. Set `CUDA_VISIBLE_DEVICES` in `nomic-embed.env` — it is loaded by both `nomic-embed.service` (query) and `nomic-embed@.service` (pool), so it moves **all** embedding to that card.
+
+**Two different indexes.** `CUDA_VISIBLE_DEVICES` uses the CUDA runtime order, which frequently does **not** match `nvidia-smi`. Check the mapping first:
+
+```bash
+/opt/ai/bin/llama-server --list-devices
+#   CUDA0: NVIDIA GeForce RTX 4060 ...   <- CUDA index 0
+#   CUDA1: Tesla V100-SXM2-32GB ...      <- CUDA index 1  (but nvidia-smi calls this GPU 0)
+```
+
+```bash
+# /opt/ai/config/nomic-embed.env  — embed on the 4060 (CUDA0 above)
+NOMIC_GPU_LAYERS=99
+CUDA_VISIBLE_DEVICES=0
+```
+
+Set `NOMIC_POOL_GPU_INDEX` in `nomic-embed-scale.env` to the **nvidia-smi** index of the same card (the capacity planner probes `nvidia-smi --id`, which ignores `CUDA_VISIBLE_DEVICES`). In the example above that card is `nvidia-smi` index 1, so `NOMIC_POOL_GPU_INDEX=1` while `CUDA_VISIBLE_DEVICES=0`. On a smaller card, also lower `NOMIC_POOL_VRAM_RESERVE_MIB` / `NOMIC_POOL_MAX_INSTANCES` to fit. Apply with `systemctl restart nomic-embed-scale.service nomic-embed.service`, then confirm placement with `nvidia-smi`.
+
+> **Binary must match the GPU architecture.** llama-server only runs on CUDA archs it was compiled for (`system_info: ... CUDA : ARCHS = ...`). A V100-only build (`sm_70`) aborts with `ggml-cuda.cu: CUDA error` on an Ada card like the RTX 4060 (`sm_89`). Rebuild with the target arch included, e.g. `cmake -B build -DCMAKE_CUDA_ARCHITECTURES="70;89"` (verify with `llama-server --list-devices`).
+
 On `/opt/ai` hosts, `scripts/update-buster-embed-gpu.sh` pulls the repo, installs nomic-embed units and scale env, starts the GPU pool, and smoke-checks `:8089` (override `REPO_ROOT` / `CONFIG_DIR` as needed).
 
 ## Optional admin / ingest
