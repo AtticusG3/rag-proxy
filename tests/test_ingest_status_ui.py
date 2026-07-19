@@ -6,7 +6,7 @@ import os
 import tempfile
 
 from ingest.worker import IngestConfig
-from rag_admin.helpers import flash_redirect
+from rag_admin.helpers import flash_redirect, format_size
 from rag_admin.embed_throughput import (
     embed_throughput_rates,
     format_embed_rate,
@@ -18,6 +18,8 @@ from rag_admin.ingest_status import (
     ingest_config_snapshot,
     ingest_queue_stats,
     ingest_velocity_text,
+    resolve_sort,
+    sort_file_rows,
 )
 
 
@@ -69,6 +71,81 @@ def test_enrich_file_rows_flags_missing_files() -> None:
         assert rows[1]["file_missing"] is True
     finally:
         os.unlink(present)
+
+
+def test_enrich_file_rows_defaults_priority_and_reads_size() -> None:
+    with tempfile.NamedTemporaryFile(delete=False) as handle:
+        handle.write(b"x" * 2048)
+        present = handle.name
+    try:
+        rows = enrich_file_rows(
+            [
+                {"file_path": present, "status": "indexed"},
+                {"file_path": present, "status": "pending", "priority": "high"},
+                {"file_path": "/tmp/missing-priority-file.md", "status": "failed"},
+            ],
+            stall_seconds=60,
+        )
+        assert rows[0]["priority"] == "mid"
+        assert rows[0]["file_size"] == 2048
+        assert rows[1]["priority"] == "high"
+        assert rows[2]["file_size"] is None
+    finally:
+        os.unlink(present)
+
+
+def test_sort_file_rows_by_priority_puts_high_first() -> None:
+    rows = [
+        {"file_name": "a", "priority": "low", "updated_at": "2020"},
+        {"file_name": "b", "priority": "high", "updated_at": "2019"},
+        {"file_name": "c", "priority": "mid", "updated_at": "2021"},
+    ]
+    ordered = sort_file_rows(rows, sort="priority", direction="asc")
+    assert [r["priority"] for r in ordered] == ["high", "mid", "low"]
+
+
+def test_sort_file_rows_by_size_descending() -> None:
+    rows = [
+        {"file_name": "a", "file_size": 10},
+        {"file_name": "b", "file_size": None},
+        {"file_name": "c", "file_size": 500},
+    ]
+    ordered = sort_file_rows(rows, sort="size", direction="desc")
+    assert [r["file_name"] for r in ordered] == ["c", "a", "b"]
+
+
+def test_sort_file_rows_by_name_is_case_insensitive() -> None:
+    rows = [
+        {"file_name": "Zebra"},
+        {"file_name": "apple"},
+        {"file_name": "Mango"},
+    ]
+    ordered = sort_file_rows(rows, sort="name", direction="asc")
+    assert [r["file_name"] for r in ordered] == ["apple", "Mango", "Zebra"]
+
+
+def test_sort_file_rows_unknown_key_falls_back_to_updated_desc() -> None:
+    rows = [
+        {"file_name": "a", "updated_at": "2019"},
+        {"file_name": "b", "updated_at": "2021"},
+        {"file_name": "c", "updated_at": "2020"},
+    ]
+    ordered = sort_file_rows(rows, sort="bogus", direction="bogus")
+    assert [r["file_name"] for r in ordered] == ["b", "c", "a"]
+
+
+def test_resolve_sort_normalizes_bad_input() -> None:
+    assert resolve_sort("size", "asc") == ("size", "asc")
+    assert resolve_sort(None, None) == ("updated", "desc")
+    assert resolve_sort("nope", "sideways") == ("updated", "desc")
+
+
+def test_format_size_thresholds() -> None:
+    assert format_size(None) == ""
+    assert format_size(512) == "512 B"
+    assert format_size(2048) == "2.0 KB"
+    assert format_size(5 * 1024**2) == "5.0 MB"
+    assert format_size(3 * 1024**3) == "3.00 GB"
 
 
 def test_ingest_queue_stats_counts_active_files() -> None:

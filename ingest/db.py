@@ -13,6 +13,15 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+VALID_PRIORITIES = ("high", "mid", "low")
+DEFAULT_PRIORITY = "mid"
+
+# Lower rank = claimed first. Keep in sync with rag_admin.ingest_status._PRIORITY_RANK.
+_PRIORITY_ORDER_SQL = (
+    "CASE priority WHEN 'high' THEN 0 WHEN 'mid' THEN 1 WHEN 'low' THEN 2 ELSE 1 END"
+)
+
+
 def _sqlite_supports_returning() -> bool:
     """RETURNING on UPDATE requires SQLite 3.35+."""
     parts = sqlite3.sqlite_version.split(".")
@@ -47,6 +56,7 @@ class IngestDatabase:
                     file_name TEXT,
                     file_type TEXT,
                     status TEXT DEFAULT 'pending',
+                    priority TEXT DEFAULT 'mid',
                     chunks_embedded INTEGER DEFAULT 0,
                     last_error TEXT,
                     started_at TEXT,
@@ -62,6 +72,15 @@ class IngestDatabase:
                     finished_at TEXT
                 );
                 """
+            )
+            self._ensure_ingest_columns(conn)
+
+    def _ensure_ingest_columns(self, conn: sqlite3.Connection) -> None:
+        """Additive migration for kb_ingest_state columns added after v1."""
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(kb_ingest_state)")}
+        if "priority" not in columns:
+            conn.execute(
+                "ALTER TABLE kb_ingest_state ADD COLUMN priority TEXT DEFAULT 'mid'"
             )
 
     def upsert_file_state(
@@ -137,6 +156,17 @@ class IngestDatabase:
             ).fetchone()
         return dict(row) if row else None
 
+    def set_file_priority(self, file_path: str, priority: str) -> bool:
+        """Set claim priority for one file. Returns False if the file is unknown."""
+        if priority not in VALID_PRIORITIES:
+            raise ValueError(f"invalid priority: {priority}")
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "UPDATE kb_ingest_state SET priority = ? WHERE file_path = ?",
+                (priority, file_path),
+            )
+            return cursor.rowcount > 0
+
     def retry_file_state(self, file_path: str, *, reset_chunks: bool = False) -> bool:
         """Re-queue one file for ingest without touching indexed rows."""
         with self._conn() as conn:
@@ -199,7 +229,7 @@ class IngestDatabase:
                 """
                 SELECT * FROM kb_ingest_state
                 WHERE status IN ('pending', 'queued')
-                ORDER BY updated_at
+                ORDER BY """ + _PRIORITY_ORDER_SQL + """, updated_at
                 LIMIT ?
                 """,
                 (limit,),
@@ -225,7 +255,7 @@ class IngestDatabase:
                 WHERE rowid = (
                     SELECT rowid FROM kb_ingest_state
                     WHERE status IN ('pending', 'queued')
-                    ORDER BY updated_at
+                    ORDER BY """ + _PRIORITY_ORDER_SQL + """, updated_at
                     LIMIT 1
                 )
                 AND status IN ('pending', 'queued')
@@ -244,7 +274,7 @@ class IngestDatabase:
                 """
                 SELECT rowid FROM kb_ingest_state
                 WHERE status IN ('pending', 'queued')
-                ORDER BY updated_at
+                ORDER BY """ + _PRIORITY_ORDER_SQL + """, updated_at
                 LIMIT 1
                 """
             ).fetchone()

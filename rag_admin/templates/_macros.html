@@ -32,6 +32,30 @@
 <span class="pill pill--{{ status | replace(' ', '-') }}">{{ status }}</span>
 {% endmacro %}
 
+{% macro sort_th(label, key, sort, sort_dir) %}
+{% set active = sort == key %}
+{% set next_dir = 'desc' if (active and sort_dir == 'asc') else ('asc' if active else 'asc') %}
+<th class="th-sort{% if active %} th-sort--active{% endif %}">
+  <a href="?sort={{ key }}&dir={{ next_dir }}" aria-label="Sort by {{ label }}{% if active %} ({{ 'ascending' if sort_dir == 'asc' else 'descending' }}){% endif %}">
+    {{ label }}<span class="th-sort__arrow" aria-hidden="true">{% if active %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}</span>
+  </a>
+</th>
+{% endmacro %}
+
+{% macro priority_control(f, sort, sort_dir) %}
+<form method="post" action="/api/ingest/priority-form" class="priority-form">
+  <input type="hidden" name="file_path" value="{{ f.file_path }}">
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="dir" value="{{ sort_dir }}">
+  <select name="priority" class="priority-select priority-select--{{ f.priority }}" aria-label="Priority for {{ f.file_name }}" onchange="this.form.submit()">
+    <option value="high" {% if f.priority == 'high' %}selected{% endif %}>High</option>
+    <option value="mid" {% if f.priority == 'mid' %}selected{% endif %}>Mid</option>
+    <option value="low" {% if f.priority == 'low' %}selected{% endif %}>Low</option>
+  </select>
+  <noscript><button type="submit" class="btn btn--ghost btn--small">Set</button></noscript>
+</form>
+{% endmacro %}
+
 {% macro empty_state(title, body, cta_href='', cta_label='') %}
 <div class="empty-state">
   <p class="empty-state__title">{{ title }}</p>

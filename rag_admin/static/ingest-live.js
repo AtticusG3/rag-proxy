@@ -21,6 +21,73 @@
       .replace(/"/g, "&quot;");
   }
 
+  function currentSortParams() {
+    var params = new URLSearchParams(window.location.search);
+    return {
+      sort: params.get("sort") || "",
+      dir: params.get("dir") || "",
+      query: window.location.search || "",
+    };
+  }
+
+  function formatBytes(size) {
+    if (size === null || size === undefined) {
+      return "";
+    }
+    var n = Number(size);
+    if (Number.isNaN(n)) {
+      return "";
+    }
+    if (n < 1024) {
+      return n + " B";
+    }
+    if (n < 1024 * 1024) {
+      return (n / 1024).toFixed(1) + " KB";
+    }
+    if (n < 1024 * 1024 * 1024) {
+      return (n / (1024 * 1024)).toFixed(1) + " MB";
+    }
+    return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  }
+
+  function priorityCell(file) {
+    var sortState = currentSortParams();
+    var value = file.priority || "mid";
+    var options = ["high", "mid", "low"]
+      .map(function (level) {
+        var label = level.charAt(0).toUpperCase() + level.slice(1);
+        return (
+          '<option value="' +
+          level +
+          '"' +
+          (value === level ? " selected" : "") +
+          ">" +
+          label +
+          "</option>"
+        );
+      })
+      .join("");
+    return (
+      '<td><form method="post" action="/api/ingest/priority-form" class="priority-form">' +
+      '<input type="hidden" name="file_path" value="' +
+      escapeHtml(file.file_path) +
+      '">' +
+      '<input type="hidden" name="sort" value="' +
+      escapeHtml(sortState.sort) +
+      '">' +
+      '<input type="hidden" name="dir" value="' +
+      escapeHtml(sortState.dir) +
+      '">' +
+      '<select name="priority" class="priority-select priority-select--' +
+      escapeHtml(value) +
+      '" aria-label="Priority for ' +
+      escapeHtml(file.file_name || "") +
+      '" onchange="this.form.submit()">' +
+      options +
+      "</select></form></td>"
+    );
+  }
+
   function statusPill(status) {
     return (
       '<span class="pill pill--' +
@@ -98,7 +165,7 @@
   function renderRows(files) {
     if (!files.length) {
       tbody.innerHTML =
-        '<tr><td colspan="6"><div class="empty-state">' +
+        '<tr><td colspan="8"><div class="empty-state">' +
         '<p class="empty-state__title">No ingest state</p>' +
         '<p class="empty-state__body">Subscribe in Explorer or scan storage after adding files.</p>' +
         "</div></td></tr>";
@@ -116,11 +183,15 @@
             ? ' <span class="pill pill--failed" title="File no longer on disk">missing</span>'
             : "") +
           "</td>" +
+          priorityCell(file) +
           "<td>" +
           statusPill(file.display_status || file.status || "pending") +
           "</td>" +
           '<td class="mono">' +
           escapeHtml(String(file.chunks_embedded || 0)) +
+          "</td>" +
+          '<td class="mono faint">' +
+          escapeHtml(formatBytes(file.file_size)) +
           "</td>" +
           '<td class="error">' +
           escapeHtml(file.last_error || "") +
@@ -193,7 +264,9 @@
   }
 
   function refresh() {
-    fetch("/api/ingest/status", { credentials: "same-origin" })
+    fetch("/api/ingest/status" + currentSortParams().query, {
+      credentials: "same-origin",
+    })
       .then(function (response) {
         if (!response.ok) {
           throw new Error("status " + response.status);

@@ -26,8 +26,22 @@ def format_datetime(value: str | None) -> str:
     return dt.strftime("%d-%b-%Y %H:%M:%S")
 
 
+def format_size(size: int | None) -> str:
+    """Human-readable byte size; blank for unknown/missing files."""
+    if size is None:
+        return ""
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024**2:
+        return f"{size / 1024:.1f} KB"
+    if size < 1024**3:
+        return f"{size / 1024**2:.1f} MB"
+    return f"{size / 1024**3:.2f} GB"
+
+
 templates = Jinja2Templates(directory=os.path.join(_BASE, "templates"))
 templates.env.filters["format_dt"] = format_datetime
+templates.env.filters["format_size"] = format_size
 
 
 def client_ip(request: Request) -> str:

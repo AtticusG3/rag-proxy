@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from ingest.db import DEFAULT_PRIORITY
 from ingest.stall import is_stalled
 
 from rag_admin.embed_throughput import (
@@ -12,6 +13,14 @@ from rag_admin.embed_throughput import (
     format_embed_rate,
     record_embed_progress,
 )
+
+# Sort keys accepted by the /jobs UI. Keep in sync with sortable headers in jobs.html.
+SORT_KEYS = ("name", "priority", "status", "size", "updated")
+DEFAULT_SORT = "updated"
+DEFAULT_SORT_DIR = "desc"
+
+# Lower rank = higher priority. Keep in sync with ingest.db._PRIORITY_ORDER_SQL.
+_PRIORITY_RANK = {"high": 0, "mid": 1, "low": 2}
 
 
 def enrich_file_rows(
@@ -32,8 +41,51 @@ def enrich_file_rows(
             item["file_name"] = path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
         path = str(item.get("file_path", ""))
         item["file_missing"] = bool(path) and not os.path.isfile(path)
+        item["priority"] = item.get("priority") or DEFAULT_PRIORITY
+        item["file_size"] = _file_size(path) if not item["file_missing"] else None
         enriched.append(item)
     return enriched
+
+
+def resolve_sort(sort: str | None, direction: str | None) -> tuple[str, str]:
+    """Normalize sort key/direction from query params to a valid pair."""
+    key = sort if sort in SORT_KEYS else DEFAULT_SORT
+    order = direction if direction in ("asc", "desc") else DEFAULT_SORT_DIR
+    return key, order
+
+
+def _file_size(path: str) -> int | None:
+    if not path:
+        return None
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return None
+
+
+def sort_file_rows(
+    rows: list[dict[str, Any]],
+    *,
+    sort: str = DEFAULT_SORT,
+    direction: str = DEFAULT_SORT_DIR,
+) -> list[dict[str, Any]]:
+    """Order enriched file rows for display. Falls back to defaults on bad input."""
+    if sort not in SORT_KEYS:
+        sort = DEFAULT_SORT
+    reverse = direction != "asc"
+
+    def key(row: dict[str, Any]) -> Any:
+        if sort == "name":
+            return (row.get("file_name") or "").lower()
+        if sort == "priority":
+            return _PRIORITY_RANK.get(row.get("priority") or DEFAULT_PRIORITY, 1)
+        if sort == "status":
+            return str(row.get("display_status") or row.get("status") or "")
+        if sort == "size":
+            return row.get("file_size") or 0
+        return str(row.get("updated_at") or "")
+
+    return sorted(rows, key=key, reverse=reverse)
 
 
 def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int | None]:

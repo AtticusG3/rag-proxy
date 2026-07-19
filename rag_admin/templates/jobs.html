@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner, ingest_tuning_snapshot %}
+{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner, ingest_tuning_snapshot, sort_th, priority_control %}
 {% block title %}Jobs - RAG Admin{% endblock %}
 {% block content %}
 {{ page_header("Ingest jobs", "Per-file embedding state and background job history.") }}
@@ -40,9 +40,18 @@
     <h2 class="section-title section-title--flush">File ingest state</h2>
   </div>
   <div class="table-wrap">
-  <table>
+  <table data-sort="{{ sort }}" data-dir="{{ sort_dir }}">
     <thead>
-      <tr><th>File</th><th>Status</th><th>Chunks</th><th>Error</th><th>Updated</th><th></th></tr>
+      <tr>
+        {{ sort_th("File", "name", sort, sort_dir) }}
+        {{ sort_th("Priority", "priority", sort, sort_dir) }}
+        {{ sort_th("Status", "status", sort, sort_dir) }}
+        <th>Chunks</th>
+        {{ sort_th("Size", "size", sort, sort_dir) }}
+        <th>Error</th>
+        {{ sort_th("Updated", "updated", sort, sort_dir) }}
+        <th></th>
+      </tr>
     </thead>
     <tbody id="ingest-files-body">
     {% for f in files %}
@@ -51,8 +60,10 @@
           <span class="file-chip">{{ f.file_name }}</span>
           {% if f.file_missing %}<span class="pill pill--failed" title="File no longer on disk">missing</span>{% endif %}
         </td>
+        <td>{{ priority_control(f, sort, sort_dir) }}</td>
         <td>{{ status_pill(f.display_status) }}</td>
         <td class="mono">{{ f.chunks_embedded }}</td>
+        <td class="mono faint">{{ f.file_size | format_size }}</td>
         <td class="error">{{ f.last_error or '' }}</td>
         <td class="faint">{{ f.updated_at | format_dt }}</td>
         <td class="actions-cell">
@@ -71,7 +82,7 @@
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="6">{{ empty_state("No ingest state", "Subscribe in Explorer or scan storage after adding files.") }}</td></tr>
+      <tr><td colspan="8">{{ empty_state("No ingest state", "Subscribe in Explorer or scan storage after adding files.") }}</td></tr>
     {% endfor %}
     </tbody>
   </table>

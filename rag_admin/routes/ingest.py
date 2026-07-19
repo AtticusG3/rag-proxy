@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from ingest.db import VALID_PRIORITIES
 
 from rag_admin.config import settings
 from rag_admin.helpers import flash_redirect, validated_ingest_file_path
@@ -12,6 +16,8 @@ from rag_admin.ingest_status import (
     enrich_file_rows,
     ingest_config_snapshot,
     ingest_queue_stats,
+    resolve_sort,
+    sort_file_rows,
 )
 
 router = APIRouter(prefix="/api/ingest")
@@ -40,15 +46,20 @@ async def ingest_file(request: Request, file_path: str) -> JSONResponse:
 @router.get("/status")
 async def ingest_status(request: Request) -> JSONResponse:
     db = request.app.state.db
+    sort, sort_dir = resolve_sort(
+        request.query_params.get("sort"), request.query_params.get("dir")
+    )
     files = enrich_file_rows(
         db.ingest.list_file_states(order="updated_desc"),
         stall_seconds=settings.stall_seconds,
     )
+    stats = ingest_queue_stats(files)
+    files = sort_file_rows(files, sort=sort, direction=sort_dir)
     return JSONResponse(
         {
             "files": files,
             "jobs": db.ingest.list_jobs(limit=20),
-            "stats": ingest_queue_stats(files),
+            "stats": stats,
             "config": ingest_config_snapshot(request.app.state.worker),
         }
     )
@@ -72,6 +83,29 @@ async def retry_file_form(
     worker.retry_file(file_path)
     name = file_path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
     return flash_redirect(f"/jobs", f"Retry queued for {name}.")
+
+
+@router.post("/priority-form")
+async def set_priority_form(
+    request: Request,
+    file_path: str = Form(...),
+    priority: str = Form(...),
+    sort: str = Form(default=""),
+    dir: str = Form(default=""),
+):
+    if priority not in VALID_PRIORITIES:
+        return flash_redirect("/jobs", f"Invalid priority: {priority}", level="error")
+    file_path = validated_ingest_file_path(file_path)
+    db = request.app.state.db
+    updated = db.ingest.set_file_priority(file_path, priority)
+    name = file_path.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    target = "/jobs"
+    if sort or dir:
+        query = urlencode({"sort": sort, "dir": dir})
+        target = f"/jobs?{query}"
+    if not updated:
+        return flash_redirect(target, f"{name} is not in the ingest queue.", level="error")
+    return flash_redirect(target, f"Priority for {name} set to {priority}.")
 
 
 @router.post("/retry-failed-form")

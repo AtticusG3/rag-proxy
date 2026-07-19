@@ -15,6 +15,8 @@ from rag_admin.ingest_status import (
     enrich_file_rows,
     ingest_config_snapshot,
     ingest_queue_stats,
+    resolve_sort,
+    sort_file_rows,
 )
 from rag_admin.helpers import templates
 
@@ -104,12 +106,16 @@ async def dashboard(request: Request) -> HTMLResponse:
 @router.get("/jobs", response_class=HTMLResponse)
 async def jobs_page(request: Request) -> HTMLResponse:
     db = request.app.state.db
+    sort, sort_dir = resolve_sort(
+        request.query_params.get("sort"), request.query_params.get("dir")
+    )
     files = enrich_file_rows(
         db.ingest.list_file_states(order="updated_desc"),
         stall_seconds=settings.stall_seconds,
     )
-    jobs = db.ingest.list_jobs(limit=100)
     queue = ingest_queue_stats(files)
+    files = sort_file_rows(files, sort=sort, direction=sort_dir)
+    jobs = db.ingest.list_jobs(limit=100)
     ingest_config = ingest_config_snapshot(request.app.state.worker)
     return templates.TemplateResponse(
         request,
@@ -117,6 +123,8 @@ async def jobs_page(request: Request) -> HTMLResponse:
         {
             "files": files,
             "jobs": jobs,
+            "sort": sort,
+            "sort_dir": sort_dir,
             "stalled_count": queue["stalled"],
             "stall_minutes": settings.stall_seconds // 60,
             "ingest_queue": queue,
