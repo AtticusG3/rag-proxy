@@ -173,6 +173,8 @@ sudo systemctl restart rag-admin.service   # picks up INGEST_EMBED_URLS from poo
 
 Query RAG uses `:8089` (`nomic-embed.service`). Bulk ingest uses the pool on `18089+` (`nomic-embed@PORT`). With `EMBED_ON_DEMAND=true` (default on Linux), both stop and disable when idle; ingest or a RAG query starts them again automatically.
 
+On-demand start maps `EMBED_URL` to a unit by port: only a URL on `NOMIC_QUERY_EMBED_PORT` (`:8089`) starts `nomic-embed.service`; an `EMBED_URL` on a pool port starts the matching `nomic-embed@PORT` instead. When `EMBED_URL` is not on `:8089`, `scripts/run_ingest_capacity_scale.py` skips the query-embed restart so it does not spin up an unused unit.
+
 #### Pin embedding to a specific GPU
 
 By default llama-server lands on the first CUDA device. On a multi-GPU host you can keep a large card free for LLM inference and run the tiny embed model on a smaller one. Set `CUDA_VISIBLE_DEVICES` in `nomic-embed.env` — it is loaded by both `nomic-embed.service` (query) and `nomic-embed@.service` (pool), so it moves **all** embedding to that card.

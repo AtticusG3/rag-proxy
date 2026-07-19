@@ -132,6 +132,8 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 5. **Write** — `ingest/qdrant_writer.py` upserts to `QDRANT_COLLECTION`.
 6. **Sparse reindex** — optional POST to `SPARSE_INDEX_URL` when `INGEST_SPARSE_REINDEX` triggers (hybrid cognitive mode).
 
+With `SIDECAR_ON_DEMAND=true` (default), admin starts the rerank/sparse sidecars before ingest and **stops the sparse sidecar during bulk ingest** to free RAM, reindexing once the run settles. Override the units with `SPARSE_SIDECAR_UNIT` / `RERANK_SIDECAR_UNIT` ([Configuration](configuration.md#rag-admin-and-ingest-optional)).
+
 ### Chunk strategy selection
 
 | Strategy | When | Typical sources |
@@ -213,6 +215,15 @@ The **Scale ingest capacity** button on the Settings ingest tab pauses ingest, w
 Without `nvidia-smi`, the planner falls back to a single port (`NOMIC_POOL_PORT_BASE`) and skips systemd changes; missing CPU/RAM/disk probes simply skip those caps. The embedder fails over to alternate pool URLs on HTTP 404/5xx.
 
 Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `document`, `page_content` (proxy checks in that order).
+
+### Jobs queue priority and sorting
+
+The Jobs page (`/jobs`) lets operators reprioritise the queue and sort the file table:
+
+- **Priority** — per-file `high` / `mid` / `low` (default `mid`) via the per-row select. The worker claims files by priority first, then FIFO within a level (`ingest/db.py`), so a `high` file jumps ahead of older `mid`/`low` work without pausing what is already running.
+- **Sortable columns** — click a header to sort by name, priority, status, size, or updated time. Sorting is server-side (`/jobs` and `GET /api/ingest/status` accept `sort`/`dir`); the live poller preserves the active sort while it refreshes.
+
+Priority changes post to `POST /api/ingest/priority-form`. The added **size** column shows on-disk file size alongside chunk progress.
 
 ### Stall detection
 

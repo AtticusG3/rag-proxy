@@ -206,6 +206,9 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `INGEST_MAX_ARTICLES` | `0` | ZIM article cap (`0` = unlimited) |
 | `INGEST_SPARSE_REINDEX` | `idle` | Sparse sidecar reindex mode |
 | `INGEST_STALL_MINUTES` | `15` | Stall detection for ingest jobs |
+| `QDRANT_UPSERT_TIMEOUT_SEC` | `180` | Per-batch upsert timeout (`ingest/qdrant_writer.py`); raise on slow Qdrant hosts |
+| `QDRANT_UPSERT_RETRIES` | `4` | Retries on upsert disconnect/5xx before bisecting the batch |
+| `QDRANT_UPSERT_BACKOFF_SEC` | `2` | Base backoff between upsert retries |
 | `INGEST_CHUNK_SIZE_TOKENS` | `512` | Target chunk size in tokens (nomic-embed range) |
 | `INGEST_CHUNK_OVERLAP_TOKENS` | `64` | Chunk overlap in tokens (~12.5%) |
 | `INGEST_CHUNK_TOKENIZER` | `nomic-ai/nomic-embed-text-v1.5` | Tokenizer for chunk sizing |
@@ -229,6 +232,13 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `EMBED_ON_DEMAND` | `true` | Start/stop nomic systemd units around embed work (Linux + systemctl) |
 | `EMBED_IDLE_STOP_SEC` | `180` | Unload all nomic units after this many idle seconds (queue empty) |
 | `EMBED_IDLE_PAUSED_SEC` | `30` | Unload after pause when no embed activity |
+| `NOMIC_QUERY_EMBED_PORT` | `8089` | Port bound by `nomic-embed.service`; on-demand start only touches this unit when `EMBED_URL` points here (else it starts the matching `nomic-embed@PORT`) |
+| `SIDECAR_ON_DEMAND` | `true` | Admin starts sidecars before ingest and stops the sparse sidecar during bulk ingest (Linux + systemctl) |
+| `SIDECAR_STARTUP_TIMEOUT_SEC` | `600` | Max wait for the sparse sidecar to become healthy after on-demand start |
+| `SIDECAR_RERANK_STARTUP_TIMEOUT_SEC` | `180` | Max wait for the rerank sidecar health after on-demand start |
+| `SIDECAR_LIFECYCLE_POLL_SEC` | `20` | Admin sidecar guard poll interval |
+| `SPARSE_SIDECAR_UNIT` | `sparse-sidecar.service` | systemd unit the sidecar guard starts/stops for BM25 |
+| `RERANK_SIDECAR_UNIT` | `rerank-sidecar.service` | systemd unit the sidecar guard starts for rerank |
 | `ADMIN_GRACEFUL_SHUTDOWN_SEC` | `15` | Max seconds uvicorn waits for open connections on admin stop |
 | `NOMIC_EMBED_SCALE_ENV_FILE` | `/opt/ai/config/nomic-embed-scale.env` | Planner tuning caps (`NOMIC_POOL_*`, `INGEST_CAPACITY_*`) |
 | `NOMIC_EMBED_POOL_ENV_FILE` | `/opt/ai/config/nomic-embed-pool.env` | Written plan (`INGEST_EMBED_URLS`, `INGEST_*`, `NOMIC_POOL_PARALLEL`) |
@@ -246,7 +256,8 @@ Used by `scripts/scale_ingest_capacity.py` (legacy entry point `scale_nomic_embe
 | `NOMIC_POOL_MAX_INSTANCES` | `12` | Hard cap on pool size |
 | `NOMIC_POOL_MIN_INSTANCES` | `1` | Floor when GPU sizing unavailable |
 | `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | `--parallel` per pool unit (capped by GPU tier) |
-| `NOMIC_POOL_GPU_INDEX` | `0` | `nvidia-smi` GPU index |
+| `NOMIC_POOL_GPU_INDEX` | `0` | `nvidia-smi --id` target (physical index) the planner probes; match `CUDA_VISIBLE_DEVICES` so it sizes the card embedding runs on |
+| `CUDA_VISIBLE_DEVICES` | *(unset)* | CUDA runtime index that pins embedding to one GPU (set in `nomic-embed.env`; index order can differ from `nvidia-smi`). See [Deployment — Pin embedding to a specific GPU](deployment.md#pin-embedding-to-a-specific-gpu) |
 | `INGEST_CAPACITY_RAM_RESERVE_MIB` | `4096` | RAM headroom before file concurrency caps apply |
 | `INGEST_CAPACITY_RAM_PER_FILE_MIB` | `2048` | Assumed RAM per concurrent file |
 | `INGEST_CAPACITY_SEMANTIC_RAM_FLOOR_MIB` | `8192` | Below this available RAM, semantic chunking is disabled |
@@ -256,6 +267,9 @@ Used by `scripts/scale_ingest_capacity.py` (legacy entry point `scale_nomic_embe
 | `INGEST_CAPACITY_MIN_DISK_MBPS` | `100` | Below this sequential read speed, file concurrency is capped |
 | `INGEST_CAPACITY_SLOW_DISK_FILE_CAP` | `2` | File cap applied on slow storage |
 | `INGEST_CAPACITY_SPARSE_REINDEX` | `off` | BM25 reindex mode written by the planner |
+| `INGEST_CAPACITY_QDRANT_RAM_BUDGET_MIB` | `8192` | RAM the planner reserves for Qdrant when co-located, before file concurrency caps |
+| `INGEST_CAPACITY_QDRANT_LARGE_COLLECTION_POINTS` | `500000` | Point count above which the planner treats the collection as large and eases upsert pressure |
+| `INGEST_CAPACITY_QDRANT_HUGE_COLLECTION_POINTS` | `2000000` | Point count above which the planner applies the strictest ingest caps |
 
 The planner writes all `INGEST_*` throughput knobs plus `NOMIC_POOL_*` metadata to the pool env file; the admin scale job syncs the ingest keys into the admin env and hot-reloads the worker. `NOMIC_POOL_PARALLEL` is now written by the planner so systemd `nomic-embed@.service` and the concurrency math stay aligned.
 
