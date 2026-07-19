@@ -75,17 +75,23 @@ def test_chunk_concurrency_cap_of_one_serializes() -> None:
 
 
 def test_runners_are_per_thread() -> None:
-    ids: list[int] = []
+    # Keep references to the runner objects (not their id()); once a thread ends its
+    # thread-local runner is GC'd and a later thread can reuse the same address, so
+    # comparing id() is flaky under load. Holding the objects keeps them distinct.
+    runners: list[object] = []
+    lock = threading.Lock()
 
     def collect() -> None:
         runner = chunking._thread_runner("recursive", "word", 64, 0, "model")
         again = chunking._thread_runner("recursive", "word", 64, 0, "model")
         assert runner is again  # cached within a thread
-        ids.append(id(runner))
+        with lock:
+            runners.append(runner)
 
     threads = [threading.Thread(target=collect) for _ in range(2)]
     for thread in threads:
         thread.start()
     for thread in threads:
         thread.join()
-    assert len(set(ids)) == 2  # distinct instances across threads
+    assert len(runners) == 2
+    assert runners[0] is not runners[1]  # distinct instances across threads
