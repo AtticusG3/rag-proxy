@@ -15,6 +15,7 @@ from rag_admin.embed_throughput import (
 )
 from rag_admin.ingest_status import (
     enrich_file_rows,
+    filter_visible_file_rows,
     ingest_config_snapshot,
     ingest_queue_stats,
     ingest_velocity_text,
@@ -138,6 +139,39 @@ def test_resolve_sort_normalizes_bad_input() -> None:
     assert resolve_sort("size", "asc") == ("size", "asc")
     assert resolve_sort(None, None) == ("updated", "desc")
     assert resolve_sort("nope", "sideways") == ("updated", "desc")
+
+
+def test_filter_visible_file_rows_hides_old_indexed() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    recent = (now - timedelta(minutes=10)).isoformat()
+    old = (now - timedelta(hours=2)).isoformat()
+    rows = [
+        {"file_name": "pending.md", "status": "pending", "updated_at": old},
+        {"file_name": "fresh.zim", "status": "indexed", "updated_at": recent},
+        {"file_name": "done.zim", "status": "indexed", "updated_at": old},
+        {"file_name": "failed.pdf", "status": "failed", "updated_at": old},
+    ]
+    visible, hidden = filter_visible_file_rows(rows, hide_indexed_seconds=3600)
+    assert hidden == 1
+    assert [r["file_name"] for r in visible] == ["pending.md", "fresh.zim", "failed.pdf"]
+
+
+def test_filter_visible_file_rows_show_indexed_and_disabled() -> None:
+    rows = [
+        {"file_name": "a", "status": "indexed", "updated_at": "2000-01-01T00:00:00+00:00"},
+        {"file_name": "b", "status": "pending", "updated_at": "2000-01-01T00:00:00+00:00"},
+    ]
+    all_rows, hidden = filter_visible_file_rows(
+        rows, hide_indexed_seconds=60, show_indexed=True
+    )
+    assert hidden == 0
+    assert len(all_rows) == 2
+
+    disabled, hidden0 = filter_visible_file_rows(rows, hide_indexed_seconds=0)
+    assert hidden0 == 0
+    assert len(disabled) == 2
 
 
 def test_format_size_thresholds() -> None:

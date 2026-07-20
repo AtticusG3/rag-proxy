@@ -85,6 +85,16 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         help_text="Mark running jobs stalled when no progress for this many minutes.",
     ),
     SettingField(
+        "INGEST_HIDE_INDEXED_MINUTES",
+        "Hide indexed after (minutes)",
+        "ingest",
+        "int",
+        "admin",
+        "60",
+        hot=False,
+        help_text="Hide Indexed files on the Jobs page after this many minutes (0 = show all). Use Show indexed on /jobs to override.",
+    ),
+    SettingField(
         "INGEST_MAX_ARTICLES",
         "ZIM article cap (0=unlimited)",
         "ingest",

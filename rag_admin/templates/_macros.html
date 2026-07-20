@@ -32,11 +32,11 @@
 <span class="pill pill--{{ status | replace(' ', '-') }}">{{ status }}</span>
 {% endmacro %}
 
-{% macro sort_th(label, key, sort, sort_dir) %}
+{% macro sort_th(label, key, sort, sort_dir, extra_qs='') %}
 {% set active = sort == key %}
 {% set next_dir = 'desc' if (active and sort_dir == 'asc') else ('asc' if active else 'asc') %}
 <th class="th-sort{% if active %} th-sort--active{% endif %}">
-  <a href="?sort={{ key }}&dir={{ next_dir }}" aria-label="Sort by {{ label }}{% if active %} ({{ 'ascending' if sort_dir == 'asc' else 'descending' }}){% endif %}">
+  <a href="?sort={{ key }}&dir={{ next_dir }}{% if extra_qs %}&{{ extra_qs }}{% endif %}" aria-label="Sort by {{ label }}{% if active %} ({{ 'ascending' if sort_dir == 'asc' else 'descending' }}){% endif %}">
     {{ label }}<span class="th-sort__arrow" aria-hidden="true">{% if active %}{{ '↑' if sort_dir == 'asc' else '↓' }}{% endif %}</span>
   </a>
 </th>

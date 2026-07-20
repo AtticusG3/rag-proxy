@@ -119,6 +119,7 @@ Admin-specific (from `.env.example` comments and `rag_admin/config.py`):
 | `INGEST_MAX_ARTICLES` | `0` | ZIM article limit (`0` = unlimited) |
 | `INGEST_SPARSE_REINDEX` | `idle` | When to trigger sparse sidecar reindex |
 | `INGEST_STALL_MINUTES` | `15` | Mark jobs stalled after no progress |
+| `INGEST_HIDE_INDEXED_MINUTES` | `60` | Hide Indexed rows on `/jobs` after this many minutes (`0` = show all; `?show_indexed=1` overrides) |
 | `RAG_PROXY_URL` | `http://127.0.0.1:8081` | Optional proxy URL for admin smoke hooks |
 
 Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-and-ingest-optional).

@@ -14,10 +14,12 @@ from rag_admin.config import settings
 from rag_admin.helpers import flash_redirect, validated_ingest_file_path
 from rag_admin.ingest_status import (
     enrich_file_rows,
+    filter_visible_file_rows,
     ingest_config_snapshot,
     ingest_queue_stats,
     resolve_sort,
     sort_file_rows,
+    truthy_query_flag,
 )
 
 router = APIRouter(prefix="/api/ingest")
@@ -49,17 +51,25 @@ async def ingest_status(request: Request) -> JSONResponse:
     sort, sort_dir = resolve_sort(
         request.query_params.get("sort"), request.query_params.get("dir")
     )
+    show_indexed = truthy_query_flag(request.query_params.get("show_indexed"))
     files = enrich_file_rows(
         db.ingest.list_file_states(order="updated_desc"),
         stall_seconds=settings.stall_seconds,
     )
     stats = ingest_queue_stats(files)
+    files, hidden_indexed = filter_visible_file_rows(
+        files,
+        hide_indexed_seconds=settings.hide_indexed_seconds,
+        show_indexed=show_indexed,
+    )
     files = sort_file_rows(files, sort=sort, direction=sort_dir)
     return JSONResponse(
         {
             "files": files,
             "jobs": db.ingest.list_jobs(limit=20),
             "stats": stats,
+            "hidden_indexed": hidden_indexed,
+            "show_indexed": show_indexed,
             "config": ingest_config_snapshot(request.app.state.worker),
         }
     )

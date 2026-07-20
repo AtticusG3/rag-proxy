@@ -35,6 +35,7 @@ class AdminSettings:
     embed_max_chars: int
     sparse_reindex_mode: str
     stall_seconds: int
+    hide_indexed_seconds: int
     session_secret: str
     session_ttl_seconds: int
     login_max_attempts: int
@@ -72,6 +73,8 @@ class AdminSettings:
             embed_max_chars=_env_int("EMBED_MAX_CHARS", 2000),
             sparse_reindex_mode=os.getenv("INGEST_SPARSE_REINDEX", "idle").strip().lower(),
             stall_seconds=_env_int("INGEST_STALL_MINUTES", 15) * 60,
+            # Jobs UI: hide status=indexed rows older than this (0 = show all).
+            hide_indexed_seconds=_env_int("INGEST_HIDE_INDEXED_MINUTES", 60) * 60,
             session_secret=os.getenv("ADMIN_SESSION_SECRET", DEFAULT_SESSION_SECRET),
             session_ttl_seconds=_env_int("ADMIN_SESSION_TTL_SECONDS", 86400 * 7),
             login_max_attempts=_env_int("ADMIN_LOGIN_MAX_ATTEMPTS", 5),

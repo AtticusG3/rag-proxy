@@ -13,10 +13,12 @@ from fastapi.responses import HTMLResponse
 from rag_admin.config import settings
 from rag_admin.ingest_status import (
     enrich_file_rows,
+    filter_visible_file_rows,
     ingest_config_snapshot,
     ingest_queue_stats,
     resolve_sort,
     sort_file_rows,
+    truthy_query_flag,
 )
 from rag_admin.helpers import templates
 
@@ -109,14 +111,21 @@ async def jobs_page(request: Request) -> HTMLResponse:
     sort, sort_dir = resolve_sort(
         request.query_params.get("sort"), request.query_params.get("dir")
     )
+    show_indexed = truthy_query_flag(request.query_params.get("show_indexed"))
     files = enrich_file_rows(
         db.ingest.list_file_states(order="updated_desc"),
         stall_seconds=settings.stall_seconds,
     )
     queue = ingest_queue_stats(files)
+    files, hidden_indexed = filter_visible_file_rows(
+        files,
+        hide_indexed_seconds=settings.hide_indexed_seconds,
+        show_indexed=show_indexed,
+    )
     files = sort_file_rows(files, sort=sort, direction=sort_dir)
     jobs = db.ingest.list_jobs(limit=100)
     ingest_config = ingest_config_snapshot(request.app.state.worker)
+    hide_indexed_minutes = settings.hide_indexed_seconds // 60
     return templates.TemplateResponse(
         request,
         "jobs.html",
@@ -129,5 +138,8 @@ async def jobs_page(request: Request) -> HTMLResponse:
             "stall_minutes": settings.stall_seconds // 60,
             "ingest_queue": queue,
             "ingest_config": ingest_config,
+            "show_indexed": show_indexed,
+            "hidden_indexed": hidden_indexed,
+            "hide_indexed_minutes": hide_indexed_minutes,
         },
     )

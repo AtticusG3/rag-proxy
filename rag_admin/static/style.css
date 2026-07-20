@@ -431,6 +431,10 @@ body.nav-open .nav-toggle__icon::after { transform: translateY(-6px) rotate(-45d
 }
 
 .card-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   padding: var(--space-4) var(--space-5) var(--space-2);
 }
 

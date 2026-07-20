@@ -32,24 +32,38 @@
   <p class="muted card-note">
     Uploads and subscriptions queue ingest automatically. Scan only registers files added outside Admin, or re-queues failed ingests.
     Already indexed files are left unchanged. Running jobs with no progress for {{ stall_minutes }}+ minutes are marked <strong>stalled</strong>.
+    {% if hide_indexed_minutes > 0 %}
+    Indexed files older than {{ hide_indexed_minutes }} minutes are hidden from the table below
+    {% if show_indexed %}(currently showing all).{% else %}so active work is easier to sort.{% endif %}
+    {% endif %}
   </p>
 </section>
 
 <section class="card card--flush">
   <div class="card-section-head">
     <h2 class="section-title section-title--flush">File ingest state</h2>
+    {% if hide_indexed_minutes > 0 %}
+    <div class="actions-row">
+      {% if show_indexed %}
+      <a class="btn btn--ghost btn--small" href="?sort={{ sort }}&dir={{ sort_dir }}">Hide completed</a>
+      {% elif hidden_indexed %}
+      <a class="btn btn--ghost btn--small" href="?sort={{ sort }}&dir={{ sort_dir }}&show_indexed=1">Show {{ hidden_indexed }} indexed</a>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   <div class="table-wrap">
+  {% set sort_extra = 'show_indexed=1' if show_indexed else '' %}
   <table data-sort="{{ sort }}" data-dir="{{ sort_dir }}">
     <thead>
       <tr>
-        {{ sort_th("File", "name", sort, sort_dir) }}
-        {{ sort_th("Priority", "priority", sort, sort_dir) }}
-        {{ sort_th("Status", "status", sort, sort_dir) }}
+        {{ sort_th("File", "name", sort, sort_dir, sort_extra) }}
+        {{ sort_th("Priority", "priority", sort, sort_dir, sort_extra) }}
+        {{ sort_th("Status", "status", sort, sort_dir, sort_extra) }}
         <th>Chunks</th>
-        {{ sort_th("Size", "size", sort, sort_dir) }}
+        {{ sort_th("Size", "size", sort, sort_dir, sort_extra) }}
         <th>Error</th>
-        {{ sort_th("Updated", "updated", sort, sort_dir) }}
+        {{ sort_th("Updated", "updated", sort, sort_dir, sort_extra) }}
         <th></th>
       </tr>
     </thead>
@@ -82,7 +96,7 @@
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="8">{{ empty_state("No ingest state", "Subscribe in Explorer or scan storage after adding files.") }}</td></tr>
+      <tr><td colspan="8">{% if hidden_indexed %}{{ empty_state("No active ingest jobs", "Indexed files older than " ~ hide_indexed_minutes ~ " minutes are hidden. Use Show indexed above to list them.") }}{% else %}{{ empty_state("No ingest state", "Subscribe in Explorer or scan storage after adding files.") }}{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>

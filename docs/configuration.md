@@ -206,6 +206,7 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `INGEST_MAX_ARTICLES` | `0` | ZIM article cap (`0` = unlimited) |
 | `INGEST_SPARSE_REINDEX` | `idle` | Sparse sidecar reindex mode |
 | `INGEST_STALL_MINUTES` | `15` | Stall detection for ingest jobs |
+| `INGEST_HIDE_INDEXED_MINUTES` | `60` | Hide Indexed file rows on `/jobs` after N minutes (`0` = show all) |
 | `QDRANT_UPSERT_TIMEOUT_SEC` | `180` | Per-batch upsert timeout (`ingest/qdrant_writer.py`); raise on slow Qdrant hosts |
 | `QDRANT_UPSERT_RETRIES` | `4` | Retries on upsert disconnect/5xx before bisecting the batch |
 | `QDRANT_UPSERT_BACKOFF_SEC` | `2` | Base backoff between upsert retries |

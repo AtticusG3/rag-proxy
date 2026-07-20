@@ -41,6 +41,7 @@ def _admin_settings(**overrides: object) -> AdminSettings:
         "embed_max_chars": 2000,
         "sparse_reindex_mode": "idle",
         "stall_seconds": 900,
+        "hide_indexed_seconds": 3600,
         "session_secret": "test-session-secret",
         "session_ttl_seconds": 3600,
         "login_max_attempts": 5,

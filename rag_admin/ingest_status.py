@@ -6,7 +6,7 @@ import os
 from typing import Any
 
 from ingest.db import DEFAULT_PRIORITY
-from ingest.stall import is_stalled
+from ingest.stall import is_stalled, seconds_since_update
 
 from rag_admin.embed_throughput import (
     embed_throughput_rates,
@@ -21,6 +21,37 @@ DEFAULT_SORT_DIR = "desc"
 
 # Lower rank = higher priority. Keep in sync with ingest.db._PRIORITY_ORDER_SQL.
 _PRIORITY_RANK = {"high": 0, "mid": 1, "low": 2}
+
+
+def truthy_query_flag(value: str | None) -> bool:
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def filter_visible_file_rows(
+    rows: list[dict[str, Any]],
+    *,
+    hide_indexed_seconds: int,
+    show_indexed: bool = False,
+) -> tuple[list[dict[str, Any]], int]:
+    """Hide indexed rows older than hide_indexed_seconds from the Jobs table.
+
+    Stats should be computed on the unfiltered list first. Returns
+    (visible_rows, hidden_indexed_count). hide_indexed_seconds <= 0 disables
+    filtering. show_indexed=True shows every indexed row.
+    """
+    if show_indexed or hide_indexed_seconds <= 0:
+        return list(rows), 0
+
+    visible: list[dict[str, Any]] = []
+    hidden = 0
+    for row in rows:
+        if row.get("status") == "indexed":
+            age = seconds_since_update(row.get("updated_at"))
+            if age is None or age > hide_indexed_seconds:
+                hidden += 1
+                continue
+        visible.append(row)
+    return visible, hidden
 
 
 def enrich_file_rows(
