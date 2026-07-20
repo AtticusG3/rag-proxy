@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from html import unescape
 from typing import Iterator
 
+from ingest.zim_sanitize import sanitize_zim_html
+
 log = logging.getLogger("ingest.zim")
 
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
@@ -24,17 +26,21 @@ class ZimArticle:
 
 
 def strip_html(html: str) -> str:
+    """Legacy flat HTML strip (spike / comparisons). Prefer sanitize_zim_html for ingest."""
     text = _HTML_TAG_RE.sub(" ", html)
     text = unescape(text)
     return _WS_RE.sub(" ", text).strip()
 
 
-def _normalize_text(raw: bytes, mimetype: str) -> str:
+def _normalize_entry(raw: bytes, mimetype: str, *, title: str, url: str) -> str | None:
     text = raw.decode("utf-8", errors="replace")
     mime = (mimetype or "").lower()
     if "html" in mime:
-        return strip_html(text)
-    return _WS_RE.sub(" ", text).strip()
+        return sanitize_zim_html(text, title=title, url=url)
+    cleaned = _WS_RE.sub(" ", text).strip()
+    if len(cleaned) < 80:
+        return None
+    return cleaned
 
 
 def _iter_libzim(zim_path: str, max_articles: int) -> Iterator[ZimArticle]:
@@ -63,11 +69,12 @@ def _iter_libzim(zim_path: str, max_articles: int) -> Iterator[ZimArticle]:
             token in mimetype.lower() for token in ("text/html", "text/plain", "application/xhtml")
         ):
             continue
-        text = _normalize_text(raw, mimetype)
-        if len(text) < 80:
-            continue
         title = entry.title or entry.path
-        yield ZimArticle(title=title, url=entry.path, text=text)
+        url = entry.path
+        text = _normalize_entry(raw, mimetype, title=title, url=url)
+        if text is None:
+            continue
+        yield ZimArticle(title=title, url=url, text=text)
         count += 1
         if max_articles > 0 and count >= max_articles:
             break
@@ -107,10 +114,11 @@ def _iter_zimdump(zim_path: str, max_articles: int) -> Iterator[ZimArticle]:
         )
         if dump.returncode != 0:
             continue
-        text = strip_html(dump.stdout)
-        if len(text) < 80:
+        title = path.rsplit("/", 1)[-1]
+        text = sanitize_zim_html(dump.stdout, title=title, url=path)
+        if text is None:
             continue
-        yield ZimArticle(title=path.rsplit("/", 1)[-1], url=path, text=text)
+        yield ZimArticle(title=title, url=path, text=text)
         count += 1
         if max_articles > 0 and count >= max_articles:
             break

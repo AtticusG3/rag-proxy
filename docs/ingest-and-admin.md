@@ -128,6 +128,9 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 
 1. **Queue** — jobs created from UI (ZIM path, upload, catalog subscription).
 2. **Read** — ZIM (`ingest/zim_reader.py`), PDF (`ingest/pdf_reader.py`), or plain text.
+   - ZIM HTML is sanitized in `ingest/zim_sanitize.py` before chunking: drop `script`/`style`/`noscript` and site chrome (`nav`/`header`/`footer`), prefer the largest main-content root when it keeps enough text (DevDocs `._content`, NHS `#maincontent`, SE `#content`, MediaWiki `#mw-content-text`), and preserve paragraph breaks.
+   - **MediaWiki-like** titles/paths only: skip non-article namespaces (`Category:`, `File:`, …) and drop wiki chrome plus trailing References / See also / External links sections.
+   - Existing indexed ZIM points stay as-is until you re-queue (`python scripts/requeue_all_ingest.py` or re-ingest per file).
 3. **Chunk** — `ingest/chunking_strategy.py` picks a Chonkie strategy per document; `ingest/chunking.py` loads token size/overlap from env and runs the chunker with strategy-specific fallbacks. Default **512 tokens / 64 overlap** (~12.5%) using the nomic-embed tokenizer when available.
 4. **Embed** — `ingest/embedder.py` calls `EMBED_URL` (same nomic-embed as proxy).
 5. **Write** — `ingest/qdrant_writer.py` upserts to `QDRANT_COLLECTION`.

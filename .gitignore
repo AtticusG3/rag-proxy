@@ -16,6 +16,9 @@ docker/config.yaml
 .cursor/hooks/state/
 .agents/
 
+# Local ZIM sanitize spike dumps
+zim_spike_out/
+
 # OS cruft
 Thumbs.db
 Desktop.ini
