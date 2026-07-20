@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import os
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Form, Request
@@ -26,6 +26,25 @@ def _format_bytes(size: int | None) -> str:
     if size < 1024**3:
         return f"{size / 1024**2:.1f} MiB"
     return f"{size / 1024**3:.2f} GiB"
+
+
+def delete_subscriptions_and_files(db: Any, worker: Any, sub_ids: list[int]) -> int:
+    """Delete catalog subscriptions and purge their documents from all indexes.
+
+    Always calls remove_file_from_index when local_path is set so dense Qdrant,
+    BM25, MemGraphRAG, ingest state, and on-disk files are scrubbed even if the
+    file was already deleted. Missing subscription ids are skipped.
+    """
+    removed = 0
+    for sub_id in sub_ids:
+        row = db.delete_subscription(sub_id)
+        if row is None:
+            continue
+        removed += 1
+        path = row.get("local_path")
+        if path:
+            worker.remove_file_from_index(path)
+    return removed
 
 
 def _explorer_url(source: str, path: str = "") -> str:
@@ -243,13 +262,11 @@ async def retry_subscription(
 @router.post("/subscriptions/delete")
 async def delete_subscription(
     request: Request,
-    sub_id: int = Form(...),
+    sub_id: list[int] = Form(default=[]),
 ) -> RedirectResponse:
     db = request.app.state.db
     worker = request.app.state.worker
-    row = db.delete_subscription(sub_id)
-    if row and row.get("local_path") and os.path.isfile(row["local_path"]):
-        worker.remove_file_from_index(row["local_path"])
+    delete_subscriptions_and_files(db, worker, sub_id)
     return RedirectResponse(url="/subscriptions", status_code=303)
 
 

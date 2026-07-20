@@ -15,10 +15,26 @@
 </section>
 
 <section class="card card--flush">
+  {% if subscriptions %}
+  <div class="card-section-head">
+    <h2 class="section-title section-title--flush">Tracked packages</h2>
+    <form id="bulk-remove-form" method="post" action="/subscriptions/delete" class="actions-row"
+          onsubmit="return confirmBulkRemove();">
+      <button type="submit" class="btn btn--danger btn--small" id="bulk-remove-btn" disabled>
+        Remove selected
+      </button>
+    </form>
+  </div>
+  {% endif %}
   <div class="table-wrap">
   <table>
     <thead>
       <tr>
+        {% if subscriptions %}
+        <th class="col-check" scope="col">
+          <input type="checkbox" id="select-all-subs" aria-label="Select all subscriptions">
+        </th>
+        {% endif %}
         <th>Package</th><th>Source</th><th>Status</th><th>Size</th>
         <th>Auto</th><th>Checked</th><th></th>
       </tr>
@@ -26,6 +42,10 @@
     <tbody>
     {% for sub in subscriptions %}
       <tr>
+        <td class="col-check">
+          <input type="checkbox" class="sub-select" name="sub_id" value="{{ sub.id }}"
+                 form="bulk-remove-form" aria-label="Select {{ sub.file_name }}">
+        </td>
         <td>
           <span class="file-chip">{{ sub.file_name }}</span>
         </td>
@@ -54,7 +74,7 @@
         </td>
       </tr>
       {% if sub.last_error %}
-      <tr><td colspan="7" class="error">{{ sub.last_error }}</td></tr>
+      <tr><td colspan="8" class="error">{{ sub.last_error }}</td></tr>
       {% endif %}
     {% else %}
       <tr><td colspan="7">{{ empty_state("No subscriptions", "Use Content Explorer to subscribe to ZIM files, PDFs, or texts.", "/explorer", "Open Explorer") }}</td></tr>
@@ -63,4 +83,57 @@
   </table>
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+{% if subscriptions %}
+<script>
+(function () {
+  var btn = document.getElementById("bulk-remove-btn");
+  var selectAll = document.getElementById("select-all-subs");
+  if (!btn) return;
+
+  function boxes() {
+    return Array.prototype.slice.call(document.querySelectorAll("input.sub-select"));
+  }
+
+  function sync() {
+    var all = boxes();
+    var selected = all.filter(function (el) { return el.checked; });
+    btn.disabled = selected.length === 0;
+    btn.textContent = selected.length
+      ? "Remove selected (" + selected.length + ")"
+      : "Remove selected";
+    if (selectAll) {
+      selectAll.checked = all.length > 0 && selected.length === all.length;
+      selectAll.indeterminate = selected.length > 0 && selected.length < all.length;
+    }
+  }
+
+  if (selectAll) {
+    selectAll.addEventListener("change", function () {
+      boxes().forEach(function (el) { el.checked = selectAll.checked; });
+      sync();
+    });
+  }
+
+  document.addEventListener("change", function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains("sub-select")) {
+      sync();
+    }
+  });
+
+  window.confirmBulkRemove = function () {
+    var n = boxes().filter(function (el) { return el.checked; }).length;
+    if (!n) return false;
+    return confirm(
+      "Remove " + n + " subscription" + (n === 1 ? "" : "s") +
+      " and delete local files from index?"
+    );
+  };
+
+  sync();
+})();
+</script>
+{% endif %}
 {% endblock %}

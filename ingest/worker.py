@@ -23,7 +23,7 @@ from ingest.embed_lifecycle import ensure_embed_urls
 from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.pdf_reader import iter_pdf_pages
 from ingest.pipeline import make_embed_semaphore, run_ingest_pipeline
-from ingest.qdrant_writer import delete_by_source
+from ingest.qdrant_writer import delete_by_source, list_point_ids_by_source
 from ingest.scanner import scan_storage
 from ingest.types import determine_file_type, IngestAborted
 from ingest.zim_reader import iter_zim_articles
@@ -55,6 +55,7 @@ class IngestConfig:
     file_concurrency: int | None = None
     chunk_concurrency: int | None = None
     chunk_config: ChunkConfig = field(default_factory=load_chunk_config)
+    memgraphrag_db_path: str = ""
 
 
 def resolve_file_concurrency(
@@ -535,6 +536,8 @@ class IngestWorker:
         ]
 
     def remove_file_from_index(self, file_path: str) -> None:
+        """Fully drop a document: MemGraphRAG, dense Qdrant, disk, ingest state, BM25."""
+        self._scrub_memgraphrag_for_source(file_path)
         delete_by_source(
             self.config.qdrant_url,
             self.config.qdrant_collection,
@@ -542,8 +545,38 @@ class IngestWorker:
         )
         if os.path.isfile(file_path):
             os.remove(file_path)
+        part_path = f"{file_path}.part"
+        if os.path.isfile(part_path):
+            os.remove(part_path)
         self.db.delete_file_state(file_path)
         trigger_sparse_reindex(self.config)
+
+    def _scrub_memgraphrag_for_source(self, file_path: str) -> None:
+        """Remove MemGraphRAG passages whose chunk_ids match this source's Qdrant points."""
+        db_path = (self.config.memgraphrag_db_path or os.getenv("MEMGRAPHRAG_DB_PATH", "")).strip()
+        if not db_path or not os.path.isfile(db_path):
+            return
+        try:
+            point_ids = list_point_ids_by_source(
+                self.config.qdrant_url,
+                self.config.qdrant_collection,
+                file_path,
+            )
+            if not point_ids:
+                return
+            from rag_proxy.memgraphrag.memory import load_memory
+
+            memory = load_memory(db_path)
+            removed = memory.remove_passages_by_chunk_ids(set(point_ids))
+            if removed:
+                memory.save(db_path)
+                log.info(
+                    "memgraphrag scrubbed %d passages for source=%s",
+                    removed,
+                    file_path,
+                )
+        except Exception as exc:
+            log.warning("memgraphrag scrub failed for %s: %s", file_path, exc)
 
     def prune_missing_files(self) -> list[str]:
         """Drop ingest rows whose files no longer exist on disk."""

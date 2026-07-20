@@ -174,18 +174,57 @@ def upsert_points(
         )
 
 
+def _source_filter(source: str) -> dict[str, Any]:
+    return {
+        "must": [
+            {"key": "source", "match": {"value": source}},
+        ]
+    }
+
+
+def list_point_ids_by_source(
+    qdrant_url: str,
+    collection: str,
+    source: str,
+    *,
+    page_size: int = 256,
+) -> list[str]:
+    """Return point ids whose payload.source matches (for MemGraphRAG scrub)."""
+    base = qdrant_url.rstrip("/")
+    ids: list[str] = []
+    offset: Any = None
+    with httpx.Client(timeout=120.0) as client:
+        while True:
+            body: dict[str, Any] = {
+                "filter": _source_filter(source),
+                "limit": page_size,
+                "with_payload": False,
+                "with_vector": False,
+            }
+            if offset is not None:
+                body["offset"] = offset
+            response = client.post(
+                f"{base}/collections/{collection}/points/scroll",
+                json=body,
+            )
+            response.raise_for_status()
+            result = response.json().get("result") or {}
+            for point in result.get("points") or []:
+                point_id = point.get("id")
+                if point_id is not None:
+                    ids.append(str(point_id))
+            offset = result.get("next_page_offset")
+            if offset is None:
+                break
+    return ids
+
+
 def delete_by_source(qdrant_url: str, collection: str, source: str) -> None:
     """Remove all points whose payload.source matches."""
     with httpx.Client(timeout=120.0) as client:
         response = client.post(
             f"{qdrant_url.rstrip('/')}/collections/{collection}/points/delete",
-            json={
-                "filter": {
-                    "must": [
-                        {"key": "source", "match": {"value": source}},
-                    ]
-                }
-            },
+            json={"filter": _source_filter(source)},
         )
         response.raise_for_status()
 

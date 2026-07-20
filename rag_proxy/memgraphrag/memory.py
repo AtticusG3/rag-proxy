@@ -232,6 +232,55 @@ class ThreeLayerMemory:
         self._chunk_id_to_idx[chunk_id] = idx
         return idx
 
+    def remove_passages_by_chunk_ids(self, chunk_ids: set[str]) -> int:
+        """Drop passages for the given chunk ids and prune orphan facts/schemas.
+
+        Used when a source document is removed from Qdrant: MemGraphRAG passages
+        built from Qdrant use point ids as chunk_id.
+        """
+        if not chunk_ids:
+            return 0
+        remove_idxs = [
+            idx for idx, passage in self.passages.items() if passage.chunk_id in chunk_ids
+        ]
+        if not remove_idxs:
+            return 0
+        remove_set = set(remove_idxs)
+
+        for pi in remove_idxs:
+            passage = self.passages.pop(pi)
+            self._chunk_id_to_idx.pop(passage.chunk_id, None)
+
+        orphan_facts: list[int] = []
+        for fi, fact in list(self.facts.items()):
+            fact.passage_indices = [p for p in fact.passage_indices if p not in remove_set]
+            if not fact.passage_indices:
+                orphan_facts.append(fi)
+
+        orphan_set = set(orphan_facts)
+        for fi in orphan_facts:
+            fact = self.facts.pop(fi, None)
+            if fact is None:
+                continue
+            self._fact_key_to_idx.pop(fact.key, None)
+            schema = self.schemas.get(fact.schema_idx)
+            if schema is not None and fi in schema.fact_indices:
+                schema.fact_indices.remove(fi)
+
+        if orphan_set:
+            for passage in self.passages.values():
+                passage.fact_indices = [
+                    fi for fi in passage.fact_indices if fi not in orphan_set
+                ]
+
+        for si, schema in list(self.schemas.items()):
+            if schema.fact_indices:
+                continue
+            del self.schemas[si]
+            self._schema_key_to_idx.pop(schema.key, None)
+
+        return len(remove_idxs)
+
     # -- inter-layer queries ----------------------------------------------
 
     def get_facts_for_passage(self, passage_idx: int) -> list[FactNode]:

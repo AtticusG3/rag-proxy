@@ -198,6 +198,10 @@ class SettingsStore:
             if values.get("INGEST_CHUNK_CONCURRENCY", "").strip()
             else None,
             chunk_config=chunk_config_from_values(values),
+            memgraphrag_db_path=values.get(
+                "MEMGRAPHRAG_DB_PATH",
+                "/var/lib/rag_proxy/memgraphrag.sqlite",
+            ),
         )
 
     def apply_to_worker(self, worker: IngestWorker, *, zim_dir: str, upload_dir: str) -> None:

@@ -488,6 +488,19 @@ tbody td {
 tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
 tbody tr:last-child td { border-bottom: none; }
 
+.col-check {
+  width: 2.5rem;
+  text-align: center;
+  vertical-align: middle;
+}
+.col-check input[type="checkbox"],
+input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+}
+
 code, .mono {
   font-family: var(--font-mono);
   font-size: 0.82em;
