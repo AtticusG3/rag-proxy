@@ -132,6 +132,18 @@ async def restart_stalled_form(request: Request):
     return flash_redirect("/jobs", "Stalled files restarted.")
 
 
+@router.post("/preempt-form")
+async def preempt_form(request: Request):
+    worker = request.app.state.worker
+    count = worker.preempt_running()
+    if not count:
+        return flash_redirect("/jobs", "No running ingest to preempt.")
+    return flash_redirect(
+        "/jobs",
+        f"Preempted {count} running file(s). Worker is switching to the top of the queue.",
+    )
+
+
 @router.post("/sync-form")
 async def sync_form(request: Request):
     worker = request.app.state.worker

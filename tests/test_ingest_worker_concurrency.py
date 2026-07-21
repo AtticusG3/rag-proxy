@@ -127,6 +127,69 @@ def test_pause_aborts_in_flight_file_and_requeues() -> None:
         assert "paused" in (row.get("last_error") or "").lower()
 
 
+def test_preempt_switches_worker_to_top_of_queue() -> None:
+    """Preempt exists so a high-priority file does not wait hours behind a big ingest:
+    the running file must yield (back to pending, not failed) and the worker must
+    pick up the best pending file per priority order next."""
+    started_paths: list[str] = []
+    started = threading.Event()
+    release = threading.Event()
+
+    def blocking_process_file(
+        file_path: str,
+        config: IngestConfig,
+        *,
+        on_progress=None,
+        embed_limiter=None,
+        should_abort=None,
+    ) -> int:
+        started_paths.append(file_path)
+        started.set()
+        while not release.is_set():
+            if should_abort and should_abort():
+                from ingest.types import IngestAborted
+
+                raise IngestAborted("preempted")
+            time.sleep(0.02)
+        return 1
+
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = os.path.join(tmp, "admin.sqlite")
+        db = IngestDatabase(db_path)
+        slow_path = os.path.join(tmp, "slow.txt")
+        urgent_path = os.path.join(tmp, "urgent.txt")
+        for path in (slow_path, urgent_path):
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("content")
+        db.upsert_file_state(slow_path, status="pending", file_type="text")
+
+        worker = _worker(db, file_concurrency=1)
+        assert worker.preempt_running() == 0  # nothing running yet -> no-op
+
+        with patch("ingest.worker.process_file", side_effect=blocking_process_file):
+            worker.start()
+            assert started.wait(timeout=5.0)
+
+            db.upsert_file_state(urgent_path, status="pending", file_type="text")
+            db.set_file_priority(urgent_path, "high")
+            assert worker.preempt_running() == 1
+
+            deadline = time.time() + 5.0
+            while time.time() < deadline:
+                if urgent_path in started_paths:
+                    break
+                time.sleep(0.05)
+            release.set()
+            worker.stop()
+
+        assert started_paths[0] == slow_path
+        assert urgent_path in started_paths
+        slow_row = db.get_file_state(slow_path)
+        assert slow_row is not None
+        assert slow_row["status"] == "pending"
+        assert "preempt" in (slow_row.get("last_error") or "").lower()
+
+
 def test_stop_skips_sparse_flush_by_default() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         db_path = os.path.join(tmp, "admin.sqlite")

@@ -23,6 +23,11 @@
       <button type="submit" class="btn btn--ghost">Restart stalled ({{ stalled_count }})</button>
     </form>
     {% endif %}
+    {% if ingest_queue.running and ingest_queue.pending %}
+    <form method="post" action="/api/ingest/preempt-form">
+      <button type="submit" class="btn btn--ghost" title="Stop the file(s) currently embedding, re-queue them, and start the highest-priority pending file instead. No progress is lost beyond the interrupted batch.">Switch to top of queue</button>
+    </form>
+    {% endif %}
     {% if ingest_queue.missing %}
     <form method="post" action="/api/ingest/dismiss-missing-form">
       <button type="submit" class="btn btn--ghost">Remove missing ({{ ingest_queue.missing }})</button>

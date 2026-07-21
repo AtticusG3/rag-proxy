@@ -225,6 +225,7 @@ Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `documen
 The Jobs page (`/jobs`) lets operators reprioritise the queue and sort the file table:
 
 - **Priority** — per-file `high` / `mid` / `low` (default `mid`) via the per-row select. The worker claims files by priority first, then FIFO within a level (`ingest/db.py`), so a `high` file jumps ahead of older `mid`/`low` work without pausing what is already running.
+- **Switch to top of queue** — shown while something is running and files are pending. Posts to `POST /api/ingest/preempt-form`: the file(s) currently embedding abort cleanly, go back to `pending` at the end of their priority band, and the worker immediately claims the best pending file (`high` → `mid` → `low`). Chunk IDs are deterministic, so the interrupted file re-ingests later without duplicating points.
 - **Sortable columns** — click a header to sort by name, priority, status, size, or updated time. Sorting is server-side (`/jobs` and `GET /api/ingest/status` accept `sort`/`dir`); the live poller preserves the active sort while it refreshes.
 
 Priority changes post to `POST /api/ingest/priority-form`. The added **size** column shows on-disk file size alongside chunk progress.

@@ -608,8 +608,22 @@ button.danger:hover, .btn--danger:hover {
   border: 1px solid var(--color-border-subtle);
 }
 .pill--indexed, .pill--done, .pill--downloaded { background: var(--color-ok-soft); color: var(--color-ok); border-color: transparent; }
-.pill--running, .pill--downloading, .pill--queued, .pill--update_queued, .pill--pending {
+.pill--queued, .pill--update_queued, .pill--pending {
   background: var(--color-warn-soft); color: var(--color-warn); border-color: transparent;
+}
+.pill--running, .pill--downloading {
+  background: var(--color-info-soft);
+  color: var(--color-info);
+  border-color: rgba(126, 176, 232, 0.4);
+  gap: 0.4rem;
+}
+.pill--running::before, .pill--downloading::before {
+  content: "";
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--color-info);
+  animation: live-pulse 1.4s ease-in-out infinite;
 }
 .pill--stalled, .pill--failed { background: var(--color-danger-soft); color: var(--color-danger); border-color: transparent; }
 .pill--subscribed { background: var(--color-info-soft); color: var(--color-info); border-color: transparent; }
@@ -1214,5 +1228,7 @@ form.inline { display: inline; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .live-badge::before { animation: none; }
+  .live-badge::before,
+  .pill--running::before,
+  .pill--downloading::before { animation: none; }
 }
