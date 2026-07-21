@@ -71,6 +71,10 @@ class IngestDatabase:
                     created_at TEXT,
                     finished_at TEXT
                 );
+                CREATE TABLE IF NOT EXISTS ingest_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
                 """
             )
             self._ensure_ingest_columns(conn)
@@ -235,6 +239,62 @@ class IngestDatabase:
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def get_queue_order(self) -> tuple[str, str]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT key, value FROM ingest_meta
+                WHERE key IN ('queue_sort', 'queue_dir')
+                """
+            ).fetchall()
+        values = {str(row["key"]): str(row["value"]) for row in rows}
+        return values.get("queue_sort", "updated"), values.get("queue_dir", "desc")
+
+    def set_queue_order(self, sort: str, direction: str) -> None:
+        with self._conn() as conn:
+            conn.executemany(
+                """
+                INSERT INTO ingest_meta (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (("queue_sort", sort), ("queue_dir", direction)),
+            )
+
+    def claim_file_if_pending(self, file_path: str) -> dict[str, Any] | None:
+        """Atomically claim a specific file if it is still pending."""
+        now = _utc_now()
+        with self._conn() as conn:
+            if _sqlite_supports_returning():
+                row = conn.execute(
+                    """
+                    UPDATE kb_ingest_state
+                    SET status = 'running', started_at = ?,
+                        last_error = NULL, updated_at = ?
+                    WHERE file_path = ? AND status IN ('pending', 'queued')
+                    RETURNING *
+                    """,
+                    (now, now, file_path),
+                ).fetchone()
+                return dict(row) if row else None
+
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                """
+                UPDATE kb_ingest_state
+                SET status = 'running', started_at = ?,
+                    last_error = NULL, updated_at = ?
+                WHERE file_path = ? AND status IN ('pending', 'queued')
+                """,
+                (now, now, file_path),
+            )
+            if cursor.rowcount == 0:
+                return None
+            row = conn.execute(
+                "SELECT * FROM kb_ingest_state WHERE file_path = ?",
+                (file_path,),
+            ).fetchone()
+        return dict(row) if row else None
 
     def claim_pending_file(self) -> dict[str, Any] | None:
         """Atomically claim one pending file (status -> running)."""

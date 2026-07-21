@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from ingest.db import DEFAULT_PRIORITY
+from ingest.queue_order import order_queue_rows
 from ingest.stall import is_stalled, seconds_since_update
 
 from rag_admin.embed_throughput import (
@@ -18,10 +19,6 @@ from rag_admin.embed_throughput import (
 SORT_KEYS = ("name", "priority", "status", "size", "updated")
 DEFAULT_SORT = "updated"
 DEFAULT_SORT_DIR = "desc"
-
-# Lower rank = higher priority. Keep in sync with ingest.db._PRIORITY_ORDER_SQL.
-_PRIORITY_RANK = {"high": 0, "mid": 1, "low": 2}
-
 
 def truthy_query_flag(value: str | None) -> bool:
     return (value or "").strip().lower() in ("1", "true", "yes", "on")
@@ -103,20 +100,9 @@ def sort_file_rows(
     """Order enriched file rows for display. Falls back to defaults on bad input."""
     if sort not in SORT_KEYS:
         sort = DEFAULT_SORT
-    reverse = direction != "asc"
-
-    def key(row: dict[str, Any]) -> Any:
-        if sort == "name":
-            return (row.get("file_name") or "").lower()
-        if sort == "priority":
-            return _PRIORITY_RANK.get(row.get("priority") or DEFAULT_PRIORITY, 1)
-        if sort == "status":
-            return str(row.get("display_status") or row.get("status") or "")
-        if sort == "size":
-            return row.get("file_size") or 0
-        return str(row.get("updated_at") or "")
-
-    return sorted(rows, key=key, reverse=reverse)
+    if direction not in ("asc", "desc"):
+        direction = DEFAULT_SORT_DIR
+    return order_queue_rows(rows, sort=sort, direction=direction)
 
 
 def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int | None]:

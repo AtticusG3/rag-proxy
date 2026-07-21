@@ -111,6 +111,7 @@ async def jobs_page(request: Request) -> HTMLResponse:
     sort, sort_dir = resolve_sort(
         request.query_params.get("sort"), request.query_params.get("dir")
     )
+    db.ingest.set_queue_order(sort, sort_dir)
     show_indexed = truthy_query_flag(request.query_params.get("show_indexed"))
     files = enrich_file_rows(
         db.ingest.list_file_states(order="updated_desc"),

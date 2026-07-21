@@ -115,6 +115,25 @@ def test_sort_file_rows_by_size_descending() -> None:
     assert [r["file_name"] for r in ordered] == ["c", "a", "b"]
 
 
+def test_sort_file_rows_always_puts_priority_before_user_sort() -> None:
+    """The displayed queue and worker queue share priority-first ordering."""
+    rows = [
+        {"file_name": "small-mid", "priority": "mid", "file_size": 1},
+        {"file_name": "large-high", "priority": "high", "file_size": 500},
+        {"file_name": "large-mid", "priority": "mid", "file_size": 100},
+        {"file_name": "small-high", "priority": "high", "file_size": 5},
+        {"file_name": "tiny-low", "priority": "low", "file_size": 0},
+    ]
+    ordered = sort_file_rows(rows, sort="size", direction="asc")
+    assert [r["file_name"] for r in ordered] == [
+        "small-high",
+        "large-high",
+        "small-mid",
+        "large-mid",
+        "tiny-low",
+    ]
+
+
 def test_sort_file_rows_by_name_is_case_insensitive() -> None:
     rows = [
         {"file_name": "Zebra"},

@@ -24,6 +24,7 @@ from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.pdf_reader import iter_pdf_pages
 from ingest.pipeline import make_embed_semaphore, run_ingest_pipeline
 from ingest.qdrant_writer import delete_by_source, list_point_ids_by_source
+from ingest.queue_order import order_queue_rows
 from ingest.scanner import scan_storage
 from ingest.types import determine_file_type, IngestAborted
 from ingest.zim_reader import iter_zim_articles
@@ -224,7 +225,7 @@ class IngestWorker:
         self._stop = threading.Event()
         self._abort = threading.Event()
         self._paused = False
-        self._preempt_gen = 0
+        self._preempt_paths: set[str] = set()
         self._workers: list[tuple[threading.Thread, threading.Event]] = []
         self._worker_seq = 0
         self._embed_limiter = make_embed_semaphore(config.embed_concurrency)
@@ -437,16 +438,47 @@ class IngestWorker:
         Workers then claim the current top of the queue (high -> mid -> low).
         Returns the number of running files that were told to yield.
         """
-        running = len(self.db.list_running_files())
-        if running == 0:
+        running = self.db.list_running_files()
+        if not running:
             return 0
-        self._preempt_gen += 1
+        with self._lock:
+            self._preempt_paths.update(str(row["file_path"]) for row in running)
         job_id = str(uuid.uuid4())
-        message = f"preempted {running} running file(s); switching to top of queue"
+        message = f"preempted {len(running)} running file(s); switching to top of queue"
         self.db.create_job(job_id, job_type="preempt", message=message)
         self.db.update_job(job_id, status="done", message=message)
-        log.info("ingest preempt requested: %s running file(s)", running)
-        return running
+        log.info("ingest preempt requested: %s running file(s)", len(running))
+        return len(running)
+
+    def preempt_for_high_priority(self, file_path: str) -> int:
+        """Yield running work when a pending file becomes high."""
+        target = self.db.get_file_state(file_path)
+        if not target or target.get("status") not in ("pending", "queued"):
+            return 0
+        running = self.db.list_running_files()
+        if not running:
+            return 0
+        with self._lock:
+            self._preempt_paths.update(str(row["file_path"]) for row in running)
+        log.info(
+            "ingest preempt requested for high-priority file %s: %d running file(s)",
+            file_path,
+            len(running),
+        )
+        return len(running)
+
+    def _claim_next_pending(self) -> dict[str, object] | None:
+        sort, direction = self.db.get_queue_order()
+        rows = [
+            row
+            for row in self.db.list_file_states()
+            if row.get("status") in ("pending", "queued")
+        ]
+        for row in order_queue_rows(rows, sort=sort, direction=direction):
+            claimed = self.db.claim_file_if_pending(str(row["file_path"]))
+            if claimed is not None:
+                return claimed
+        return None
 
     def _run_loop(self, local_stop: threading.Event) -> None:
         while not self._stop.is_set() and not local_stop.is_set():
@@ -454,7 +486,7 @@ class IngestWorker:
                 time.sleep(1.0)
                 continue
             self._fail_stalled_running()
-            claimed = self.db.claim_pending_file()
+            claimed = self._claim_next_pending()
             if claimed is None:
                 self._sparse.flush()
                 time.sleep(1.0)
@@ -464,9 +496,8 @@ class IngestWorker:
                 log.warning("ingest file missing, removing state: %s", file_path)
                 self.remove_file_from_index(file_path)
                 continue
-            preempt_gen = self._preempt_gen
             try:
-                self._process_one(file_path, preempt_gen=preempt_gen)
+                self._process_one(file_path)
             except IngestAborted:
                 if self._stop.is_set():
                     return
@@ -480,9 +511,13 @@ class IngestWorker:
                     status="pending",
                     last_error=reason,
                 )
+                with self._lock:
+                    self._preempt_paths.discard(file_path)
                 log.info("ingest aborted mid-file (%s), re-queued: %s", reason, file_path)
             except Exception as exc:
                 log.exception("ingest failed for %s", file_path)
+                with self._lock:
+                    self._preempt_paths.discard(file_path)
                 self.db.update_file_state(
                     file_path,
                     status="failed",
@@ -490,7 +525,7 @@ class IngestWorker:
                     finished_at=_utc_now(),
                 )
 
-    def _process_one(self, file_path: str, *, preempt_gen: int | None = None) -> None:
+    def _process_one(self, file_path: str) -> None:
         urls = self.config.embed_urls or parse_ingest_embed_urls(
             embed_url=self.config.embed_url
         )
@@ -504,7 +539,8 @@ class IngestWorker:
         def should_abort() -> bool:
             if self._should_abort():
                 return True
-            return preempt_gen is not None and self._preempt_gen != preempt_gen
+            with self._lock:
+                return file_path in self._preempt_paths
 
         count = process_file(
             file_path,
@@ -515,6 +551,7 @@ class IngestWorker:
         )
 
         with self._lock:
+            self._preempt_paths.discard(file_path)
             self.db.update_file_state(
                 file_path,
                 status="indexed",

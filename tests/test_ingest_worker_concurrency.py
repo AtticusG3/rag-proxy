@@ -172,7 +172,7 @@ def test_preempt_switches_worker_to_top_of_queue() -> None:
 
             db.upsert_file_state(urgent_path, status="pending", file_type="text")
             db.set_file_priority(urgent_path, "high")
-            assert worker.preempt_running() == 1
+            assert worker.preempt_for_high_priority(urgent_path) == 1
 
             deadline = time.time() + 5.0
             while time.time() < deadline:
@@ -181,6 +181,8 @@ def test_preempt_switches_worker_to_top_of_queue() -> None:
                 time.sleep(0.05)
             release.set()
             worker.stop()
+            for thread, _ in worker._workers:
+                thread.join(timeout=5.0)
 
         assert started_paths[0] == slow_path
         assert urgent_path in started_paths
@@ -188,6 +190,30 @@ def test_preempt_switches_worker_to_top_of_queue() -> None:
         assert slow_row is not None
         assert slow_row["status"] == "pending"
         assert "preempt" in (slow_row.get("last_error") or "").lower()
+
+
+def test_worker_claims_priority_first_then_persisted_ui_sort() -> None:
+    """The first pending row shown by the UI must be the worker's next claim."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db = IngestDatabase(os.path.join(tmp, "admin.sqlite"))
+        paths = {
+            "small-mid": os.path.join(tmp, "small-mid.txt"),
+            "large-high": os.path.join(tmp, "large-high.txt"),
+            "small-high": os.path.join(tmp, "small-high.txt"),
+        }
+        sizes = {"small-mid": 1, "large-high": 100, "small-high": 5}
+        for name, path in paths.items():
+            with open(path, "wb") as handle:
+                handle.write(b"x" * sizes[name])
+            db.upsert_file_state(path, status="pending", file_type="text")
+        db.set_file_priority(paths["large-high"], "high")
+        db.set_file_priority(paths["small-high"], "high")
+        db.set_queue_order("size", "asc")
+
+        claimed = _worker(db, file_concurrency=1)._claim_next_pending()
+
+        assert claimed is not None
+        assert claimed["file_path"] == paths["small-high"]
 
 
 def test_stop_skips_sparse_flush_by_default() -> None:

@@ -119,6 +119,26 @@ def test_set_file_priority_rejects_invalid_value() -> None:
     raise AssertionError("expected ValueError for invalid priority")
 
 
+def test_queue_order_persists_in_database() -> None:
+    db, _tmp = _db()
+    assert db.get_queue_order() == ("updated", "desc")
+    db.set_queue_order("size", "asc")
+    assert db.get_queue_order() == ("size", "asc")
+
+
+def test_claim_file_if_pending_claims_only_requested_pending_file() -> None:
+    db, _tmp = _db()
+    db.upsert_file_state("/data/a.txt", status="pending", file_type="text")
+    db.upsert_file_state("/data/b.txt", status="pending", file_type="text")
+
+    claimed = db.claim_file_if_pending("/data/b.txt")
+
+    assert claimed is not None
+    assert claimed["file_path"] == "/data/b.txt"
+    assert db.claim_file_if_pending("/data/b.txt") is None
+    assert db.get_file_state("/data/a.txt")["status"] == "pending"
+
+
 def test_sqlite_returning_support_matches_runtime_version() -> None:
     parts = sqlite3.sqlite_version.split(".")
     major = int(parts[0])

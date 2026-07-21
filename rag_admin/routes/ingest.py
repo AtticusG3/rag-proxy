@@ -51,6 +51,7 @@ async def ingest_status(request: Request) -> JSONResponse:
     sort, sort_dir = resolve_sort(
         request.query_params.get("sort"), request.query_params.get("dir")
     )
+    db.ingest.set_queue_order(sort, sort_dir)
     show_indexed = truthy_query_flag(request.query_params.get("show_indexed"))
     files = enrich_file_rows(
         db.ingest.list_file_states(order="updated_desc"),
@@ -115,6 +116,14 @@ async def set_priority_form(
         target = f"/jobs?{query}"
     if not updated:
         return flash_redirect(target, f"{name} is not in the ingest queue.", level="error")
+    preempted = 0
+    if priority == "high":
+        preempted = request.app.state.worker.preempt_for_high_priority(file_path)
+    if preempted:
+        return flash_redirect(
+            target,
+            f"Priority for {name} set to high. Switching immediately.",
+        )
     return flash_redirect(target, f"Priority for {name} set to {priority}.")
 
 
@@ -133,13 +142,20 @@ async def restart_stalled_form(request: Request):
 
 
 @router.post("/preempt-form")
-async def preempt_form(request: Request):
+async def preempt_form(
+    request: Request,
+    sort: str = Form(default=""),
+    dir: str = Form(default=""),
+):
     worker = request.app.state.worker
+    sort, sort_dir = resolve_sort(sort, dir)
+    request.app.state.db.ingest.set_queue_order(sort, sort_dir)
+    target = f"/jobs?{urlencode({'sort': sort, 'dir': sort_dir})}"
     count = worker.preempt_running()
     if not count:
-        return flash_redirect("/jobs", "No running ingest to preempt.")
+        return flash_redirect(target, "No running ingest to preempt.")
     return flash_redirect(
-        "/jobs",
+        target,
         f"Preempted {count} running file(s). Worker is switching to the top of the queue.",
     )
 
