@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -84,6 +85,54 @@ def _read_text_file(path: str) -> tuple[str, str]:
     return title, text
 
 
+def _iter_corpus_jsonl_records(path: str) -> Iterator[tuple[str, str, str]]:
+    """Yield (title, source_url, text) for each rag-scrape-pipeline JSONL line."""
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        for line_no, raw in enumerate(handle, 1):
+            line = raw.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                log.warning("skip invalid json at %s:%d: %s", path, line_no, exc)
+                continue
+            if not isinstance(record, dict):
+                log.warning("skip non-object json at %s:%d", path, line_no)
+                continue
+            title = str(record.get("title") or "").strip()
+            source_url = str(record.get("source_url") or "").strip()
+            text = str(record.get("text") or "").strip()
+            if not text:
+                continue
+            if not source_url:
+                source_url = f"{path}#L{line_no}"
+            if not title:
+                title = source_url
+            yield title, source_url, text
+
+
+def _delete_file_points(file_path: str, config: IngestConfig) -> None:
+    """Remove Qdrant points for one ingest file (path or per-record source_url)."""
+    if determine_file_type(file_path) == "corpus_jsonl":
+        seen: set[str] = set()
+        for _title, source_url, _text in _iter_corpus_jsonl_records(file_path):
+            if source_url in seen:
+                continue
+            seen.add(source_url)
+            delete_by_source(
+                config.qdrant_url,
+                config.qdrant_collection,
+                source_url,
+            )
+        return
+    delete_by_source(
+        config.qdrant_url,
+        config.qdrant_collection,
+        file_path,
+    )
+
+
 def _pdf_page_carry(text: str) -> str:
     """Last paragraph from a page for cross-page chunk overlap."""
     paragraphs = [piece.strip() for piece in text.split("\n\n") if piece.strip()]
@@ -128,6 +177,16 @@ def _iter_chunks_for_file(
             for piece in chunk_text(text_for_chunk, context=chunk_ctx, config=chunk_config):
                 yield page_title, source, piece
             carry = _pdf_page_carry(page_text)
+        return
+
+    if file_type == "corpus_jsonl":
+        record_count = 0
+        for title, source_url, text in _iter_corpus_jsonl_records(file_path):
+            if max_articles and record_count >= max_articles:
+                break
+            for piece in chunk_text(text, context=chunk_ctx, config=chunk_config):
+                yield title, source_url, piece
+            record_count += 1
         return
 
     raise ValueError(f"Unsupported file type for {file_path}")
@@ -368,11 +427,7 @@ class IngestWorker:
                 file_type=determine_file_type(file_path),
             )
             return
-        delete_by_source(
-            self.config.qdrant_url,
-            self.config.qdrant_collection,
-            file_path,
-        )
+        _delete_file_points(file_path, self.config)
         if not self.db.retry_file_state(file_path, reset_chunks=True):
             self.db.upsert_file_state(
                 file_path,
@@ -604,11 +659,7 @@ class IngestWorker:
     def remove_file_from_index(self, file_path: str) -> None:
         """Fully drop a document: MemGraphRAG, dense Qdrant, disk, ingest state, BM25."""
         self._scrub_memgraphrag_for_source(file_path)
-        delete_by_source(
-            self.config.qdrant_url,
-            self.config.qdrant_collection,
-            file_path,
-        )
+        _delete_file_points(file_path, self.config)
         if os.path.isfile(file_path):
             os.remove(file_path)
         part_path = f"{file_path}.part"
@@ -623,11 +674,26 @@ class IngestWorker:
         if not db_path or not os.path.isfile(db_path):
             return
         try:
-            point_ids = list_point_ids_by_source(
-                self.config.qdrant_url,
-                self.config.qdrant_collection,
-                file_path,
-            )
+            point_ids: list[str] = []
+            if determine_file_type(file_path) == "corpus_jsonl":
+                seen: set[str] = set()
+                for _title, source_url, _text in _iter_corpus_jsonl_records(file_path):
+                    if source_url in seen:
+                        continue
+                    seen.add(source_url)
+                    point_ids.extend(
+                        list_point_ids_by_source(
+                            self.config.qdrant_url,
+                            self.config.qdrant_collection,
+                            source_url,
+                        )
+                    )
+            else:
+                point_ids = list_point_ids_by_source(
+                    self.config.qdrant_url,
+                    self.config.qdrant_collection,
+                    file_path,
+                )
             if not point_ids:
                 return
             from rag_proxy.memgraphrag.memory import load_memory

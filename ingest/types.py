@@ -20,11 +20,13 @@ SKIP_NAMES = frozenset({"kiwix-library.xml"})
 
 
 def determine_file_type(path: str | Path) -> str:
-    """Return zim, text, pdf, or unknown."""
+    """Return zim, text, pdf, corpus_jsonl, or unknown."""
     p = Path(path)
     if p.name in SKIP_NAMES:
         return "unknown"
     suffix = p.suffix.lower()
+    if suffix == ".jsonl" and "corpus" in p.stem.lower():
+        return "corpus_jsonl"
     if suffix in EMBEDDABLE_SUFFIXES:
         return EMBEDDABLE_SUFFIXES[suffix]
     return "unknown"
