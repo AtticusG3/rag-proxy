@@ -85,8 +85,71 @@ def _read_text_file(path: str) -> tuple[str, str]:
     return title, text
 
 
-def _iter_corpus_jsonl_records(path: str) -> Iterator[tuple[str, str, str]]:
-    """Yield (title, source_url, text) for each rag-scrape-pipeline JSONL line."""
+_CORPUS_PAYLOAD_KEYS = (
+    "doc_id",
+    "citation",
+    "court",
+    "year",
+    "topics",
+    "cites",
+    "legislation",
+    "sections",
+    "judge",
+    "date",
+    "usage",
+)
+
+
+def _corpus_chunk_prefix(record: dict) -> str:
+    """Return chunk_prefix, or rebuild from citation/court/year/topics."""
+    prefix = str(record.get("chunk_prefix") or "").strip()
+    if prefix:
+        return prefix
+    citation = str(record.get("citation") or "").strip()
+    if not citation:
+        return ""
+    court = str(record.get("court") or "").strip()
+    year = record.get("year")
+    year_s = str(year).strip() if year is not None else ""
+    bits = [citation, f"{court} {year_s}".strip()]
+    topics = record.get("topics") or []
+    if isinstance(topics, list) and topics:
+        bits.append("Topics: " + "; ".join(str(t) for t in topics[:8]))
+    return " | ".join(b for b in bits if b)
+
+
+def _corpus_title_and_source(record: dict, *, file_path: str) -> tuple[str, str]:
+    """Title prefers citation; source prefers source_url for sibling expansion."""
+    citation = str(record.get("citation") or "").strip()
+    title = (
+        citation
+        or str(record.get("title") or "").strip()
+        or str(record.get("path") or "").strip()
+        or Path(file_path).stem
+    )
+    source = (
+        str(record.get("source_url") or "").strip()
+        or str(record.get("doc_id") or "").strip()
+        or citation
+        or str(record.get("path") or "").strip()
+        or file_path
+    )
+    return title, source
+
+
+def _corpus_payload_extra(record: dict) -> dict:
+    """Optional AustLII/scrape fields for Qdrant filters and MemGraphRAG."""
+    extra: dict = {}
+    for key in _CORPUS_PAYLOAD_KEYS:
+        val = record.get(key)
+        if val is None or val == "" or val == []:
+            continue
+        extra[key] = val
+    return extra
+
+
+def _iter_corpus_jsonl_records(path: str) -> Iterator[tuple[str, str, str, dict]]:
+    """Yield (title, source, text, record) for each rag-scrape-pipeline JSONL line."""
     with open(path, encoding="utf-8", errors="replace") as handle:
         for line_no, raw in enumerate(handle, 1):
             line = raw.strip()
@@ -100,23 +163,18 @@ def _iter_corpus_jsonl_records(path: str) -> Iterator[tuple[str, str, str]]:
             if not isinstance(record, dict):
                 log.warning("skip non-object json at %s:%d", path, line_no)
                 continue
-            title = str(record.get("title") or "").strip()
-            source_url = str(record.get("source_url") or "").strip()
             text = str(record.get("text") or "").strip()
             if not text:
                 continue
-            if not source_url:
-                source_url = f"{path}#L{line_no}"
-            if not title:
-                title = source_url
-            yield title, source_url, text
+            title, source = _corpus_title_and_source(record, file_path=path)
+            yield title, source, text, record
 
 
 def _delete_file_points(file_path: str, config: IngestConfig) -> None:
     """Remove Qdrant points for one ingest file (path or per-record source_url)."""
     if determine_file_type(file_path) == "corpus_jsonl":
         seen: set[str] = set()
-        for _title, source_url, _text in _iter_corpus_jsonl_records(file_path):
+        for _title, source_url, _text, _record in _iter_corpus_jsonl_records(file_path):
             if source_url in seen:
                 continue
             seen.add(source_url)
@@ -146,8 +204,8 @@ def _iter_chunks_for_file(
     *,
     max_articles: int,
     chunk_config: ChunkConfig,
-) -> Iterator[tuple[str, str, str]]:
-    """Yield (title, source, chunk_text) without loading whole ZIMs into RAM."""
+) -> Iterator[tuple]:
+    """Yield (title, source, chunk_text[, extra]) without loading whole ZIMs into RAM."""
     file_type = determine_file_type(file_path)
     source = file_path
     chunk_ctx = ChunkContext.from_path(file_path, file_type)
@@ -181,11 +239,17 @@ def _iter_chunks_for_file(
 
     if file_type == "corpus_jsonl":
         record_count = 0
-        for title, source_url, text in _iter_corpus_jsonl_records(file_path):
+        for title, source_url, text, record in _iter_corpus_jsonl_records(file_path):
             if max_articles and record_count >= max_articles:
                 break
+            prefix = _corpus_chunk_prefix(record)
+            extra = _corpus_payload_extra(record)
             for piece in chunk_text(text, context=chunk_ctx, config=chunk_config):
-                yield title, source_url, piece
+                chunk = f"{prefix}\n\n{piece}" if prefix else piece
+                if extra:
+                    yield title, source_url, chunk, extra
+                else:
+                    yield title, source_url, chunk
             record_count += 1
         return
 
@@ -677,7 +741,9 @@ class IngestWorker:
             point_ids: list[str] = []
             if determine_file_type(file_path) == "corpus_jsonl":
                 seen: set[str] = set()
-                for _title, source_url, _text in _iter_corpus_jsonl_records(file_path):
+                for _title, source_url, _text, _record in _iter_corpus_jsonl_records(
+                    file_path
+                ):
                     if source_url in seen:
                         continue
                     seen.add(source_url)

@@ -6,7 +6,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Protocol
+from typing import Any, Protocol, Union
 
 import httpx
 
@@ -65,12 +65,14 @@ def make_embed_semaphore(concurrency: int) -> threading.Semaphore:
 
 
 UpdateStateFn = Callable[..., None]
-ChunkBatch = list[tuple[str, str, str]]
+# (title, source, text) or (title, source, text, extra_payload)
+ChunkRow = Union[tuple[str, str, str], tuple[str, str, str, dict[str, Any]]]
+ChunkBatch = list[ChunkRow]
 PendingBatch = tuple[ChunkBatch, int, Future[list[list[float]]]]
 
 
 def chunk_batches(
-    chunks: Iterator[tuple[str, str, str]],
+    chunks: Iterator[ChunkRow],
     batch_size: int,
 ) -> Iterator[ChunkBatch]:
     batch: ChunkBatch = []
@@ -92,16 +94,20 @@ def _upsert_batch(
     collection: str,
     qdrant_client: httpx.Client,
 ) -> int:
-    points = [
-        build_point(
-            text=text,
-            source=source,
-            title=title,
-            chunk_idx=start_chunk_idx + i,
-            embedding=embeddings[i],
+    points = []
+    for i, item in enumerate(batch):
+        title, source, text = item[0], item[1], item[2]
+        extra = item[3] if len(item) > 3 else None
+        points.append(
+            build_point(
+                text=text,
+                source=source,
+                title=title,
+                chunk_idx=start_chunk_idx + i,
+                embedding=embeddings[i],
+                extra=extra if isinstance(extra, dict) else None,
+            )
         )
-        for i, (title, source, text) in enumerate(batch)
-    ]
     upsert_points(qdrant_url, collection, points, client=qdrant_client)
     return len(points)
 
@@ -161,7 +167,7 @@ def _drain_ready_upserts(
 
 
 def run_ingest_pipeline(
-    chunks: Iterator[tuple[str, str, str]],
+    chunks: Iterator[ChunkRow],
     *,
     embed_url: str = "",
     embed_urls: list[str] | None = None,

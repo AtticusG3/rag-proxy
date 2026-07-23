@@ -50,3 +50,9 @@ def test_plain_pdf_without_academic_markers_uses_sentence():
     ctx = ChunkContext.from_path("/uploads/manual.pdf", "pdf")
     text = "Chapter 1\n\nThis manual explains the product. It is not a research paper."
     assert select_chunk_strategy(ctx, text) is ChunkStrategy.SENTENCE
+
+
+def test_corpus_jsonl_file_type_selects_recursive():
+    ctx = ChunkContext.from_path("/uploads/austlii.corpus.jsonl", "corpus_jsonl")
+    text = "This is a judgment without markdown headers but must stay recursive."
+    assert select_chunk_strategy(ctx, text) is ChunkStrategy.RECURSIVE

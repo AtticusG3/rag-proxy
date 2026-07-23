@@ -111,6 +111,10 @@ def select_chunk_strategy(context: ChunkContext, text: str) -> ChunkStrategy:
     if not sample:
         return ChunkStrategy.RECURSIVE
 
+    # Scrape-pipeline corpus.jsonl (AustLII ## [N] reasons, paragraph breaks).
+    if context.file_type == "corpus_jsonl":
+        return ChunkStrategy.RECURSIVE
+
     if _looks_like_code(sample):
         return ChunkStrategy.CODE
 
