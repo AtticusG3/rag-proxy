@@ -281,7 +281,15 @@ python scripts/catalog_weekly_update.py
 
 ## MCP retrieval tools
 
-`sidecars/mcp_rag/` exposes MCP tools (e.g. `search_knowledge_base`) over the hybrid stack for IDE integration — separate from the HTTP proxy path.
+`sidecars/mcp_rag/` exposes MCP tools for IDE/agent integration (Hermes, Cursor, OpenClaw) — separate from the HTTP proxy path:
+
+| Tool | Role |
+| --- | --- |
+| `search_knowledge_base` | Curated KB read. Modes: `passages` (default), `dense`, `sparse`, `facts` (MemGraphRAG). `min_score` gates the dense leg only. |
+| `knowledge_base_status` | Qdrant / sparse / embed / MemGraph health |
+| `memory_store` / `memory_recall` / `memory_forget` | Personal agent notes in `MCP_PERSONAL_STORE_PATH` (SQLite). **Not** Qdrant ingest. |
+
+Defaults match the proxy (`EMBED_URL` `:8089`, hybrid/rerank off until enabled). Keep `MCP_HOST=127.0.0.1`. See [`sidecars/mcp_rag/README.md`](../sidecars/mcp_rag/README.md).
 
 ## Related docs
 

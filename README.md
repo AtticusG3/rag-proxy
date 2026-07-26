@@ -117,7 +117,7 @@ Full reference: [Configuration](docs/configuration.md).
 | **Cognitive pipeline (optional)** | Tiered stages with latency budgets and per-stage flags |
 | **Hybrid retrieval** | Dense + BM25 sparse merge when sidecars are enabled |
 | **rag_admin + ingest** | Web UI and worker to index ZIM/PDF/text into Qdrant |
-| **MCP tools** | `search_knowledge_base` for IDE integration (`sidecars/mcp_rag/`) |
+| **MCP tools** | KB search (+ `facts` mode) and personal `memory_*` (`sidecars/mcp_rag/`) |
 | **Observability** | Request traces, JSON logs, Prometheus `GET /metrics` |
 
 Per-request overrides (`x-rag-mode`, `x-no-cache`, `x-conversation-id`): [Headers and clients](docs/headers-and-clients.md).

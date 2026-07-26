@@ -28,7 +28,7 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `scripts/build_memgraphrag_index.py` | Offline indexing: chunk → entity/rel extraction → ontology filter → memory build |
 | `tests/` | Offline pytest |
 | `sidecars/` | CPU rerank + BM25 sparse HTTP sidecars (Docker `cognitive` profile) |
-| `sidecars/mcp_rag/` | MCP retrieval tools (`search_knowledge_base`) over hybrid stack |
+| `sidecars/mcp_rag/` | MCP tools: KB search (+ MemGraph `facts` mode) and personal `memory_*` store |
 | `rag_admin/` | Content Explorer UI, catalog subscriptions, ingest queue |
 | `rag_admin/settings_schema.py` | Settings UI field groups and defaults |
 | `rag_admin/settings_store.py` | Persist Settings to env files + admin SQLite |

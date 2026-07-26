@@ -307,7 +307,7 @@ Not loaded by `rag_proxy/config.py`. Set in Docker compose or sidecar unit env.
 | --- | --- | --- |
 | Rerank (`sidecars/rerank/`) | `RERANK_MODEL`, `RERANK_HOST`, `RERANK_PORT` | `8095` |
 | Sparse BM25 (`sidecars/sparse/`) | `SPARSE_HOST`, `SPARSE_PORT`, `SPARSE_REFRESH_SEC`, `SPARSE_SCROLL_BATCH`, `SPARSE_MAX_POINTS` | `8096` |
-| MCP RAG (`sidecars/mcp_rag/`) | `MCP_HOST`, `MCP_PORT`, `MCP_TRANSPORT`, `MCP_RAG_USER_AGENT` | `9001` |
+| MCP RAG (`sidecars/mcp_rag/`) | `MCP_HOST`, `MCP_PORT`, `MCP_TRANSPORT`, `MCP_RAG_USER_AGENT`, `MCP_PERSONAL_STORE_PATH` | `9001` |
 | TurboVec dense (`sidecars/turbovec/`) | `TURBOVEC_HOST`, `TURBOVEC_PORT`, `TURBOVEC_DIM`, `TURBOVEC_BIT_WIDTH`, `TURBOVEC_INDEX_PATH`, `TURBOVEC_SCROLL_BATCH`, `TURBOVEC_AUTO_SAVE` | `8097` |
 
 TurboVec `TURBOVEC_AUTO_SAVE` defaults to `true` (save after each mutating request). Set `false` during bulk ingest dual-write; finish with `POST /save`. See [TurboVec rollout](#turbovec-rollout-cut-qdrant-ram).

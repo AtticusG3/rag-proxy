@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MCP_RAG = REPO_ROOT / "sidecars" / "mcp_rag"
 sys.path.insert(0, str(REPO_ROOT))
@@ -17,6 +19,7 @@ from retrieve import (
     format_chunks_for_agent,
     hybrid_retrieve,
     search_knowledge_base,
+    search_memgraph_facts,
 )
 
 
@@ -42,6 +45,7 @@ def test_format_chunks_empty() -> None:
 
 
 def test_search_knowledge_base_pipeline() -> None:
+    """Hybrid search must run retrieve then rerank so agents get ranked passages."""
     settings = _settings()
     chunk = RetrievedChunk(
         chunk_id="1",
@@ -58,6 +62,27 @@ def test_search_knowledge_base_pipeline() -> None:
     rerank.assert_called_once()
     assert len(result) == 1
     assert "asyncio" in format_chunks_for_agent(result)
+
+
+def test_search_knowledge_base_facts_mode_skips_hybrid() -> None:
+    """mode=facts must use MemGraph scoring, not hybrid passage retrieve."""
+    settings = _settings()
+    fact = RetrievedChunk(
+        chunk_id="fact-1",
+        text="(python, has, asyncio)",
+        score=0.8,
+        source="memgraphrag",
+        title="(python, has, asyncio)",
+        retrieval="facts",
+    )
+    with patch("retrieve.search_memgraph_facts", return_value=[fact]) as facts:
+        with patch("retrieve.hybrid_retrieve") as hybrid:
+            result = search_knowledge_base(
+                "asyncio", top_k=3, mode="facts", settings=settings
+            )
+    facts.assert_called_once()
+    hybrid.assert_not_called()
+    assert result[0].retrieval == "facts"
 
 
 def test_hybrid_dense_only_when_disabled() -> None:
@@ -80,6 +105,32 @@ def test_hybrid_dense_only_when_disabled() -> None:
     dense.assert_called_once()
     assert len(chunks) == 1
     assert chunks[0].retrieval == "dense"
+
+
+def test_mode_sparse_calls_sparse_only() -> None:
+    """mode=sparse must not embed/dense-search — BM25 sidecar only."""
+    settings = _settings()
+    with patch(
+        "retrieve.sparse_search",
+        return_value=[
+            {
+                "id": "s1",
+                "score": 12.0,
+                "payload": {
+                    "text": "sparse hit",
+                    "title": "Sparse Title",
+                    "source": "/zim/doc.zim",
+                },
+            }
+        ],
+    ) as sparse:
+        with patch("retrieve.embed_query") as embed:
+            chunks = hybrid_retrieve(settings, "query", top_k=2, mode="sparse")
+    sparse.assert_called_once()
+    embed.assert_not_called()
+    assert chunks[0].title == "Sparse Title"
+    assert chunks[0].source == "/zim/doc.zim"
+    assert chunks[0].retrieval == "sparse"
 
 
 def test_hybrid_dense_only_embed_dense_httpx_sequence() -> None:
@@ -196,3 +247,37 @@ def test_hybrid_mode_single_embed_dense_httpx() -> None:
         "title": "Dense",
         "retrieval": "dense",
     }
+
+
+def test_search_memgraph_facts_fail_open_missing_db(tmp_path: Path) -> None:
+    """Facts mode must return empty when the MemGraphRAG SQLite file is absent."""
+    settings = _settings(memgraphrag_db_path=str(tmp_path / "missing.sqlite"))
+    assert search_memgraph_facts("anything", settings=settings) == []
+
+
+def test_search_memgraph_facts_scores_triples() -> None:
+    """Facts mode returns scored triples so agents can use graph memory without PPR."""
+    settings = _settings(memgraphrag_db_path="/tmp/fake.sqlite")
+
+    class FakeFact:
+        triple_str = "(asyncio, is_part_of, python)"
+
+    class FakeMemory:
+        facts = {0: FakeFact()}
+
+        def get_passages_for_fact(self, _idx: int) -> list:
+            return []
+
+    class FakeIndex:
+        memory = FakeMemory()
+        fact_indices = np.array([0], dtype=np.int32)
+        fact_embeddings = np.array([[1.0, 0.0]], dtype=np.float32)
+
+    with patch("pathlib.Path.is_file", return_value=True):
+        with patch("retrieve.get_memory_index", return_value=FakeIndex()):
+            with patch("retrieve.embed_query", return_value=[1.0, 0.0]):
+                chunks = search_memgraph_facts("asyncio", top_k=3, settings=settings)
+
+    assert len(chunks) == 1
+    assert chunks[0].retrieval == "facts"
+    assert "asyncio" in chunks[0].text
