@@ -95,7 +95,7 @@ class TestStallRecovery(unittest.TestCase):
             conn.close()
 
             worker = _worker(db)
-            with patch("ingest.worker.delete_by_source"):
+            with patch("ingest.worker.delete_source_points"):
                 worker.restart_stalled_files()
 
             row = db.get_file_state("/zim/stuck.zim")

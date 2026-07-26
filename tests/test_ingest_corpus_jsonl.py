@@ -307,7 +307,7 @@ def test_process_file_corpus_jsonl_uses_per_record_source_url() -> None:
 def test_delete_file_points_corpus_jsonl_deletes_each_source_url() -> None:
     deleted: list[str] = []
 
-    def capture_delete(_url: str, _collection: str, source: str) -> None:
+    def capture_delete(_url: str, _collection: str, source: str, **_kwargs) -> None:
         deleted.append(source)
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -343,7 +343,7 @@ def test_delete_file_points_corpus_jsonl_deletes_each_source_url() -> None:
             sparse_index_url="",
         )
 
-        with patch("ingest.worker.delete_by_source", side_effect=capture_delete):
+        with patch("ingest.worker.delete_source_points", side_effect=capture_delete):
             _delete_file_points(file_path, config)
 
     assert sorted(deleted) == [

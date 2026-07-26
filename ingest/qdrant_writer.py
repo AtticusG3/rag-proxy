@@ -20,6 +20,18 @@ DEFAULT_UPSERT_BACKOFF_SEC = 2.0
 _RETRYABLE_HTTP = frozenset({408, 429, 500, 502, 503, 504})
 
 
+def qdrant_vectors_on_disk() -> bool:
+    raw = os.getenv("QDRANT_VECTORS_ON_DISK", "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def _vectors_config(vector_size: int) -> dict[str, Any]:
+    cfg: dict[str, Any] = {"size": vector_size, "distance": "Cosine"}
+    if qdrant_vectors_on_disk():
+        cfg["on_disk"] = True
+    return cfg
+
+
 def qdrant_upsert_timeout_sec() -> float:
     return float(os.getenv("QDRANT_UPSERT_TIMEOUT_SEC", str(DEFAULT_UPSERT_TIMEOUT_SEC)))
 
@@ -137,7 +149,7 @@ def _ensure_collection_with_client(
         return
     response = client.put(
         f"{base}/collections/{collection}",
-        json={"vectors": {"size": vector_size, "distance": "Cosine"}},
+        json={"vectors": _vectors_config(vector_size)},
     )
     response.raise_for_status()
 
@@ -219,7 +231,11 @@ def list_point_ids_by_source(
     return ids
 
 
-def delete_by_source(qdrant_url: str, collection: str, source: str) -> None:
+def delete_by_source(
+    qdrant_url: str,
+    collection: str,
+    source: str,
+) -> None:
     """Remove all points whose payload.source matches."""
     with httpx.Client(timeout=120.0) as client:
         response = client.post(
@@ -248,7 +264,7 @@ def clear_collection(
             delete.raise_for_status()
         response = client.put(
             f"{base}/collections/{collection}",
-            json={"vectors": {"size": vector_size, "distance": "Cosine"}},
+            json={"vectors": _vectors_config(vector_size)},
         )
         response.raise_for_status()
         return prior

@@ -24,13 +24,13 @@ from ingest.embed_lifecycle import ensure_embed_urls
 from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.pdf_reader import iter_pdf_pages
 from ingest.pipeline import make_embed_semaphore, run_ingest_pipeline
-from ingest.qdrant_writer import delete_by_source, list_point_ids_by_source
+from ingest.dual_write import delete_source_points
+from ingest.qdrant_writer import list_point_ids_by_source
 from ingest.queue_order import order_queue_rows
 from ingest.scanner import scan_storage
+from ingest.stall import interrupt_error_message, is_stalled, stall_error_message
 from ingest.types import determine_file_type, IngestAborted
 from ingest.zim_reader import iter_zim_articles
-
-from ingest.stall import interrupt_error_message, is_stalled, stall_error_message
 
 log = logging.getLogger("ingest.worker")
 
@@ -58,6 +58,8 @@ class IngestConfig:
     chunk_concurrency: int | None = None
     chunk_config: ChunkConfig = field(default_factory=load_chunk_config)
     memgraphrag_db_path: str = ""
+    turbovec_url: str = ""
+    turbovec_reindex_mode: str = "idle"
 
 
 def resolve_file_concurrency(
@@ -172,22 +174,25 @@ def _iter_corpus_jsonl_records(path: str) -> Iterator[tuple[str, str, str, dict]
 
 def _delete_file_points(file_path: str, config: IngestConfig) -> None:
     """Remove Qdrant points for one ingest file (path or per-record source_url)."""
+    tv = config.turbovec_url or None
     if determine_file_type(file_path) == "corpus_jsonl":
         seen: set[str] = set()
         for _title, source_url, _text, _record in _iter_corpus_jsonl_records(file_path):
             if source_url in seen:
                 continue
             seen.add(source_url)
-            delete_by_source(
+            delete_source_points(
                 config.qdrant_url,
                 config.qdrant_collection,
                 source_url,
+                turbovec_url=tv,
             )
         return
-    delete_by_source(
+    delete_source_points(
         config.qdrant_url,
         config.qdrant_collection,
         file_path,
+        turbovec_url=tv,
     )
 
 
@@ -283,6 +288,7 @@ def process_file(
         embed_limiter=embed_limiter,
         on_progress=on_progress,
         should_abort=should_abort,
+        turbovec_url=config.turbovec_url,
     )
 
 
@@ -300,37 +306,111 @@ def trigger_sparse_reindex(config: IngestConfig) -> int | None:
         return None
 
 
-class SparseReindexScheduler:
-    """Avoid full-collection BM25 rebuild after every ingested file."""
+def trigger_turbovec_reindex(config: IngestConfig) -> int | None:
+    if not config.turbovec_url:
+        return None
+    from ingest.turbovec_client import trigger_reindex
 
-    def __init__(self, config: IngestConfig) -> None:
+    return trigger_reindex(config.turbovec_url, config.qdrant_collection)
+
+
+def _ensure_sparse_sidecar_for_reindex(config: IngestConfig) -> None:
+    from ingest.sidecar_lifecycle import ensure_sparse_sidecar
+
+    ensure_sparse_sidecar(config.sparse_index_url, wait_health=True)
+
+
+def _ensure_turbovec_sidecar_for_reindex(config: IngestConfig) -> None:
+    from ingest.sidecar_lifecycle import ensure_turbovec_sidecar
+
+    ensure_turbovec_sidecar(config.turbovec_url, wait_health=True)
+
+
+class SidecarReindexScheduler:
+    """Shared off/each/idle scheduling for sidecar full reindex."""
+
+    def __init__(
+        self,
+        config: IngestConfig,
+        *,
+        mode: Callable[[IngestConfig], str],
+        active: Callable[[IngestConfig], bool],
+        flush_log: str,
+    ) -> None:
         self.config = config
+        self._mode = mode
+        self._active = active
+        self._flush_log = flush_log
         self._dirty = False
         self._lock = threading.Lock()
 
+    def _ensure_sidecar(self, config: IngestConfig) -> None:
+        raise NotImplementedError
+
+    def _trigger_reindex(self, config: IngestConfig) -> int | None:
+        raise NotImplementedError
+
     def after_file(self) -> None:
-        mode = self.config.sparse_reindex_mode.lower()
+        if not self._active(self.config):
+            return
+        mode = self._mode(self.config).lower()
         if mode == "off":
             return
         if mode == "each":
-            trigger_sparse_reindex(self.config)
+            self._trigger_reindex(self.config)
             return
         with self._lock:
             self._dirty = True
 
     def flush(self) -> None:
-        mode = self.config.sparse_reindex_mode.lower()
+        if not self._active(self.config):
+            return
+        mode = self._mode(self.config).lower()
         if mode == "off":
             return
         with self._lock:
             if not self._dirty:
                 return
             self._dirty = False
-        from ingest.sidecar_lifecycle import ensure_sparse_sidecar
+        self._ensure_sidecar(self.config)
+        log.info(self._flush_log)
+        self._trigger_reindex(self.config)
 
-        ensure_sparse_sidecar(self.config.sparse_index_url, wait_health=True)
-        log.info("sparse reindex flush (ingest queue idle)")
-        trigger_sparse_reindex(self.config)
+
+class SparseReindexScheduler(SidecarReindexScheduler):
+    """Avoid full-collection BM25 rebuild after every ingested file."""
+
+    def __init__(self, config: IngestConfig) -> None:
+        super().__init__(
+            config,
+            mode=lambda c: c.sparse_reindex_mode,
+            active=lambda c: True,
+            flush_log="sparse reindex flush (ingest queue idle)",
+        )
+
+    def _ensure_sidecar(self, config: IngestConfig) -> None:
+        _ensure_sparse_sidecar_for_reindex(config)
+
+    def _trigger_reindex(self, config: IngestConfig) -> int | None:
+        return trigger_sparse_reindex(config)
+
+
+class TurbovecReindexScheduler(SidecarReindexScheduler):
+    """Optional full TurboVec rebuild from Qdrant (dual-write is primary)."""
+
+    def __init__(self, config: IngestConfig) -> None:
+        super().__init__(
+            config,
+            mode=lambda c: c.turbovec_reindex_mode,
+            active=lambda c: bool(c.turbovec_url),
+            flush_log="turbovec reindex flush (ingest queue idle)",
+        )
+
+    def _ensure_sidecar(self, config: IngestConfig) -> None:
+        _ensure_turbovec_sidecar_for_reindex(config)
+
+    def _trigger_reindex(self, config: IngestConfig) -> int | None:
+        return trigger_turbovec_reindex(config)
 
 
 class IngestWorker:
@@ -344,6 +424,7 @@ class IngestWorker:
         self.config = config
         self.db = db
         self._sparse = SparseReindexScheduler(config)
+        self._turbovec = TurbovecReindexScheduler(config)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._abort = threading.Event()
@@ -386,6 +467,7 @@ class IngestWorker:
                 set_chunk_concurrency(config.chunk_concurrency)
             self.config = config
             self._sparse.config = config
+            self._turbovec.config = config
         if self._alive_workers():
             self.resize_file_workers(self._file_worker_count())
 
@@ -608,6 +690,7 @@ class IngestWorker:
             claimed = self._claim_next_pending()
             if claimed is None:
                 self._sparse.flush()
+                self._turbovec.flush()
                 time.sleep(1.0)
                 continue
             file_path = claimed["file_path"]
@@ -678,6 +761,7 @@ class IngestWorker:
                 finished_at=_utc_now(),
             )
         self._sparse.after_file()
+        self._turbovec.after_file()
 
     def _recover_interrupted_running(self) -> None:
         for row in self.db.list_running_files():
@@ -784,10 +868,11 @@ class IngestWorker:
             if os.path.isfile(path):
                 continue
             log.warning("pruning missing ingest file: %s", path)
-            delete_by_source(
+            delete_source_points(
                 self.config.qdrant_url,
                 self.config.qdrant_collection,
                 path,
+                turbovec_url=self.config.turbovec_url or None,
             )
             self.db.delete_file_state(path)
             removed.append(path)

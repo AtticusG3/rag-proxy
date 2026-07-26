@@ -17,6 +17,7 @@ log = logging.getLogger("ingest.sidecar_lifecycle")
 
 SPARSE_SIDECAR_UNIT = "sparse-sidecar.service"
 RERANK_SIDECAR_UNIT = "rerank-sidecar.service"
+TURBOVEC_SIDECAR_UNIT = "turbovec-sidecar.service"
 
 _MUTATING_SYSTEMCTL = frozenset({"start", "stop", "restart", "enable", "disable"})
 
@@ -45,6 +46,10 @@ def sparse_sidecar_unit() -> str:
 
 def rerank_sidecar_unit() -> str:
     return os.getenv("RERANK_SIDECAR_UNIT", RERANK_SIDECAR_UNIT).strip()
+
+
+def turbovec_sidecar_unit() -> str:
+    return os.getenv("TURBOVEC_SIDECAR_UNIT", TURBOVEC_SIDECAR_UNIT).strip()
 
 
 def _running_as_root() -> bool:
@@ -188,3 +193,21 @@ def ensure_rerank_sidecar(rerank_url: str, *, wait_health: bool = True) -> bool:
         return True
     timeout = _env_float("SIDECAR_RERANK_STARTUP_TIMEOUT_SEC", 180.0)
     return wait_for_sidecar_health(rerank_url, timeout_s=timeout)
+
+
+def ensure_turbovec_sidecar(turbovec_url: str, *, wait_health: bool = True) -> bool:
+    """Start turbovec unit; keep it up during ingest (dual-write needs it)."""
+    if not turbovec_url.strip():
+        return False
+    if not sidecar_on_demand_enabled():
+        return probe_sidecar_health(turbovec_url)
+    unit = turbovec_sidecar_unit()
+    if not _unit_active(unit):
+        log.info("sidecar on-demand: starting %s", unit)
+        _start_unit(unit)
+    if not wait_health:
+        return True
+    ready = wait_for_sidecar_health(turbovec_url)
+    if not ready:
+        log.warning("turbovec sidecar not healthy after startup wait url=%s", turbovec_url)
+    return ready

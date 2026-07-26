@@ -123,7 +123,7 @@ def test_prune_missing_files_removes_orphaned_rows() -> None:
         )
 
         worker = _worker_with_dirs(db, zim_dir, upload_dir)
-        with patch("ingest.worker.delete_by_source") as delete_mock:
+        with patch("ingest.worker.delete_source_points") as delete_mock:
             removed = worker.prune_missing_files()
 
         assert removed == [ghost_path]
@@ -132,6 +132,7 @@ def test_prune_missing_files_removes_orphaned_rows() -> None:
             worker.config.qdrant_url,
             worker.config.qdrant_collection,
             ghost_path,
+            turbovec_url=worker.config.turbovec_url or None,
         )
 
 

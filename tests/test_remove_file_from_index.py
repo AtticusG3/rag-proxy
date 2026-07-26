@@ -43,7 +43,7 @@ def test_remove_file_from_index_deletes_disk_qdrant_state_and_memgraph() -> None
 
         with (
             patch("ingest.worker.list_point_ids_by_source", return_value=["p1", "p2"]),
-            patch("ingest.worker.delete_by_source") as delete_dense,
+            patch("ingest.worker.delete_source_points") as delete_dense,
             patch("ingest.worker.trigger_sparse_reindex") as sparse,
             patch(
                 "rag_proxy.memgraphrag.memory.load_memory",
@@ -56,7 +56,10 @@ def test_remove_file_from_index_deletes_disk_qdrant_state_and_memgraph() -> None
         memory.remove_passages_by_chunk_ids.assert_called_once_with({"p1", "p2"})
         memory.save.assert_called_once_with(mem_db)
         delete_dense.assert_called_once_with(
-            config.qdrant_url, config.qdrant_collection, file_path
+            config.qdrant_url,
+            config.qdrant_collection,
+            file_path,
+            turbovec_url=config.turbovec_url or None,
         )
         sparse.assert_called_once_with(config)
         assert not os.path.isfile(file_path)

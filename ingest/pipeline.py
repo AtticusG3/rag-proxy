@@ -6,18 +6,19 @@ import logging
 import threading
 from collections.abc import Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any, Protocol, Union
 
 import httpx
 
 from ingest.embedder import embed_texts
+from ingest import turbovec_client
 from ingest.qdrant_writer import (
     build_point,
     ensure_collection,
     qdrant_upsert_timeout_sec,
     upsert_points,
 )
-
 from ingest.types import IngestAborted
 
 log = logging.getLogger("ingest.pipeline")
@@ -71,6 +72,15 @@ ChunkBatch = list[ChunkRow]
 PendingBatch = tuple[ChunkBatch, int, Future[list[list[float]]]]
 
 
+@dataclass(frozen=True)
+class IngestWriteContext:
+    qdrant_url: str
+    collection: str
+    qdrant_client: httpx.Client
+    turbovec_url: str = ""
+    turbovec_client: httpx.Client | None = None
+
+
 def chunk_batches(
     chunks: Iterator[ChunkRow],
     batch_size: int,
@@ -90,9 +100,7 @@ def _upsert_batch(
     embeddings: list[list[float]],
     start_chunk_idx: int,
     *,
-    qdrant_url: str,
-    collection: str,
-    qdrant_client: httpx.Client,
+    write_ctx: IngestWriteContext,
 ) -> int:
     points = []
     for i, item in enumerate(batch):
@@ -108,7 +116,18 @@ def _upsert_batch(
                 extra=extra if isinstance(extra, dict) else None,
             )
         )
-    upsert_points(qdrant_url, collection, points, client=qdrant_client)
+    upsert_points(
+        write_ctx.qdrant_url,
+        write_ctx.collection,
+        points,
+        client=write_ctx.qdrant_client,
+    )
+    if write_ctx.turbovec_url:
+        turbovec_client.add_points(
+            write_ctx.turbovec_url,
+            points,
+            client=write_ctx.turbovec_client,
+        )
     return len(points)
 
 
@@ -116,9 +135,7 @@ def _drain_next_upsert(
     pending: dict[int, PendingBatch],
     next_upsert: int,
     *,
-    qdrant_url: str,
-    qdrant_collection: str,
-    qdrant_client: httpx.Client,
+    write_ctx: IngestWriteContext,
     on_progress: UpdateStateFn | None,
     total: int,
 ) -> tuple[int, int]:
@@ -132,9 +149,7 @@ def _drain_next_upsert(
         batch,
         embeddings,
         start_idx,
-        qdrant_url=qdrant_url,
-        collection=qdrant_collection,
-        qdrant_client=qdrant_client,
+        write_ctx=write_ctx,
     )
     total += count
     if on_progress:
@@ -146,9 +161,7 @@ def _drain_ready_upserts(
     pending: dict[int, PendingBatch],
     next_upsert: int,
     *,
-    qdrant_url: str,
-    qdrant_collection: str,
-    qdrant_client: httpx.Client,
+    write_ctx: IngestWriteContext,
     on_progress: UpdateStateFn | None,
     total: int,
 ) -> tuple[int, int]:
@@ -157,9 +170,7 @@ def _drain_ready_upserts(
         total, next_upsert = _drain_next_upsert(
             pending,
             next_upsert,
-            qdrant_url=qdrant_url,
-            qdrant_collection=qdrant_collection,
-            qdrant_client=qdrant_client,
+            write_ctx=write_ctx,
             on_progress=on_progress,
             total=total,
         )
@@ -179,6 +190,7 @@ def run_ingest_pipeline(
     embed_limiter: EmbedLimiter | None = None,
     on_progress: UpdateStateFn | None = None,
     should_abort: Callable[[], bool] | None = None,
+    turbovec_url: str = "",
 ) -> int:
     """Embed batches concurrently and upsert to Qdrant in chunk order."""
     urls = embed_urls or ([embed_url] if embed_url else [])
@@ -198,6 +210,15 @@ def run_ingest_pipeline(
     )
     qdrant_client = httpx.Client(timeout=qdrant_upsert_timeout_sec())
     embed_client = httpx.Client(timeout=120.0, limits=limits)
+    tv_url = (turbovec_url or "").strip()
+    turbovec_http = httpx.Client(timeout=60.0) if tv_url else None
+    write_ctx = IngestWriteContext(
+        qdrant_url=qdrant_url,
+        collection=qdrant_collection,
+        qdrant_client=qdrant_client,
+        turbovec_url=tv_url,
+        turbovec_client=turbovec_http,
+    )
     try:
         ensure_collection(qdrant_url, qdrant_collection, client=qdrant_client)
         with ThreadPoolExecutor(
@@ -225,9 +246,7 @@ def run_ingest_pipeline(
                 total, next_upsert = _drain_ready_upserts(
                     pending,
                     next_upsert,
-                    qdrant_url=qdrant_url,
-                    qdrant_collection=qdrant_collection,
-                    qdrant_client=qdrant_client,
+                    write_ctx=write_ctx,
                     on_progress=on_progress,
                     total=total,
                 )
@@ -238,9 +257,7 @@ def run_ingest_pipeline(
                     total, next_upsert = _drain_next_upsert(
                         pending,
                         next_upsert,
-                        qdrant_url=qdrant_url,
-                        qdrant_collection=qdrant_collection,
-                        qdrant_client=qdrant_client,
+                        write_ctx=write_ctx,
                         on_progress=on_progress,
                         total=total,
                     )
@@ -251,14 +268,14 @@ def run_ingest_pipeline(
                 total, next_upsert = _drain_next_upsert(
                     pending,
                     next_upsert,
-                    qdrant_url=qdrant_url,
-                    qdrant_collection=qdrant_collection,
-                    qdrant_client=qdrant_client,
+                    write_ctx=write_ctx,
                     on_progress=on_progress,
                     total=total,
                 )
     finally:
         embed_client.close()
         qdrant_client.close()
+        if turbovec_http is not None:
+            turbovec_http.close()
 
     return total
