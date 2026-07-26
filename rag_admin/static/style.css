@@ -590,6 +590,24 @@ button.danger:hover, .btn--danger:hover {
 
 .btn--block { width: 100%; }
 
+button:disabled, .btn:disabled,
+button[disabled], .btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.15);
+}
+button:disabled:hover, .btn:disabled:hover,
+button[disabled]:hover, .btn[disabled]:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text);
+}
+.btn--ghost:disabled:hover, .btn--ghost[disabled]:hover {
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
 .error { color: var(--color-danger); }
 
 /* Status */

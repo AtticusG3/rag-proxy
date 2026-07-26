@@ -23,6 +23,17 @@
       .catch(function () {});
   }
 
+  document.querySelectorAll("form[data-busy-label]").forEach(function (form) {
+    form.addEventListener("submit", function () {
+      var button = form.querySelector('button[type="submit"]');
+      if (!button || button.disabled) {
+        return;
+      }
+      button.disabled = true;
+      button.textContent = form.getAttribute("data-busy-label") || "Working…";
+    });
+  });
+
   if (
     document.getElementById("build-log") ||
     document.getElementById("pool-scale-log")

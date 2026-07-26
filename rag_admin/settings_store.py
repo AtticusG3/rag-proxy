@@ -202,6 +202,8 @@ class SettingsStore:
                 "MEMGRAPHRAG_DB_PATH",
                 "/var/lib/rag_proxy/memgraphrag.sqlite",
             ),
+            turbovec_url=values.get("TURBOVEC_URL", ""),
+            turbovec_reindex_mode=values.get("INGEST_TURBOVEC_REINDEX", "idle").lower(),
         )
 
     def apply_to_worker(self, worker: IngestWorker, *, zim_dir: str, upload_dir: str) -> None:

@@ -70,6 +70,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         repo_root=settings.repo_root,
         log_dir=settings.job_log_dir,
     )
+    # Clear SQLite "running" rows whose PIDs died across admin restart (not TurboVec-related).
+    cleared = job_runner.reconcile_orphans()
+    if cleared:
+        log.warning("cleared %s orphaned background job(s) on startup", cleared)
     catalog_manager = CatalogDownloadManager(
         db, settings.zim_dir, settings.upload_dir, worker
     )
@@ -84,6 +88,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         worker,
         sparse_index_url=settings.sparse_index_url
         or settings_store.get_value("SPARSE_INDEX_URL", ""),
+        turbovec_url=settings_store.get_value("TURBOVEC_URL", "")
+        or os.getenv("TURBOVEC_URL", ""),
     )
     sidecar_guard.start()
 

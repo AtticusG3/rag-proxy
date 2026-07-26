@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -20,10 +21,25 @@ log = logging.getLogger("rag-admin.jobs")
 
 JOB_MEMGRAPH_BUILD = "memgraph_build"
 JOB_EMBED_POOL_SCALE = "embed_pool_scale"
+KNOWN_JOB_TYPES = (JOB_MEMGRAPH_BUILD, JOB_EMBED_POOL_SCALE)
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
 
 
 class BackgroundJobRunner:
@@ -37,7 +53,45 @@ class BackgroundJobRunner:
         self._running: dict[str, tuple[str, subprocess.Popen[bytes]]] = {}
         Path(log_dir).mkdir(parents=True, exist_ok=True)
 
+    def reconcile_orphans(self) -> int:
+        """Mark DB 'running' jobs whose process is gone as failed.
+
+        After rag-admin restart, `_running` is empty but SQLite may still show
+        status=running. That disables Scale/Start with no visible cue and makes
+        Stop a no-op. Clear dead rows so operators can start a new job.
+        """
+        cleared = 0
+        for job_type in KNOWN_JOB_TYPES:
+            if self._reconcile_job_type(job_type):
+                cleared += 1
+        return cleared
+
+    def _reconcile_job_type(self, job_type: str) -> bool:
+        row = self.db.get_active_background_job(job_type)
+        if row is None:
+            return False
+        job_id = str(row["id"])
+        with self._lock:
+            current = self._running.get(job_type)
+        if current is not None and current[0] == job_id:
+            return False
+        try:
+            pid = int(row.get("pid") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        if pid and _pid_alive(pid):
+            return False
+        self.db.update_background_job(
+            job_id,
+            status="failed",
+            message="process gone (orphaned after restart)",
+            finished_at=_utc_now(),
+        )
+        log.warning("cleared orphaned %s job %s (pid %s)", job_type, job_id[:8], pid or "?")
+        return True
+
     def active_job(self, job_type: str) -> dict[str, Any] | None:
+        self._reconcile_job_type(job_type)
         row = self.db.get_active_background_job(job_type)
         if row is None:
             return None
@@ -195,12 +249,32 @@ class BackgroundJobRunner:
     def stop_active(self, job_type: str) -> bool:
         with self._lock:
             entry = self._running.get(job_type)
-        if entry is None:
+        if entry is not None:
+            job_id, proc = entry
+            if proc.poll() is None:
+                proc.terminate()
+                self.db.update_background_job(
+                    job_id,
+                    status="failed",
+                    message="stopped by operator",
+                    finished_at=_utc_now(),
+                )
+                return True
+
+        # After restart, Popen handle is gone but DB/pid may still say running.
+        row = self.db.get_active_background_job(job_type)
+        if row is None:
             return False
-        job_id, proc = entry
-        if proc.poll() is not None:
-            return False
-        proc.terminate()
+        job_id = str(row["id"])
+        try:
+            pid = int(row.get("pid") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        if pid and _pid_alive(pid):
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except OSError:
+                log.warning("failed to signal orphaned %s pid %s", job_type, pid)
         self.db.update_background_job(
             job_id,
             status="failed",

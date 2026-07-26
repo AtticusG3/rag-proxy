@@ -1,4 +1,7 @@
-"""Background thread: stop BM25 sidecar during ingest, restart when idle."""
+"""Background thread: stop BM25 sidecar during ingest, restart when idle.
+
+TurboVec stays up during ingest (dual-write); ensure it is started when work begins.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from ingest.sidecar_lifecycle import (
     ensure_sparse_sidecar,
+    ensure_turbovec_sidecar,
     sidecar_on_demand_enabled,
     stop_sparse_sidecar,
 )
@@ -27,10 +31,12 @@ class SidecarLifecycleGuard:
         worker: IngestWorker,
         *,
         sparse_index_url: str,
+        turbovec_url: str = "",
         poll_sec: float | None = None,
     ) -> None:
         self._worker = worker
         self._sparse_index_url = sparse_index_url.strip()
+        self._turbovec_url = turbovec_url.strip()
         if poll_sec is None:
             poll_sec = float(os.getenv("SIDECAR_LIFECYCLE_POLL_SEC", "20"))
         self._poll_sec = poll_sec
@@ -42,8 +48,8 @@ class SidecarLifecycleGuard:
         if not sidecar_on_demand_enabled():
             log.info("sidecar lifecycle guard disabled (SIDECAR_ON_DEMAND=false or no systemctl)")
             return
-        if not self._sparse_index_url:
-            log.info("sidecar lifecycle guard disabled (no SPARSE_INDEX_URL)")
+        if not self._sparse_index_url and not self._turbovec_url:
+            log.info("sidecar lifecycle guard disabled (no SPARSE_INDEX_URL or TURBOVEC_URL)")
             return
         if self._thread and self._thread.is_alive():
             return
@@ -70,12 +76,18 @@ class SidecarLifecycleGuard:
                 active = self._ingest_active()
                 if active:
                     if not self._ingest_was_active:
-                        stop_sparse_sidecar()
+                        if self._sparse_index_url:
+                            stop_sparse_sidecar()
+                        if self._turbovec_url:
+                            ensure_turbovec_sidecar(
+                                self._turbovec_url, wait_health=True
+                            )
                     self._ingest_was_active = True
                     continue
                 if self._ingest_was_active:
-                    log.info("ingest idle: ensuring sparse sidecar is up before reindex")
-                    ensure_sparse_sidecar(self._sparse_index_url, wait_health=True)
+                    if self._sparse_index_url:
+                        log.info("ingest idle: ensuring sparse sidecar is up before reindex")
+                        ensure_sparse_sidecar(self._sparse_index_url, wait_health=True)
                 self._ingest_was_active = False
             except Exception:
                 log.warning("sidecar lifecycle guard tick failed", exc_info=True)

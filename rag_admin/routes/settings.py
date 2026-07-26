@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -187,17 +188,22 @@ async def embed_pool_scale_start(request: Request):
     semantic_before = store.get_value("INGEST_CHUNK_SEMANTIC", "true").lower()
     was_paused = store.ingest_paused() or worker.paused
 
-    drain_timeout_s = float(os.getenv("INGEST_SCALE_DRAIN_TIMEOUT_SEC", "3600"))
+    # Keep the interactive UI responsive; long waits look like a dead button.
+    drain_timeout_s = float(os.getenv("INGEST_SCALE_DRAIN_TIMEOUT_SEC", "120"))
     store.set_ingest_paused(True)
     worker.set_paused(True)
-    if not worker.drain_active_files(timeout_s=drain_timeout_s):
+    drained = await asyncio.to_thread(
+        worker.drain_active_files,
+        timeout_s=drain_timeout_s,
+    )
+    if not drained:
         running = worker.running_file_count()
         store.set_ingest_paused(was_paused)
         worker.set_paused(was_paused)
         return flash_redirect(
             "/settings?tab=ingest",
             f"Cannot scale: {running} file(s) still ingesting after {int(drain_timeout_s)}s. "
-            "Wait for them to finish or pause ingest manually, then retry.",
+            "Wait for them to finish (or mark stalled), then retry.",
             level="error",
         )
 
