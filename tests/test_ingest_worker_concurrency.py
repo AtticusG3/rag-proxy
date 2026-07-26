@@ -127,6 +127,24 @@ def test_pause_aborts_in_flight_file_and_requeues() -> None:
         assert "paused" in (row.get("last_error") or "").lower()
 
 
+def test_force_requeue_running_unblocks_capacity_scale() -> None:
+    """Scale must not wait weeks for a running ZIM — force pending and keep preempt set."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db = IngestDatabase(os.path.join(tmp, "admin.sqlite"))
+        path = os.path.join(tmp, "huge.zim")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("x")
+        db.upsert_file_state(path, status="running", file_type="zim")
+        worker = _worker(db, file_concurrency=1)
+        assert worker.force_requeue_running("paused for capacity scale") == 1
+        row = db.get_file_state(path)
+        assert row is not None
+        assert row["status"] == "pending"
+        assert "capacity scale" in (row.get("last_error") or "")
+        with worker._lock:
+            assert path in worker._preempt_paths
+
+
 def test_preempt_switches_worker_to_top_of_queue() -> None:
     """Preempt exists so a high-priority file does not wait hours behind a big ingest:
     the running file must yield (back to pending, not failed) and the worker must

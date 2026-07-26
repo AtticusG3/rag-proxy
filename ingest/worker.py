@@ -673,6 +673,31 @@ class IngestWorker:
             time.sleep(poll_s)
         return False
 
+    def force_requeue_running(self, reason: str) -> int:
+        """Mark all running files pending so pause/scale is not blocked for weeks.
+
+        Cooperative abort (set_paused / preempt) should clear running first; this is
+        the safety net when an in-flight embed batch has not yielded yet.
+        """
+        running = self.db.list_running_files()
+        if not running:
+            return 0
+        with self._lock:
+            for row in running:
+                path = str(row["file_path"])
+                self._preempt_paths.add(path)
+                self.db.update_file_state(
+                    path,
+                    status="pending",
+                    last_error=reason,
+                )
+        log.warning(
+            "force-requeued %s running file(s): %s",
+            len(running),
+            reason,
+        )
+        return len(running)
+
     def running_file_count(self) -> int:
         return len(self.db.list_running_files())
 

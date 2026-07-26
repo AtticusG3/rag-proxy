@@ -190,8 +190,8 @@ async def embed_pool_scale_start(request: Request):
     semantic_before = store.get_value("INGEST_CHUNK_SEMANTIC", "true").lower()
     was_paused = store.ingest_paused() or worker.paused
 
-    # Drain can take minutes; awaiting it here freezes the Settings UI / proxy.
-    # Pause now, redirect immediately, finish drain + start job in a thread.
+    # Pause now (also aborts mid-file), redirect immediately, then start the job.
+    # Do not wait for multi-week ZIM embeds to finish — yield them back to pending.
     if not job_runner.try_begin_scale_prep():
         return flash_redirect(
             "/settings?tab=ingest",
@@ -199,9 +199,11 @@ async def embed_pool_scale_start(request: Request):
             level="error",
         )
 
-    drain_timeout_s = float(os.getenv("INGEST_SCALE_DRAIN_TIMEOUT_SEC", "120"))
+    # Brief window for cooperative abort of the current embed batch only.
+    drain_timeout_s = float(os.getenv("INGEST_SCALE_DRAIN_TIMEOUT_SEC", "60"))
     store.set_ingest_paused(True)
     worker.set_paused(True)
+    preempted = worker.preempt_running()
     running = worker.running_file_count()
 
     def restore_pause_state() -> None:
@@ -236,14 +238,11 @@ async def embed_pool_scale_start(request: Request):
         try:
             drained = worker.drain_active_files(timeout_s=drain_timeout_s)
             if not drained:
-                left = worker.running_file_count()
+                forced = worker.force_requeue_running("paused for capacity scale")
                 log.warning(
-                    "capacity scale aborted: %s file(s) still ingesting after %ss",
-                    left,
-                    int(drain_timeout_s),
+                    "capacity scale: force-requeued %s file(s) still marked running",
+                    forced,
                 )
-                restore_pause_state()
-                return
             job_runner.start_embed_pool_scale(
                 store.embed_pool_scale_params(),
                 on_success=on_success,
@@ -261,9 +260,9 @@ async def embed_pool_scale_start(request: Request):
         name="embed-pool-scale-prep",
     ).start()
 
-    if running:
+    if preempted or running:
         msg = (
-            f"Ingest paused. Waiting for {running} active file(s) to finish, "
+            f"Ingest paused; yielding {preempted or running} active file(s) back to the queue, "
             "then capacity scale starts. Refresh this page for the job log."
         )
     else:

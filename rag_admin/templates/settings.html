@@ -71,7 +71,7 @@
     </div>
   </div>
   {% if pool_scale_starting and not pool_scale_job %}
-  <p class="muted">Draining active ingest files before capacity scale starts…</p>
+  <p class="muted">Yielding active ingest files, then capacity scale starts…</p>
   {% elif pool_scale_job %}
   <p class="muted">Scaling job <code>{{ pool_scale_job.id[:8] }}</code> since {{ pool_scale_job.started_at }} (pid {{ pool_scale_job.pid }}).</p>
   <pre id="pool-scale-log" class="log-tail" aria-live="polite">{{ pool_scale_log_tail }}</pre>
