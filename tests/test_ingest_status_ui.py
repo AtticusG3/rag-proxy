@@ -353,7 +353,7 @@ def test_derive_sidecar_phase_priority() -> None:
             queue_active=True,
             on_demand=True,
         )
-        == "stopped_for_ingest"
+        == "down"
     )
 
 

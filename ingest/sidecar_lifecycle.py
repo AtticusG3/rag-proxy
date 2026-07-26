@@ -91,8 +91,9 @@ def _start_unit(unit: str) -> None:
 
 
 def _stop_unit(unit: str) -> None:
+    # Stop only — do not disable. Disabling fights on-demand start and leaves
+    # BM25 dead across boots / idle reindex after bulk ingest.
     _systemctl("stop", unit, check=False)
-    _systemctl("disable", unit, check=False)
 
 
 def probe_sidecar_health(url: str, *, timeout: float = 5.0) -> bool:

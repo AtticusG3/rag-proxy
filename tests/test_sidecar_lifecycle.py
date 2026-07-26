@@ -36,3 +36,17 @@ def test_stop_sparse_when_active(monkeypatch) -> None:
 
     assert sl.stop_sparse_sidecar() is True
     assert stopped == ["sparse-sidecar.service"]
+
+
+def test_stop_unit_stops_without_disable(monkeypatch) -> None:
+    """Stopping for ingest must not disable the unit (breaks idle restart/boot)."""
+    calls: list[tuple] = []
+
+    def fake_systemctl(*args, check=False):
+        calls.append(args)
+        return MagicMock(stdout="", returncode=0)
+
+    monkeypatch.setattr(sl, "_systemctl", fake_systemctl)
+    sl._stop_unit("sparse-sidecar.service")
+    assert ("stop", "sparse-sidecar.service") in calls
+    assert not any(c and c[0] == "disable" for c in calls)

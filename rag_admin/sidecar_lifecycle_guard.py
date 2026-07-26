@@ -1,6 +1,8 @@
-"""Background thread: stop BM25 sidecar during ingest, restart when idle.
+"""Background thread: keep BM25 + TurboVec sidecars available for hybrid search.
 
-TurboVec stays up during ingest (dual-write); ensure it is started when work begins.
+Historically BM25 was stopped during bulk ingest to free RAM; that left hybrid
+retrieval dead for the whole ingest window and made the sidecar look "broken".
+Both sidecars stay up; we only ensure they are started when work begins / after idle.
 """
 
 from __future__ import annotations
@@ -14,7 +16,6 @@ from ingest.sidecar_lifecycle import (
     ensure_sparse_sidecar,
     ensure_turbovec_sidecar,
     sidecar_on_demand_enabled,
-    stop_sparse_sidecar,
 )
 
 if TYPE_CHECKING:
@@ -77,10 +78,12 @@ class SidecarLifecycleGuard:
                 if active:
                     if not self._ingest_was_active:
                         if self._sparse_index_url:
-                            stop_sparse_sidecar()
+                            ensure_sparse_sidecar(
+                                self._sparse_index_url, wait_health=False
+                            )
                         if self._turbovec_url:
                             ensure_turbovec_sidecar(
-                                self._turbovec_url, wait_health=True
+                                self._turbovec_url, wait_health=False
                             )
                     self._ingest_was_active = True
                     continue
@@ -88,6 +91,8 @@ class SidecarLifecycleGuard:
                     if self._sparse_index_url:
                         log.info("ingest idle: ensuring sparse sidecar is up before reindex")
                         ensure_sparse_sidecar(self._sparse_index_url, wait_health=True)
+                    if self._turbovec_url:
+                        ensure_turbovec_sidecar(self._turbovec_url, wait_health=True)
                 self._ingest_was_active = False
             except Exception:
                 log.warning("sidecar lifecycle guard tick failed", exc_info=True)

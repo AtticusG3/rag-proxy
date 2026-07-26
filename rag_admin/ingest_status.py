@@ -159,8 +159,6 @@ def derive_sidecar_phase(
         return "reindexing"
     if dirty:
         return "pending_reindex"
-    if kind == "sparse" and queue_active and on_demand:
-        return "stopped_for_ingest"
     if kind == "turbovec" and dual_write and queue_active:
         return "dual_write"
     if ok is False:
@@ -259,7 +257,6 @@ _PHASE_VELOCITY = {
     "reindexing": "reindexing",
     "pending_reindex": "pending",
     "dual_write": "dual-write",
-    "stopped_for_ingest": "paused for ingest",
 }
 
 

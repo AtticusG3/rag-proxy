@@ -51,7 +51,29 @@ class BackgroundJobRunner:
         self.log_dir = log_dir
         self._lock = threading.Lock()
         self._running: dict[str, tuple[str, subprocess.Popen[bytes]]] = {}
+        # True while pause+drain runs before the scale subprocess starts.
+        self._scale_starting = False
         Path(log_dir).mkdir(parents=True, exist_ok=True)
+
+    def scale_starting(self) -> bool:
+        with self._lock:
+            return self._scale_starting
+
+    def try_begin_scale_prep(self) -> bool:
+        """Claim the scale slot for background drain; False if already busy."""
+        with self._lock:
+            if self._scale_starting:
+                return False
+            if self._running.get(JOB_EMBED_POOL_SCALE) is not None:
+                return False
+            if self.db.get_active_background_job(JOB_EMBED_POOL_SCALE) is not None:
+                return False
+            self._scale_starting = True
+            return True
+
+    def end_scale_prep(self) -> None:
+        with self._lock:
+            self._scale_starting = False
 
     def reconcile_orphans(self) -> int:
         """Mark DB 'running' jobs whose process is gone as failed.

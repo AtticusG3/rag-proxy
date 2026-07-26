@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
+import threading
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -76,6 +76,7 @@ async def settings_page(request: Request, tab: str = "ingest") -> HTMLResponse:
     )
     build_job = job_runner.active_job(JOB_MEMGRAPH_BUILD)
     pool_scale_job = job_runner.active_job(JOB_EMBED_POOL_SCALE)
+    pool_scale_starting = job_runner.scale_starting()
     build_history = request.app.state.db.list_background_jobs(JOB_MEMGRAPH_BUILD, limit=5)
     pool_scale_history = request.app.state.db.list_background_jobs(JOB_EMBED_POOL_SCALE, limit=5)
     log_tail = ""
@@ -102,6 +103,7 @@ async def settings_page(request: Request, tab: str = "ingest") -> HTMLResponse:
             "build_history": build_history,
             "log_tail": log_tail,
             "pool_scale_job": pool_scale_job,
+            "pool_scale_starting": pool_scale_starting,
             "pool_scale_history": pool_scale_history,
             "pool_scale_log_tail": pool_scale_log_tail,
             "admin_env_path": store.admin_env_path,
@@ -188,24 +190,19 @@ async def embed_pool_scale_start(request: Request):
     semantic_before = store.get_value("INGEST_CHUNK_SEMANTIC", "true").lower()
     was_paused = store.ingest_paused() or worker.paused
 
-    # Keep the interactive UI responsive; long waits look like a dead button.
+    # Drain can take minutes; awaiting it here freezes the Settings UI / proxy.
+    # Pause now, redirect immediately, finish drain + start job in a thread.
+    if not job_runner.try_begin_scale_prep():
+        return flash_redirect(
+            "/settings?tab=ingest",
+            "Capacity scale already starting or running — use Stop scale first.",
+            level="error",
+        )
+
     drain_timeout_s = float(os.getenv("INGEST_SCALE_DRAIN_TIMEOUT_SEC", "120"))
     store.set_ingest_paused(True)
     worker.set_paused(True)
-    drained = await asyncio.to_thread(
-        worker.drain_active_files,
-        timeout_s=drain_timeout_s,
-    )
-    if not drained:
-        running = worker.running_file_count()
-        store.set_ingest_paused(was_paused)
-        worker.set_paused(was_paused)
-        return flash_redirect(
-            "/settings?tab=ingest",
-            f"Cannot scale: {running} file(s) still ingesting after {int(drain_timeout_s)}s. "
-            "Wait for them to finish (or mark stalled), then retry.",
-            level="error",
-        )
+    running = worker.running_file_count()
 
     def restore_pause_state() -> None:
         store.set_ingest_paused(was_paused)
@@ -235,21 +232,46 @@ async def embed_pool_scale_start(request: Request):
     def on_failure() -> None:
         restore_pause_state()
 
-    try:
-        job_id = job_runner.start_embed_pool_scale(
-            store.embed_pool_scale_params(),
-            on_success=on_success,
-            on_failure=on_failure,
+    def prepare_and_start() -> None:
+        try:
+            drained = worker.drain_active_files(timeout_s=drain_timeout_s)
+            if not drained:
+                left = worker.running_file_count()
+                log.warning(
+                    "capacity scale aborted: %s file(s) still ingesting after %ss",
+                    left,
+                    int(drain_timeout_s),
+                )
+                restore_pause_state()
+                return
+            job_runner.start_embed_pool_scale(
+                store.embed_pool_scale_params(),
+                on_success=on_success,
+                on_failure=on_failure,
+            )
+        except Exception:
+            log.exception("capacity scale prep failed")
+            restore_pause_state()
+        finally:
+            job_runner.end_scale_prep()
+
+    threading.Thread(
+        target=prepare_and_start,
+        daemon=True,
+        name="embed-pool-scale-prep",
+    ).start()
+
+    if running:
+        msg = (
+            f"Ingest paused. Waiting for {running} active file(s) to finish, "
+            "then capacity scale starts. Refresh this page for the job log."
         )
-    except RuntimeError as exc:
-        restore_pause_state()
-        return flash_redirect("/settings?tab=ingest", str(exc), level="error")
-    return flash_redirect(
-        "/settings?tab=ingest",
-        f"Ingest capacity scale started (job {job_id[:8]}). "
-        "Ingest is paused while benchmarks run and the embed pool is resized; "
-        "it resumes automatically when the job completes.",
-    )
+    else:
+        msg = (
+            "Ingest paused; capacity scale starting. "
+            "Refresh this page for the job log. Ingest resumes when the job completes."
+        )
+    return flash_redirect("/settings?tab=ingest", msg)
 
 
 @router.post("/settings/embed-pool/stop")
@@ -306,6 +328,7 @@ async def settings_status_api(request: Request) -> JSONResponse:
         },
         "build_job": build_job,
         "pool_scale_job": pool_scale_job,
+        "pool_scale_starting": job_runner.scale_starting(),
         "log_tail": job_runner.tail_log(build_job["id"]) if build_job else "",
         "pool_scale_log_tail": job_runner.tail_log(pool_scale_job["id"]) if pool_scale_job else "",
         "pool_env": store.pool_env_snapshot(),

@@ -126,6 +126,23 @@ def test_active_job_clears_orphaned_running_row_so_scale_can_start(tmp_path: Pat
     assert "orphaned" in (row["message"] or "")
 
 
+def test_try_begin_scale_prep_blocks_double_start(tmp_path: Path) -> None:
+    """Scale button must not start a second drain while prep is in flight."""
+    db = AdminDatabase(str(tmp_path / "admin.sqlite"))
+    runner = BackgroundJobRunner(
+        db,
+        repo_root=str(tmp_path),
+        log_dir=str(tmp_path / "logs"),
+    )
+    assert runner.try_begin_scale_prep() is True
+    assert runner.scale_starting() is True
+    assert runner.try_begin_scale_prep() is False
+    runner.end_scale_prep()
+    assert runner.scale_starting() is False
+    assert runner.try_begin_scale_prep() is True
+    runner.end_scale_prep()
+
+
 def test_reconcile_orphans_clears_dead_jobs_on_startup_entry_point(tmp_path: Path) -> None:
     """Lifespan calls reconcile_orphans() so Scale/Start work after admin restart."""
     from rag_admin.job_runner import JOB_MEMGRAPH_BUILD

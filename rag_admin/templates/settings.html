@@ -58,7 +58,7 @@
     <h2 class="section-title">Ingest capacity plan</h2>
     <div class="page-header__actions">
       <form method="post" action="/settings/embed-pool/scale" class="inline" data-busy-label="Starting…">
-        <button type="submit" class="btn" {% if pool_scale_job %}disabled title="A scale job is already running — use Stop scale first"{% endif %}>Scale ingest capacity</button>
+        <button type="submit" class="btn" {% if pool_scale_job or pool_scale_starting %}disabled title="A scale job is already running — use Stop scale first"{% endif %}>Scale ingest capacity</button>
       </form>
       {% if can_restart_embed_pool %}
       <form method="post" action="/settings/restart/embed-pool" class="inline">
@@ -70,7 +70,9 @@
       </form>
     </div>
   </div>
-  {% if pool_scale_job %}
+  {% if pool_scale_starting and not pool_scale_job %}
+  <p class="muted">Draining active ingest files before capacity scale starts…</p>
+  {% elif pool_scale_job %}
   <p class="muted">Scaling job <code>{{ pool_scale_job.id[:8] }}</code> since {{ pool_scale_job.started_at }} (pid {{ pool_scale_job.pid }}).</p>
   <pre id="pool-scale-log" class="log-tail" aria-live="polite">{{ pool_scale_log_tail }}</pre>
   {% elif pool_env.exists %}
