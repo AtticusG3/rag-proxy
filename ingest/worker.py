@@ -28,7 +28,9 @@ from ingest.dual_write import delete_source_points
 from ingest.qdrant_writer import list_point_ids_by_source
 from ingest.queue_order import order_queue_rows
 from ingest.scanner import scan_storage
+from ingest.sidecar_lifecycle import ensure_sparse_sidecar, ensure_turbovec_sidecar
 from ingest.stall import interrupt_error_message, is_stalled, stall_error_message
+from ingest.turbovec_client import trigger_reindex
 from ingest.types import determine_file_type, IngestAborted
 from ingest.zim_reader import iter_zim_articles
 
@@ -309,20 +311,14 @@ def trigger_sparse_reindex(config: IngestConfig) -> int | None:
 def trigger_turbovec_reindex(config: IngestConfig) -> int | None:
     if not config.turbovec_url:
         return None
-    from ingest.turbovec_client import trigger_reindex
-
     return trigger_reindex(config.turbovec_url, config.qdrant_collection)
 
 
 def _ensure_sparse_sidecar_for_reindex(config: IngestConfig) -> None:
-    from ingest.sidecar_lifecycle import ensure_sparse_sidecar
-
     ensure_sparse_sidecar(config.sparse_index_url, wait_health=True)
 
 
 def _ensure_turbovec_sidecar_for_reindex(config: IngestConfig) -> None:
-    from ingest.sidecar_lifecycle import ensure_turbovec_sidecar
-
     ensure_turbovec_sidecar(config.turbovec_url, wait_health=True)
 
 
