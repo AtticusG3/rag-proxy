@@ -29,10 +29,11 @@ ENABLE_REQUEST_TRACE=true
 
 Restart proxy. Send:
 
-- A greeting (`hi`) — trace should show tier0 path; with gating still off, retrieval may still run.
+- A greeting (`hi`) — trace should show `tier0:bypass` and retrieval skipped (heuristics on).
+- A knowledge FAQ (`what is rag?`) — should still retrieve (tier0 is greetings/acks only).
 - An infra question (`what port is qdrant on?`) — should retrieve.
 
-Watch logs for `trace=… stages=tier0,intent,gating,…` and `gating_would_skip` in JSON logs if `ENABLE_JSON_LOGS=true`.
+Watch logs for `trace=… stages=tier0,…` (and later `intent,gating` once those flags are on). With `ENABLE_JSON_LOGS=true`, check `gating_would_skip` only after gating is enabled.
 
 ### Phase 2 — Gating live
 
@@ -139,7 +140,7 @@ The `tier0` stage is always registered when the cognitive pipeline is on (`enabl
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `ENABLE_COGNITIVE_PIPELINE` | false | Master switch; false = legacy always-retrieve |
-| `ENABLE_TIER0_HEURISTICS` | false | Regex fast path; skip embed/Qdrant |
+| `ENABLE_TIER0_HEURISTICS` | false | Skip embed/Qdrant for greetings/acks only |
 | `ENABLE_RETRIEVAL_GATING` | false | Intent/heuristic skip retrieval |
 | `GATING_LOG_ONLY` | false | Log gating without skipping (bake-in) |
 | `ENABLE_INTENT_ROUTER` | false | Rules + optional `INTENT_MODEL` |
@@ -191,14 +192,15 @@ Full reference: [Configuration — Transcript capture](configuration.md#transcri
 ## Latency budgets
 
 - `COGNITIVE_LATENCY_BUDGET_MS` (800): global budget; orchestrator skips stages when remaining ms `< min_budget_ms`.
-- Per-stage minimums (skip if budget too low):
+- Per-stage entrance minimums (skip if remaining budget too low):
   - `STAGE_BUDGET_ROUTING_MS` (0) — model routing
   - `STAGE_BUDGET_REWRITE_MS` (20) — query rewrite
   - `STAGE_BUDGET_RETRIEVE_MS` (50) — embed + Qdrant/hybrid
   - `STAGE_BUDGET_GRAPH_MS` (100) — graph lookup
   - `STAGE_BUDGET_MEMGRAPHRAG_MS` (200) — MemGraphRAG stage
   - Rerank/tools use `RERANK_TIMEOUT_MS` / `TOOL_BUDGET_MS` as their min budgets.
-- Priority when budget exhausted: context inject > rerank > graph > tools > LLM rewrite.
+- Hard exec timeouts (separate from budgets): `STAGE_TIMEOUT_REWRITE_MS` (2000), `STAGE_TIMEOUT_RETRIEVE_MS` (5000), `STAGE_TIMEOUT_GRAPH_MS` (2000), `STAGE_TIMEOUT_MEMGRAPHRAG_MS` (5000); fallback `STAGE_EXEC_TIMEOUT_MS` (30000).
+- Stages run in registration order; when budget is exhausted later stages are skipped (no reordering).
 - `TIER0_MAX_CHARS` (80): max query length for tier0 heuristic bypass.
 
 ## External services

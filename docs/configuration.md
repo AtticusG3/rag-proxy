@@ -46,7 +46,7 @@ Default empty = no change (open proxy, same as before). Use when `PROXY_HOST=0.0
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ENABLE_COGNITIVE_PIPELINE` | `false` | Master switch; `false` = legacy always-retrieve |
-| `ENABLE_TIER0_HEURISTICS` | `false` | Regex fast path; skip embed/Qdrant for simple queries |
+| `ENABLE_TIER0_HEURISTICS` | `false` | Skip embed/Qdrant for greetings and short acks only (not FAQs) |
 | `ENABLE_INTENT_ROUTER` | `false` | Rules + optional `INTENT_MODEL` |
 | `ENABLE_RETRIEVAL_GATING` | `false` | Skip retrieval when not needed |
 | `GATING_LOG_ONLY` | `false` | Log gating decisions without skipping (bake-in) |
@@ -70,20 +70,24 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `COGNITIVE_LATENCY_BUDGET_MS` | `800` | Global budget; stages skip when remaining ms is too low |
-| `STAGE_BUDGET_ROUTING_MS` | `0` | Min ms for model routing |
-| `STAGE_BUDGET_REWRITE_MS` | `20` | Min ms for query rewrite |
-| `STAGE_BUDGET_RETRIEVE_MS` | `50` | Min ms for embed + Qdrant/hybrid |
-| `STAGE_BUDGET_GRAPH_MS` | `100` | Min ms for graph lookup |
-| `STAGE_BUDGET_MEMGRAPHRAG_MS` | `200` | Min ms for MemGraphRAG stage |
-| `STAGE_EXEC_TIMEOUT_MS` | `30000` | Max runtime for stages without a dedicated budget (also caps tier0/intent/memory/context) |
+| `COGNITIVE_LATENCY_BUDGET_MS` | `800` | Global budget; stages skip when remaining ms is below their `STAGE_BUDGET_*` |
+| `STAGE_BUDGET_ROUTING_MS` | `0` | Min remaining ms to *start* model routing |
+| `STAGE_BUDGET_REWRITE_MS` | `20` | Min remaining ms to start query rewrite |
+| `STAGE_BUDGET_RETRIEVE_MS` | `50` | Min remaining ms to start embed + Qdrant/hybrid |
+| `STAGE_BUDGET_GRAPH_MS` | `100` | Min remaining ms to start graph lookup |
+| `STAGE_BUDGET_MEMGRAPHRAG_MS` | `200` | Min remaining ms to start MemGraphRAG |
+| `STAGE_TIMEOUT_REWRITE_MS` | `2000` | Hard exec timeout for rewrite |
+| `STAGE_TIMEOUT_RETRIEVE_MS` | `5000` | Hard exec timeout for retrieve (embed + search) |
+| `STAGE_TIMEOUT_GRAPH_MS` | `2000` | Hard exec timeout for graph lookup |
+| `STAGE_TIMEOUT_MEMGRAPHRAG_MS` | `5000` | Hard exec timeout for MemGraphRAG |
+| `STAGE_EXEC_TIMEOUT_MS` | `30000` | Fallback exec timeout when a stage has no dedicated `STAGE_TIMEOUT_*` (tier0/intent/routing/memory/context) |
 | `RETRIEVAL_CANDIDATE_K` | `20` | Candidate pool before rerank/top-k trim |
 | `CONTEXT_BUDGET_RATIO` | `0.25` | Fraction of context window for RAG chunks |
 | `CONTEXT_FALLBACK_CHARS` | `8000` | Char fallback when tokenizer estimate off |
 | `DEFAULT_COMPLETION_RESERVE` | `1024` | Reserved tokens for model reply |
 | `TIER0_MAX_CHARS` | `80` | Max query length for tier0 heuristic bypass |
 
-Rerank and tools use `RERANK_TIMEOUT_MS` and `TOOL_BUDGET_MS` as their stage minimums.
+`STAGE_BUDGET_*` is only an entrance gate. `STAGE_TIMEOUT_*` / `RERANK_TIMEOUT_MS` / `TOOL_BUDGET_MS` are hard `asyncio.wait_for` caps. Rerank and tools also use `RERANK_TIMEOUT_MS` and `TOOL_BUDGET_MS` as their entrance minimums.
 
 ## Intent
 

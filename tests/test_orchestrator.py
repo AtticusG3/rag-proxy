@@ -2,8 +2,6 @@
 
 import asyncio
 
-import pytest
-
 from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext
@@ -58,11 +56,15 @@ def test_orchestrator_skips_stage_when_budget_exhausted(monkeypatch):
     assert ctx.latency_ms["slow"] >= 40
 
 
-def test_pipeline_summary_on_stage_error(monkeypatch):
+def test_orchestrator_stage_error_fail_open_continues(monkeypatch):
+    """A mid-pipeline exception must not abort later stages (partial RAG still possible)."""
     summary_calls: list[str] = []
 
     async def boom(_ctx: RequestContext, _registry: ModelRegistry) -> None:
         raise RuntimeError("stage failed")
+
+    async def ok(ctx: RequestContext, _registry: ModelRegistry) -> None:
+        ctx.stage_trace.append("ok:ran")
 
     monkeypatch.setattr(
         "rag_proxy.orchestrator.log_pipeline_summary",
@@ -77,14 +79,50 @@ def test_pipeline_summary_on_stage_error(monkeypatch):
                 enabled=lambda: True,
                 should_run=lambda _ctx: True,
                 run=boom,
-            )
+            ),
+            PipelineStage(
+                name="ok",
+                min_budget_ms=0,
+                enabled=lambda: True,
+                should_run=lambda _ctx: True,
+                run=ok,
+            ),
         ],
     )
     ctx = RequestContext(query_text="test")
-    with pytest.raises(RuntimeError, match="stage failed"):
-        asyncio.run(run_cognitive_pipeline(ctx))
+    asyncio.run(run_cognitive_pipeline(ctx))
+
+    assert any("fail:stage failed" in err for err in ctx.errors)
+    assert "ok:ran" in ctx.stage_trace
+    assert "fail" in ctx.latency_ms
     assert len(summary_calls) == 1
     assert "total_cognitive" in ctx.latency_ms
+
+
+def test_stage_exec_timeout_uses_timeout_ms_not_min_budget(monkeypatch):
+    """Entrance budget must not double as the hard exec timeout (retrieve footgun)."""
+    from rag_proxy.orchestrator import _stage_exec_timeout_sec
+
+    monkeypatch.setattr(settings, "stage_exec_timeout_ms", 30000)
+    stage = PipelineStage(
+        name="retrieve",
+        min_budget_ms=50,
+        enabled=lambda: True,
+        should_run=lambda _ctx: True,
+        run=_expensive_stage,
+        timeout_ms=5000,
+    )
+    assert _stage_exec_timeout_sec(stage) == 5.0
+
+    fallback = PipelineStage(
+        name="tier0",
+        min_budget_ms=0,
+        enabled=lambda: True,
+        should_run=lambda _ctx: True,
+        run=_expensive_stage,
+        timeout_ms=0,
+    )
+    assert _stage_exec_timeout_sec(fallback) == 30.0
 
 
 async def _timeout_stage(_ctx: RequestContext, _registry: ModelRegistry) -> None:
@@ -111,7 +149,7 @@ def test_orchestrator_times_out_slow_stage(monkeypatch):
     asyncio.run(run_cognitive_pipeline(ctx))
 
     assert any("slow:timeout" in err for err in ctx.errors)
-    assert "slow" not in ctx.latency_ms
+    assert "slow" in ctx.latency_ms
 
 
 def test_legacy_pipeline_has_retrieve_and_context_only():

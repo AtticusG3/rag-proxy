@@ -472,7 +472,7 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "bool",
         "proxy",
         "false",
-        help_text="Fast regex/heuristic bypass before retrieval.",
+        help_text="Skip retrieval for greetings and short acks only (not knowledge FAQs).",
     ),
     SettingField(
         "ENABLE_INTENT_ROUTER",
@@ -607,7 +607,16 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "int",
         "proxy",
         "50",
-        help_text="Minimum time needed to run retrieve stage.",
+        help_text="Minimum remaining global budget to start retrieve (entrance gate only).",
+    ),
+    SettingField(
+        "STAGE_TIMEOUT_RETRIEVE_MS",
+        "Retrieve stage timeout (ms)",
+        "cognitive",
+        "int",
+        "proxy",
+        "5000",
+        help_text="Hard exec timeout for embed + Qdrant/hybrid retrieve.",
     ),
     SettingField(
         "STAGE_BUDGET_GRAPH_MS",
@@ -616,7 +625,16 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "int",
         "proxy",
         "100",
-        help_text="Minimum time needed to run graph lookup stage.",
+        help_text="Minimum remaining global budget to start graph lookup (entrance gate only).",
+    ),
+    SettingField(
+        "STAGE_TIMEOUT_GRAPH_MS",
+        "Graph stage timeout (ms)",
+        "cognitive",
+        "int",
+        "proxy",
+        "2000",
+        help_text="Hard exec timeout for graph lookup.",
     ),
     SettingField(
         "GRAPH_DB_PATH",
@@ -725,7 +743,16 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "int",
         "proxy",
         "200",
-        help_text="Minimum time needed to run MemGraphRAG stage.",
+        help_text="Minimum remaining global budget to start MemGraphRAG (entrance gate only).",
+    ),
+    SettingField(
+        "STAGE_TIMEOUT_MEMGRAPHRAG_MS",
+        "Stage timeout (ms)",
+        "memgraphrag",
+        "int",
+        "proxy",
+        "5000",
+        help_text="Hard exec timeout for MemGraphRAG fact scoring + PPR + passages.",
     ),
     # MemGraphRAG offline build (sqlite only)
     SettingField(

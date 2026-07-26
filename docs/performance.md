@@ -68,7 +68,19 @@ Embed input uses **tail** truncation (`prepare_embed_text`) so the latest user t
 
 ## Stage timeouts
 
-`STAGE_EXEC_TIMEOUT_MS` (default `30000`) caps stages without a dedicated `STAGE_BUDGET_*`. Stages with a budget use that value as the execution timeout (e.g. retrieve `50ms`, rerank `200ms`). Timeouts fail-open: the stage is skipped and the request continues.
+`STAGE_BUDGET_*` is only an entrance gate (skip starting a stage when remaining global budget is below that floor). Hard exec timeouts are separate:
+
+| Setting | Default | Stage |
+| --- | --- | --- |
+| `STAGE_TIMEOUT_REWRITE_MS` | `2000` | rewrite |
+| `STAGE_TIMEOUT_RETRIEVE_MS` | `5000` | retrieve |
+| `STAGE_TIMEOUT_GRAPH_MS` | `2000` | graph |
+| `STAGE_TIMEOUT_MEMGRAPHRAG_MS` | `5000` | memgraphrag |
+| `RERANK_TIMEOUT_MS` | `200` | rerank |
+| `TOOL_BUDGET_MS` | `300` | tools |
+| `STAGE_EXEC_TIMEOUT_MS` | `30000` | fallback when a stage has no dedicated timeout |
+
+Timeouts fail-open: the stage records an error and the request continues.
 
 ## Linux production runtime
 

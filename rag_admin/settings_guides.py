@@ -129,7 +129,8 @@ GROUP_TUNING: dict[str, tuple[TuningSection, ...]] = {
             "Runs after graph lookup in the cognitive pipeline. Requires a built SQLite index and ENABLE_MEMGRAPHRAG=true.",
             (
                 TuningItem("MEMGRAPHRAG_DB_PATH", "SQLite graph built offline (see MemGraphRAG index build tab)."),
-                TuningItem("STAGE_BUDGET_MEMGRAPHRAG_MS", "Time cap for fact scoring + PPR + passage fetch."),
+                TuningItem("STAGE_BUDGET_MEMGRAPHRAG_MS", "Entrance gate: skip if remaining global budget is below this."),
+                TuningItem("STAGE_TIMEOUT_MEMGRAPHRAG_MS", "Hard exec timeout for fact scoring + PPR + passage fetch."),
             ),
         ),
     ),

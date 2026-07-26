@@ -43,7 +43,7 @@ flowchart LR
 
 | Stage | Flag | Purpose |
 | --- | --- | --- |
-| tier0 | `ENABLE_TIER0_HEURISTICS` | Fast regex path; may skip embed/Qdrant. Stage is always registered when cognitive pipeline is on; when the flag is false the stage no-ops except `X-RAG-Mode: off` or `force` header overrides. |
+| tier0 | `ENABLE_TIER0_HEURISTICS` | Fast path: skip embed/Qdrant for greetings/acks only. Stage always registered when cognitive pipeline is on; when the flag is false the stage no-ops except `X-RAG-Mode: off` or `force` header overrides. |
 | intent | `ENABLE_INTENT_ROUTER` | Classify query intent |
 | gating | `ENABLE_RETRIEVAL_GATING` | Skip/light/full retrieval |
 | routing | `ENABLE_MODEL_ROUTING` | Suggest or force model by intent |
@@ -81,9 +81,10 @@ Full phase commands and verification table: [COGNITIVE_RAG_PLAN.md — Enabling 
 ## Latency budgets
 
 - `COGNITIVE_LATENCY_BUDGET_MS` (default 800): global cap. Orchestrator skips stages when remaining ms `< min_budget_ms` for that stage.
-- Per-stage minimums: `STAGE_BUDGET_ROUTING_MS`, `STAGE_BUDGET_REWRITE_MS`, `STAGE_BUDGET_RETRIEVE_MS`, `STAGE_BUDGET_GRAPH_MS`, `STAGE_BUDGET_MEMGRAPHRAG_MS`.
-- Rerank/tools: `RERANK_TIMEOUT_MS`, `TOOL_BUDGET_MS`.
-- Priority when budget exhausted: context inject > rerank > graph > tools > LLM rewrite.
+- Per-stage entrance minimums: `STAGE_BUDGET_ROUTING_MS`, `STAGE_BUDGET_REWRITE_MS`, `STAGE_BUDGET_RETRIEVE_MS`, `STAGE_BUDGET_GRAPH_MS`, `STAGE_BUDGET_MEMGRAPHRAG_MS`.
+- Per-stage hard timeouts (separate from budgets): `STAGE_TIMEOUT_REWRITE_MS`, `STAGE_TIMEOUT_RETRIEVE_MS`, `STAGE_TIMEOUT_GRAPH_MS`, `STAGE_TIMEOUT_MEMGRAPHRAG_MS`; fallback `STAGE_EXEC_TIMEOUT_MS`.
+- Rerank/tools: `RERANK_TIMEOUT_MS`, `TOOL_BUDGET_MS` (used as both entrance minimum and exec timeout).
+- Stages run in registration order; when budget is exhausted later stages are skipped (no reordering).
 
 ## External services (cognitive)
 

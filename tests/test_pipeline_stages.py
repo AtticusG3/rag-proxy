@@ -41,6 +41,29 @@ def test_stage_budget_defaults_match_legacy(monkeypatch):
     assert s.stage_budget_graph_ms == 100
 
 
+def test_stage_timeout_defaults_are_seconds_scale(monkeypatch):
+    """Exec timeouts must be seconds-scale, not conflated with entrance budgets."""
+    monkeypatch.delenv("STAGE_TIMEOUT_REWRITE_MS", raising=False)
+    monkeypatch.delenv("STAGE_TIMEOUT_RETRIEVE_MS", raising=False)
+    monkeypatch.delenv("STAGE_TIMEOUT_GRAPH_MS", raising=False)
+    monkeypatch.delenv("STAGE_TIMEOUT_MEMGRAPHRAG_MS", raising=False)
+    s = Settings()
+    assert s.stage_timeout_rewrite_ms == 2000
+    assert s.stage_timeout_retrieve_ms == 5000
+    assert s.stage_timeout_graph_ms == 2000
+    assert s.stage_timeout_memgraphrag_ms == 5000
+    assert s.stage_timeout_retrieve_ms > s.stage_budget_retrieve_ms
+
+
+def test_retrieve_stage_wires_separate_timeout():
+    """Retrieve stage must not use STAGE_BUDGET_RETRIEVE_MS as its exec timeout."""
+    stages = build_pipeline_stages()
+    retrieve = next(s for s in stages if s.name == "retrieve")
+    assert retrieve.min_budget_ms == 50
+    assert retrieve.timeout_ms == 5000
+    assert retrieve.timeout_ms != retrieve.min_budget_ms
+
+
 def test_rewrite_stage_disabled_when_flag_off(monkeypatch):
     """Rewrite stage is disabled when ENABLE_QUERY_REWRITE is off."""
     monkeypatch.setattr("rag_proxy.config.settings.enable_query_rewrite", False)
@@ -73,8 +96,8 @@ def test_gating_stage_disabled_when_flag_off(monkeypatch):
     assert not gating.enabled()
 
 
-def test_graph_stage_requires_infra_intent_and_query():
-    """Graph stage requires infra intent and non-empty query."""
+def test_graph_stage_requires_active_retrieval_infra_intent_and_query():
+    """Graph must not run when retrieval is skipped (e.g. X-RAG-Mode: off)."""
     from rag_proxy.context import IntentLabel
 
     stages = build_pipeline_stages()
@@ -88,9 +111,15 @@ def test_graph_stage_requires_infra_intent_and_query():
         intent=IntentLabel.INFRA_DEBUG,
     )
     ctx_no_query = RequestContext(intent=IntentLabel.INFRA_DEBUG)
+    ctx_header_off = RequestContext(
+        query_text="why is qdrant down",
+        intent=IntentLabel.INFRA_DEBUG,
+        retrieval=RetrievalDecision.SKIP,
+    )
     assert not graph.should_run(ctx_skip_intent)
     assert graph.should_run(ctx_infra)
     assert not graph.should_run(ctx_no_query)
+    assert not graph.should_run(ctx_header_off)
 
 
 def test_tools_stage_requires_active_retrieval():

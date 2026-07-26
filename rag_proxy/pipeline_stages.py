@@ -24,6 +24,8 @@ class PipelineStage:
     enabled: Callable[[], bool]
     should_run: Callable[[RequestContext], bool]
     run: Callable[[RequestContext, ModelRegistry], Awaitable[None]]
+    # Hard exec timeout; 0 means STAGE_EXEC_TIMEOUT_MS. Not the entrance budget.
+    timeout_ms: float = 0
 
 
 def _retrieval_active(ctx: RequestContext) -> bool:
@@ -41,8 +43,12 @@ _GRAPH_INTENTS = frozenset(
 
 
 def _graph_should_run(ctx: RequestContext) -> bool:
-    """True for infra intents with a query."""
-    return bool(ctx.query_text) and ctx.intent in _GRAPH_INTENTS
+    """True for infra intents when retrieval is active and a query is present."""
+    return (
+        _retrieval_active(ctx)
+        and bool(ctx.query_text)
+        and ctx.intent in _GRAPH_INTENTS
+    )
 
 
 def _tools_should_run(ctx: RequestContext) -> bool:
@@ -150,6 +156,7 @@ def build_pipeline_stages() -> list[PipelineStage]:
             enabled=lambda: settings.enable_query_rewrite,
             should_run=_retrieval_active,
             run=lambda ctx, _registry: tier2_rewrite.run_rewrite(ctx),
+            timeout_ms=float(settings.stage_timeout_rewrite_ms),
         ),
         PipelineStage(
             name="retrieve",
@@ -157,6 +164,7 @@ def build_pipeline_stages() -> list[PipelineStage]:
             enabled=lambda: True,
             should_run=_retrieval_active,
             run=_run_retrieve,
+            timeout_ms=float(settings.stage_timeout_retrieve_ms),
         ),
         PipelineStage(
             name="rerank",
@@ -164,6 +172,7 @@ def build_pipeline_stages() -> list[PipelineStage]:
             enabled=lambda: settings.enable_reranker,
             should_run=lambda ctx: _retrieval_active(ctx) and bool(ctx.hits),
             run=lambda ctx, _registry: tier2_rerank.run_rerank(ctx),
+            timeout_ms=float(settings.rerank_timeout_ms),
         ),
         PipelineStage(
             name="graph",
@@ -171,6 +180,7 @@ def build_pipeline_stages() -> list[PipelineStage]:
             enabled=lambda: settings.enable_graph_lookup,
             should_run=_graph_should_run,
             run=_run_graph,
+            timeout_ms=float(settings.stage_timeout_graph_ms),
         ),
         PipelineStage(
             name="memgraphrag",
@@ -178,6 +188,7 @@ def build_pipeline_stages() -> list[PipelineStage]:
             enabled=lambda: settings.enable_memgraphrag,
             should_run=_retrieval_active,
             run=lambda ctx, _registry: tier3_memgraphrag.run_memgraphrag(ctx),
+            timeout_ms=float(settings.stage_timeout_memgraphrag_ms),
         ),
         PipelineStage(
             name="tools",
@@ -185,6 +196,7 @@ def build_pipeline_stages() -> list[PipelineStage]:
             enabled=lambda: settings.enable_tools,
             should_run=_tools_should_run,
             run=lambda ctx, _registry: tier3_tools.run_tools(ctx),
+            timeout_ms=float(settings.tool_budget_ms),
         ),
         PipelineStage(
             name="memory",

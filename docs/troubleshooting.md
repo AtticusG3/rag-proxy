@@ -51,7 +51,7 @@ Abandoned upstream streams are closed after `UPSTREAM_STREAM_ABANDON_SEC` with n
 | Traces off | Set `ENABLE_REQUEST_TRACE=true`, `LOG_LEVEL=INFO` |
 | Gating too aggressive | `GATING_LOG_ONLY=true`; inspect `gating_would_skip` in JSON logs |
 | Intent threshold | Lower `INTENT_CONFIDENCE_THRESHOLD` or disable `ENABLE_INTENT_ROUTER` temporarily |
-| Budget skips stages | Compare total `latency_ms` to `COGNITIVE_LATENCY_BUDGET_MS`; raise `STAGE_BUDGET_*` |
+| Budget skips stages | Compare total `latency_ms` to `COGNITIVE_LATENCY_BUDGET_MS`; raise global budget or lower `STAGE_BUDGET_*` floors. For hung stages, raise `STAGE_TIMEOUT_*` / `STAGE_EXEC_TIMEOUT_MS` |
 
 See [COGNITIVE_RAG_PLAN.md — Failure modes](COGNITIVE_RAG_PLAN.md#failure-modes).
 

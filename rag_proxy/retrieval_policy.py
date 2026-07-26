@@ -8,8 +8,15 @@ from typing import Literal
 from rag_proxy.config import settings
 from rag_proxy.context import IntentLabel, PipelineTier, RequestContext, RetrievalDecision
 
+# Whole-utterance / prefix greetings (no '?'); KB questions must still retrieve.
 _GREETING = re.compile(
-    r"^(hi|hello|hey|thanks|thank you|good morning|good evening)\b",
+    r"^(hi|hello|hey|howdy|thanks|thank you|good morning|good afternoon|"
+    r"good evening|good night)\b",
+    re.I,
+)
+_ACK = re.compile(
+    r"^(ok(?:ay)?|k{1,2}|sure|yep|yup|cool|great|perfect|got\s+it|noted|"
+    r"understood|cheers|np|no\s+problem|thx|ty)[.!]*$",
     re.I,
 )
 INFRA_SIGNAL = re.compile(
@@ -19,14 +26,12 @@ INFRA_SIGNAL = re.compile(
     r"\b[A-Z]{2,}\d+\b|v?\d+\.\d+\.\d+)",
     re.I,
 )
-_SIMPLE_FAQ = re.compile(
-    r"^what is [a-z][a-z ]{0,30}\??$",
-)
 
 PolicyPhase = Literal["tier0", "gating"]
 
 
 def should_bypass_heuristics(ctx: RequestContext) -> bool:
+    """True when tier0 should skip retrieval (greetings/acks only, not FAQs)."""
     if ctx.rag_mode_header == "force":
         return False
     if ctx.rag_mode_header == "off":
@@ -36,16 +41,18 @@ def should_bypass_heuristics(ctx: RequestContext) -> bool:
     if not q:
         return True
 
+    # Knowledge / troubleshooting questions always retrieve at tier0.
+    if "?" in q:
+        return False
+
     if INFRA_SIGNAL.search(q):
         return False
-    if len(q) <= settings.tier0_max_chars and _GREETING.match(q):
+
+    if len(q) > settings.tier0_max_chars:
+        return False
+
+    if _GREETING.match(q) or _ACK.match(q):
         return True
-    if len(q) <= settings.tier0_max_chars and _SIMPLE_FAQ.match(q):
-        return True
-    if len(q) <= 40 and "?" in q and not INFRA_SIGNAL.search(q):
-        words = q.split()
-        if len(words) <= 8:
-            return True
 
     return False
 

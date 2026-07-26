@@ -1,4 +1,4 @@
-"""Tier 0: heuristic fast path (no embed/Qdrant)."""
+"""Tier 0: skip retrieval for greetings/acks only (no embed/Qdrant)."""
 
 from __future__ import annotations
 

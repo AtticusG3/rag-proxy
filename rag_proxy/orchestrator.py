@@ -40,10 +40,8 @@ def _budget_remaining(ctx: RequestContext) -> float:
 
 
 def _stage_exec_timeout_sec(stage: PipelineStage) -> float | None:
-    if stage.min_budget_ms > 0:
-        ms = int(stage.min_budget_ms)
-    else:
-        ms = settings.stage_exec_timeout_ms
+    """Hard exec timeout. Separate from min_budget_ms (entrance gate only)."""
+    ms = int(stage.timeout_ms) if stage.timeout_ms > 0 else settings.stage_exec_timeout_ms
     if ms <= 0:
         return None
     return ms / 1000.0
@@ -60,6 +58,13 @@ async def _run_stage(stage: PipelineStage, ctx: RequestContext) -> None:
     except asyncio.TimeoutError:
         log.warning("Stage %s timed out after %.3fs", stage.name, timeout_sec or 0.0)
         ctx.errors.append(f"{stage.name}:timeout")
+        ctx.latency_ms[stage.name] = _elapsed_ms(t0)
+        return
+    except Exception as e:
+        # Fail-open: one stage must not abort retrieve/context for the request.
+        log.warning("Stage %s failed: %s", stage.name, e)
+        ctx.errors.append(f"{stage.name}:{e}")
+        ctx.latency_ms[stage.name] = _elapsed_ms(t0)
         return
     elapsed = _elapsed_ms(t0)
     ctx.latency_ms[stage.name] = elapsed

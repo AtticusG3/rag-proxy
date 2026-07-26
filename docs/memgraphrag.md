@@ -152,6 +152,7 @@ Optional tuning (defaults in [Configuration](configuration.md)):
 | `MEMGRAPHRAG_PPR_ITERATIONS` | `20` | PPR iterations |
 | `MEMGRAPHRAG_PASSAGE_NODE_WEIGHT` | `0.5` | Weight when aggregating fact scores to passages |
 | `STAGE_BUDGET_MEMGRAPHRAG_MS` | `200` | Skip stage if remaining budget below this |
+| `STAGE_TIMEOUT_MEMGRAPHRAG_MS` | `5000` | Hard exec timeout for MemGraphRAG |
 
 For best results, also enable the reranker sidecar:
 

@@ -153,6 +153,19 @@ class Settings:
     stage_budget_memgraphrag_ms: int = field(
         default_factory=lambda: _env_int("STAGE_BUDGET_MEMGRAPHRAG_MS", 200)
     )
+    # Hard exec timeouts (separate from STAGE_BUDGET_* entrance gates).
+    stage_timeout_rewrite_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_TIMEOUT_REWRITE_MS", 2000)
+    )
+    stage_timeout_retrieve_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_TIMEOUT_RETRIEVE_MS", 5000)
+    )
+    stage_timeout_graph_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_TIMEOUT_GRAPH_MS", 2000)
+    )
+    stage_timeout_memgraphrag_ms: int = field(
+        default_factory=lambda: _env_int("STAGE_TIMEOUT_MEMGRAPHRAG_MS", 5000)
+    )
     stage_exec_timeout_ms: int = field(
         default_factory=lambda: _env_int("STAGE_EXEC_TIMEOUT_MS", 30000)
     )
