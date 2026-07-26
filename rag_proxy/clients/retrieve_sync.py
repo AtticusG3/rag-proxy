@@ -15,8 +15,12 @@ from rag_proxy.clients.retrieval_core import (
     parse_dense_hits,
     parse_embedding,
     parse_sparse_hits,
+    parse_turbovec_hits,
     prepare_embed_text,
+    qdrant_retrieve_payload,
     sparse_search_payload,
+    turbovec_hits_from_scored,
+    turbovec_search_payload,
 )
 
 log = logging.getLogger("rag-proxy")
@@ -39,6 +43,8 @@ class RetrieveConfig:
     rerank_top_k: int = 5
     rerank_timeout_sec: float = 2.5
     user_agent: str = "rag-proxy-retrieve-sync/1.0"
+    dense_backend: str = "qdrant"
+    turbovec_url: str = ""
 
 
 def rrf_merge(
@@ -99,10 +105,12 @@ def dense_search(
     limit: int,
     score_threshold: float | None = None,
 ) -> list[dict]:
-    """Return top-k chunks from Qdrant above the similarity threshold."""
+    """Return top-k chunks above the similarity threshold (Qdrant or TurboVec)."""
     threshold = (
         config.similarity_threshold if score_threshold is None else score_threshold
     )
+    if config.dense_backend == "turbovec":
+        return _dense_search_turbovec(config, vector, limit=limit, score_threshold=threshold)
     body = dense_search_payload(
         vector,
         limit,
@@ -120,6 +128,40 @@ def dense_search(
             return parse_dense_hits(r.json())
     except Exception as e:
         log.warning(f"Qdrant search failed: {e}")
+        return []
+
+
+def _dense_search_turbovec(
+    config: RetrieveConfig,
+    vector: list[float],
+    *,
+    limit: int,
+    score_threshold: float | None,
+) -> list[dict]:
+    if not config.turbovec_url:
+        log.warning("DENSE_BACKEND=turbovec but TURBOVEC_URL is empty")
+        return []
+    body = turbovec_search_payload(vector, limit, score_threshold)
+    try:
+        with httpx.Client(timeout=10.0, headers=_headers(config)) as client:
+            r = client.post(
+                f"{config.turbovec_url.rstrip('/')}/search",
+                json=body,
+            )
+            r.raise_for_status()
+            search_json = r.json()
+            scored = parse_turbovec_hits(search_json)
+            if not scored:
+                return []
+            retrieve = client.post(
+                f"{config.qdrant_url.rstrip('/')}/collections/"
+                f"{config.qdrant_collection}/points",
+                json=qdrant_retrieve_payload([h["id"] for h in scored]),
+            )
+            retrieve.raise_for_status()
+            return turbovec_hits_from_scored(scored, retrieve.json())
+    except Exception as e:
+        log.warning(f"TurboVec search failed: {e}")
         return []
 
 

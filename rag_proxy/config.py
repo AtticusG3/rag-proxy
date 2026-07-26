@@ -178,11 +178,16 @@ class Settings:
     )
     intent_timeout_ms: int = field(default_factory=lambda: _env_int("INTENT_TIMEOUT_MS", 150))
 
-    # Hybrid / rerank
+    # Hybrid / rerank / dense backend
     hybrid_dense_weight: float = field(
         default_factory=lambda: _env_float("HYBRID_DENSE_WEIGHT", 0.7)
     )
     sparse_index_url: str = field(default_factory=lambda: os.getenv("SPARSE_INDEX_URL", ""))
+    # qdrant (default) | turbovec — turbovec ANN + Qdrant payload fetch-by-id
+    dense_backend: str = field(
+        default_factory=lambda: os.getenv("DENSE_BACKEND", "qdrant").strip().lower()
+    )
+    turbovec_url: str = field(default_factory=lambda: os.getenv("TURBOVEC_URL", ""))
     recency_weight: float = field(default_factory=lambda: _env_float("RECENCY_WEIGHT", 0.1))
     reranker_url: str = field(
         default_factory=lambda: os.getenv("RERANKER_URL", "http://127.0.0.1:8095")

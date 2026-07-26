@@ -16,13 +16,22 @@ from rag_proxy.clients.retrieval_core import (
     parse_dense_hits,
     parse_embedding,
     parse_sparse_hits,
+    parse_turbovec_hits,
     prepare_embed_text,
+    qdrant_retrieve_payload,
     sparse_search_payload,
+    turbovec_hits_from_scored,
+    turbovec_search_payload,
 )
 from ingest.embed_lifecycle import ensure_embed_urls, touch_embed_activity
 from rag_proxy.config import settings
 from rag_proxy.observability import record_embed_cache_hit, record_embed_cache_miss
-from rag_proxy.sidecar_client import get_embed_client, get_qdrant_client, get_sparse_client
+from rag_proxy.sidecar_client import (
+    get_embed_client,
+    get_qdrant_client,
+    get_sparse_client,
+    get_turbovec_client,
+)
 
 log = logging.getLogger("rag-proxy")
 
@@ -124,12 +133,66 @@ async def embed_text(
     return await get_embedding(text)
 
 
+async def _qdrant_retrieve_json(ids: list[str]) -> dict:
+    """Fetch Qdrant retrieve response; fail-open to empty JSON."""
+    if not ids:
+        return {}
+    body = qdrant_retrieve_payload(ids)
+    try:
+        client = get_qdrant_client()
+        r = await client.post(
+            f"{settings.qdrant_url}/collections/{settings.qdrant_collection}/points",
+            json=body,
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        log.warning(f"Qdrant retrieve failed: {e}")
+        return {}
+
+
+async def search_turbovec_dense(
+    vector: list[float],
+    limit: int | None = None,
+    score_threshold: float | None = None,
+) -> list[dict]:
+    """ANN via turbovec sidecar, then attach Qdrant payloads by id."""
+    if not settings.turbovec_url:
+        log.warning("DENSE_BACKEND=turbovec but TURBOVEC_URL is empty")
+        return []
+    limit = limit if limit is not None else settings.top_k
+    score_threshold = (
+        score_threshold if score_threshold is not None else settings.similarity_threshold
+    )
+    body = turbovec_search_payload(vector, limit, score_threshold)
+    try:
+        client = get_turbovec_client()
+        r = await client.post(
+            f"{settings.turbovec_url.rstrip('/')}/search",
+            json=body,
+        )
+        r.raise_for_status()
+        search_json = r.json()
+    except Exception as e:
+        log.warning(f"TurboVec search failed: {e}")
+        return []
+    scored = parse_turbovec_hits(search_json)
+    if not scored:
+        return []
+    retrieve_json = await _qdrant_retrieve_json([h["id"] for h in scored])
+    return turbovec_hits_from_scored(scored, retrieve_json)
+
+
 async def search_qdrant_dense(
     vector: list[float],
     limit: int | None = None,
     score_threshold: float | None = None,
 ) -> list[dict]:
-    """Return top-k chunks from Qdrant above the similarity threshold."""
+    """Return top-k chunks above the similarity threshold (Qdrant or TurboVec)."""
+    if settings.dense_backend == "turbovec":
+        return await search_turbovec_dense(
+            vector, limit=limit, score_threshold=score_threshold
+        )
     limit = limit if limit is not None else settings.top_k
     score_threshold = (
         score_threshold if score_threshold is not None else settings.similarity_threshold

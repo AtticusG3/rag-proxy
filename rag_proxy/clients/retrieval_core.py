@@ -71,3 +71,95 @@ def parse_sparse_hits(response_json: dict[str, Any]) -> list[dict]:
     if not isinstance(results, list):
         return []
     return results
+
+
+def turbovec_search_payload(
+    vector: list[float],
+    limit: int,
+    score_threshold: float | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"vector": vector, "limit": limit}
+    if score_threshold is not None:
+        body["score_threshold"] = score_threshold
+    return body
+
+
+def parse_turbovec_hits(response_json: dict[str, Any]) -> list[dict]:
+    results = response_json.get("results")
+    if not isinstance(results, list):
+        return []
+    hits: list[dict] = []
+    for row in results:
+        if not isinstance(row, dict):
+            continue
+        hit_id = row.get("id")
+        if hit_id is None:
+            continue
+        hits.append({"id": str(hit_id), "score": float(row.get("score", 0.0))})
+    return hits
+
+
+def merge_dense_scores_with_payloads(
+    scored: list[dict],
+    payload_points: list[dict],
+) -> list[dict]:
+    """Attach Qdrant payloads to turbovec id/score rows; preserve score order."""
+    by_id: dict[str, dict] = {}
+    for point in payload_points:
+        point_id = point.get("id")
+        if point_id is None:
+            continue
+        by_id[str(point_id)] = point.get("payload") or {}
+    merged: list[dict] = []
+    for row in scored:
+        hit_id = str(row.get("id", ""))
+        if not hit_id:
+            continue
+        merged.append(
+            {
+                "id": hit_id,
+                "score": float(row.get("score", 0.0)),
+                "payload": by_id.get(hit_id, {}),
+            }
+        )
+    return merged
+
+
+def qdrant_retrieve_payload(
+    ids: list[str],
+    *,
+    with_payload: bool = True,
+    with_vector: bool = False,
+) -> dict[str, Any]:
+    return {
+        "ids": ids,
+        "with_payload": with_payload,
+        "with_vector": with_vector,
+    }
+
+
+def parse_qdrant_retrieve(response_json: dict[str, Any]) -> list[dict]:
+    result = response_json.get("result")
+    if not isinstance(result, list):
+        return []
+    return result
+
+
+def turbovec_hits_from_scored(
+    scored: list[dict],
+    retrieve_json: dict[str, Any],
+) -> list[dict]:
+    """Merge pre-parsed TurboVec id/score rows with Qdrant retrieve JSON."""
+    if not scored:
+        return []
+    payloads = parse_qdrant_retrieve(retrieve_json)
+    return merge_dense_scores_with_payloads(scored, payloads)
+
+
+def turbovec_hits_from_responses(
+    search_json: dict[str, Any],
+    retrieve_json: dict[str, Any],
+) -> list[dict]:
+    """Parse TurboVec /search and Qdrant retrieve JSON into merged hit dicts."""
+    scored = parse_turbovec_hits(search_json)
+    return turbovec_hits_from_scored(scored, retrieve_json)

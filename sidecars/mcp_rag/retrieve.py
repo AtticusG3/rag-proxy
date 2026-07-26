@@ -36,6 +36,8 @@ class RetrieveSettings:
     enable_rerank: bool
     embed_max_chars: int
     user_agent: str
+    dense_backend: str = "qdrant"
+    turbovec_url: str = ""
 
     @classmethod
     def from_env(cls) -> RetrieveSettings:
@@ -55,6 +57,8 @@ class RetrieveSettings:
             in ("1", "true", "yes", "on"),
             embed_max_chars=int(os.getenv("EMBED_MAX_CHARS", "2000")),
             user_agent=os.getenv("MCP_RAG_USER_AGENT", "mcp-rag-context/1.0"),
+            dense_backend=os.getenv("DENSE_BACKEND", "qdrant").strip().lower(),
+            turbovec_url=os.getenv("TURBOVEC_URL", ""),
         )
 
 
@@ -91,6 +95,8 @@ def _to_retrieve_config(settings: RetrieveSettings) -> RetrieveConfig:
         enable_hybrid=settings.enable_hybrid,
         enable_rerank=settings.enable_rerank,
         user_agent=settings.user_agent,
+        dense_backend=settings.dense_backend,
+        turbovec_url=settings.turbovec_url,
     )
 
 

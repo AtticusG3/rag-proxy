@@ -1,4 +1,4 @@
-"""Shared httpx clients for embed, Qdrant, sparse, and reranker sidecars."""
+"""Shared httpx clients for embed, Qdrant, sparse, turbovec, and reranker sidecars."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ log = logging.getLogger("rag-proxy")
 _embed_client: httpx.AsyncClient | None = None
 _qdrant_client: httpx.AsyncClient | None = None
 _sparse_client: httpx.AsyncClient | None = None
+_turbovec_client: httpx.AsyncClient | None = None
 _reranker_client: httpx.AsyncClient | None = None
 
 
@@ -48,8 +49,14 @@ def get_reranker_client() -> httpx.AsyncClient:
     return _reranker_client
 
 
+def get_turbovec_client() -> httpx.AsyncClient:
+    if _turbovec_client is None:
+        raise RuntimeError("turbovec sidecar client not started")
+    return _turbovec_client
+
+
 async def startup_sidecar_clients() -> None:
-    global _embed_client, _qdrant_client, _sparse_client, _reranker_client
+    global _embed_client, _qdrant_client, _sparse_client, _turbovec_client, _reranker_client
     if _embed_client is None:
         _embed_client = httpx.AsyncClient(
             timeout=httpx.Timeout(30.0),
@@ -68,6 +75,12 @@ async def startup_sidecar_clients() -> None:
             limits=_build_limits(),
         )
         log.info("sparse sidecar pool started url=%s", settings.sparse_index_url)
+    if settings.turbovec_url and _turbovec_client is None:
+        _turbovec_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0),
+            limits=_build_limits(),
+        )
+        log.info("turbovec sidecar pool started url=%s", settings.turbovec_url)
     if settings.enable_reranker and _reranker_client is None:
         timeout_sec = settings.rerank_timeout_ms / 1000.0 + 0.5
         _reranker_client = httpx.AsyncClient(
@@ -78,7 +91,7 @@ async def startup_sidecar_clients() -> None:
 
 
 async def shutdown_sidecar_clients() -> None:
-    global _embed_client, _qdrant_client, _sparse_client, _reranker_client
+    global _embed_client, _qdrant_client, _sparse_client, _turbovec_client, _reranker_client
     if _embed_client is not None:
         await _embed_client.aclose()
         _embed_client = None
@@ -88,6 +101,9 @@ async def shutdown_sidecar_clients() -> None:
     if _sparse_client is not None:
         await _sparse_client.aclose()
         _sparse_client = None
+    if _turbovec_client is not None:
+        await _turbovec_client.aclose()
+        _turbovec_client = None
     if _reranker_client is not None:
         await _reranker_client.aclose()
         _reranker_client = None
