@@ -105,7 +105,246 @@ def sort_file_rows(
     return order_queue_rows(rows, sort=sort, direction=direction)
 
 
-def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int | None]:
+def ingest_config_snapshot(worker: Any) -> dict[str, Any]:
+    config = worker.config
+    pool_urls = config.embed_urls or []
+    chunk = config.chunk_config
+    return {
+        "batch_size": config.batch_size,
+        "embed_concurrency": config.embed_concurrency,
+        "file_concurrency": config.file_concurrency,
+        "embed_max_chars": config.embed_max_chars,
+        "embed_url": config.embed_url,
+        "embed_pool_count": len(pool_urls) if pool_urls else 1,
+        "sparse_reindex_mode": config.sparse_reindex_mode,
+        "turbovec_reindex_mode": getattr(config, "turbovec_reindex_mode", "idle"),
+        "turbovec_configured": bool(getattr(config, "turbovec_url", "").strip()),
+        "stall_minutes": config.stall_seconds // 60,
+        "qdrant_collection": config.qdrant_collection,
+        "chunk_size_tokens": chunk.chunk_size,
+        "chunk_overlap_tokens": chunk.chunk_overlap,
+        "chunk_semantic": "on" if chunk.semantic_enabled else "off",
+        "paused": worker.paused,
+    }
+
+
+def _health_count(body: Any, *keys: str) -> int | None:
+    if not isinstance(body, dict):
+        return None
+    for key in keys:
+        if key in body and body[key] is not None:
+            try:
+                return int(body[key])
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def derive_sidecar_phase(
+    *,
+    kind: str,
+    configured: bool,
+    mode: str,
+    ok: bool | None,
+    dirty: bool,
+    reindexing: bool,
+    queue_active: bool,
+    dual_write: bool = False,
+    on_demand: bool = False,
+) -> str:
+    """Human phase label for Jobs BM25 / TurboVec panels."""
+    if not configured:
+        return "unconfigured"
+    if reindexing:
+        return "reindexing"
+    if dirty:
+        return "pending_reindex"
+    if kind == "sparse" and queue_active and on_demand:
+        return "stopped_for_ingest"
+    if kind == "turbovec" and dual_write and queue_active:
+        return "dual_write"
+    if ok is False:
+        return "down"
+    if mode == "off":
+        return "off"
+    return "idle"
+
+
+def build_sidecars_payload(
+    worker: Any,
+    *,
+    queue_active: int,
+    sparse_health: dict[str, Any] | None = None,
+    turbovec_health: dict[str, Any] | None = None,
+    on_demand: bool | None = None,
+) -> dict[str, Any]:
+    """Merge worker scheduler status with optional /health probe results."""
+    from ingest.sidecar_lifecycle import sidecar_on_demand_enabled
+
+    if on_demand is None:
+        on_demand = sidecar_on_demand_enabled()
+
+    raw = worker.sidecar_status() if hasattr(worker, "sidecar_status") else {
+        "sparse": {"configured": False, "mode": "off", "dirty": False, "reindexing": False},
+        "turbovec": {
+            "configured": False,
+            "mode": "off",
+            "dirty": False,
+            "reindexing": False,
+            "dual_write": False,
+        },
+    }
+    active = int(queue_active or 0) > 0
+
+    sparse_h = sparse_health or {}
+    sparse_body = sparse_h.get("body") if isinstance(sparse_h, dict) else None
+    sparse_ok = sparse_h.get("ok") if sparse_h else None
+    sparse = dict(raw.get("sparse") or {})
+    sparse_configured = bool(sparse.get("configured"))
+    sparse["ok"] = bool(sparse_ok) if sparse_configured and sparse_h else None
+    sparse["docs"] = _health_count(sparse_body, "docs")
+    sparse["last_sync"] = (
+        sparse_body.get("last_sync") if isinstance(sparse_body, dict) else None
+    )
+    sparse["phase"] = derive_sidecar_phase(
+        kind="sparse",
+        configured=sparse_configured,
+        mode=str(sparse.get("mode") or "idle"),
+        ok=sparse["ok"],
+        dirty=bool(sparse.get("dirty")),
+        reindexing=bool(sparse.get("reindexing")),
+        queue_active=active,
+        on_demand=bool(on_demand),
+    )
+
+    tv_h = turbovec_health or {}
+    tv_body = tv_h.get("body") if isinstance(tv_h, dict) else None
+    tv_ok = tv_h.get("ok") if tv_h else None
+    turbovec = dict(raw.get("turbovec") or {})
+    tv_configured = bool(turbovec.get("configured"))
+    turbovec["ok"] = bool(tv_ok) if tv_configured and tv_h else None
+    turbovec["vectors"] = _health_count(tv_body, "vectors", "docs")
+    turbovec["phase"] = derive_sidecar_phase(
+        kind="turbovec",
+        configured=tv_configured,
+        mode=str(turbovec.get("mode") or "idle"),
+        ok=turbovec["ok"],
+        dirty=bool(turbovec.get("dirty")),
+        reindexing=bool(turbovec.get("reindexing")),
+        queue_active=active,
+        dual_write=bool(turbovec.get("dual_write")),
+        on_demand=bool(on_demand),
+    )
+
+    return {"bm25": sparse, "turbovec": turbovec}
+
+
+async def load_sidecars_payload(worker: Any, *, queue_active: int) -> dict[str, Any]:
+    """Probe BM25 / TurboVec /health and merge with worker scheduler state."""
+    from rag_admin.service_status import probe_url
+
+    sparse_url = (getattr(worker.config, "sparse_index_url", "") or "").strip()
+    tv_url = (getattr(worker.config, "turbovec_url", "") or "").strip()
+    sparse_health = await probe_url(sparse_url) if sparse_url else None
+    turbovec_health = await probe_url(tv_url) if tv_url else None
+    return build_sidecars_payload(
+        worker,
+        queue_active=queue_active,
+        sparse_health=sparse_health,
+        turbovec_health=turbovec_health,
+    )
+
+
+_PHASE_VELOCITY = {
+    "reindexing": "reindexing",
+    "pending_reindex": "pending",
+    "dual_write": "dual-write",
+    "stopped_for_ingest": "paused for ingest",
+}
+
+
+def sidecars_velocity_clause(sidecars: dict[str, Any]) -> str:
+    """Compact BM25/TurboVec clause for the Jobs velocity line."""
+    parts: list[str] = []
+    bm25 = sidecars.get("bm25") or {}
+    tv = sidecars.get("turbovec") or {}
+    bm25_label = _PHASE_VELOCITY.get(str(bm25.get("phase") or ""))
+    if bm25_label:
+        parts.append(f"BM25 {bm25_label}")
+    tv_label = _PHASE_VELOCITY.get(str(tv.get("phase") or ""))
+    if tv_label:
+        parts.append(f"TurboVec {tv_label}")
+    return " · ".join(parts)
+
+
+def sidecars_activity_active(sidecars: dict[str, Any]) -> bool:
+    """True when Live badge should stay on for sidecar work."""
+    for key in ("bm25", "turbovec"):
+        row = sidecars.get(key) or {}
+        if row.get("reindexing") or row.get("dirty"):
+            return True
+        if row.get("phase") in ("reindexing", "pending_reindex", "dual_write"):
+            return True
+    return False
+
+
+def ingest_velocity_text(
+    stats: dict[str, int | None],
+    *,
+    sidecars: dict[str, Any] | None = None,
+) -> str:
+    """Single-line ingest velocity summary for Jobs page."""
+    if int(stats.get("active") or 0) <= 0:
+        indexed = int(stats.get("indexed") or 0)
+        total = int(stats.get("total_chunks") or 0)
+        base = f"{indexed:,} indexed · {total:,} corpus chunks"
+    else:
+        active = int(stats["active"])
+        total = int(stats.get("total_chunks") or 0)
+        running = int(stats.get("running") or 0)
+        pending = int(stats.get("pending") or 0)
+        parts = [f"{active} in queue", f"{total:,} corpus chunks"]
+        if running:
+            parts.append(f"{running} embedding")
+        parts.extend(
+            [
+                "now "
+                + format_embed_rate(
+                    stats.get("embed_rate_now"),
+                    running=running,
+                    pending=pending,
+                    window="now",
+                ),
+                "5m "
+                + format_embed_rate(
+                    stats.get("embed_rate_5m"),
+                    running=running,
+                    pending=pending,
+                    window="5m",
+                ),
+                "15m "
+                + format_embed_rate(
+                    stats.get("embed_rate_15m"),
+                    running=running,
+                    pending=pending,
+                    window="15m",
+                ),
+            ]
+        )
+        base = " · ".join(parts)
+
+    if sidecars:
+        clause = sidecars_velocity_clause(sidecars)
+        if clause:
+            return f"{base} · {clause}"
+    return base
+
+
+def ingest_queue_stats(
+    files: list[dict[str, Any]],
+    *,
+    sidecars: dict[str, Any] | None = None,
+) -> dict[str, int | None]:
     pending = 0
     running = 0
     stalled = 0
@@ -133,7 +372,7 @@ def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int | None]:
         elif status == "failed":
             pass
     record_embed_progress(total_chunks)
-    stats = {
+    stats: dict[str, Any] = {
         "pending": pending,
         "running": running,
         "stalled": stalled,
@@ -144,50 +383,5 @@ def ingest_queue_stats(files: list[dict[str, Any]]) -> dict[str, int | None]:
         "queue_chunks": queue_chunks,
     }
     stats.update(embed_throughput_rates())
-    stats["velocity_text"] = ingest_velocity_text(stats)
+    stats["velocity_text"] = ingest_velocity_text(stats, sidecars=sidecars)
     return stats
-
-
-def ingest_velocity_text(stats: dict[str, int | None]) -> str:
-    """Single-line ingest velocity summary for Jobs page."""
-    if int(stats.get("active") or 0) <= 0:
-        indexed = int(stats.get("indexed") or 0)
-        total = int(stats.get("total_chunks") or 0)
-        return f"{indexed:,} indexed · {total:,} corpus chunks"
-
-    active = int(stats["active"])
-    total = int(stats.get("total_chunks") or 0)
-    running = int(stats.get("running") or 0)
-    pending = int(stats.get("pending") or 0)
-    parts = [f"{active} in queue", f"{total:,} corpus chunks"]
-    if running:
-        parts.append(f"{running} embedding")
-    parts.extend(
-        [
-            "now " + format_embed_rate(stats.get("embed_rate_now"), running=running, pending=pending, window="now"),
-            "5m " + format_embed_rate(stats.get("embed_rate_5m"), running=running, pending=pending, window="5m"),
-            "15m " + format_embed_rate(stats.get("embed_rate_15m"), running=running, pending=pending, window="15m"),
-        ]
-    )
-    return " · ".join(parts)
-
-
-def ingest_config_snapshot(worker: Any) -> dict[str, Any]:
-    config = worker.config
-    pool_urls = config.embed_urls or []
-    chunk = config.chunk_config
-    return {
-        "batch_size": config.batch_size,
-        "embed_concurrency": config.embed_concurrency,
-        "file_concurrency": config.file_concurrency,
-        "embed_max_chars": config.embed_max_chars,
-        "embed_url": config.embed_url,
-        "embed_pool_count": len(pool_urls) if pool_urls else 1,
-        "sparse_reindex_mode": config.sparse_reindex_mode,
-        "stall_minutes": config.stall_seconds // 60,
-        "qdrant_collection": config.qdrant_collection,
-        "chunk_size_tokens": chunk.chunk_size,
-        "chunk_overlap_tokens": chunk.chunk_overlap,
-        "chunk_semantic": "on" if chunk.semantic_enabled else "off",
-        "paused": worker.paused,
-    }

@@ -17,7 +17,9 @@ from rag_admin.ingest_status import (
     filter_visible_file_rows,
     ingest_config_snapshot,
     ingest_queue_stats,
+    load_sidecars_payload,
     resolve_sort,
+    sidecars_activity_active,
     sort_file_rows,
     truthy_query_flag,
 )
@@ -48,6 +50,7 @@ async def ingest_file(request: Request, file_path: str) -> JSONResponse:
 @router.get("/status")
 async def ingest_status(request: Request) -> JSONResponse:
     db = request.app.state.db
+    worker = request.app.state.worker
     sort, sort_dir = resolve_sort(
         request.query_params.get("sort"), request.query_params.get("dir")
     )
@@ -58,6 +61,10 @@ async def ingest_status(request: Request) -> JSONResponse:
         stall_seconds=settings.stall_seconds,
     )
     stats = ingest_queue_stats(files)
+    sidecars = await load_sidecars_payload(
+        worker, queue_active=int(stats["active"] or 0)
+    )
+    stats = ingest_queue_stats(files, sidecars=sidecars)
     files, hidden_indexed = filter_visible_file_rows(
         files,
         hide_indexed_seconds=settings.hide_indexed_seconds,
@@ -69,9 +76,11 @@ async def ingest_status(request: Request) -> JSONResponse:
             "files": files,
             "jobs": db.ingest.list_jobs(limit=20),
             "stats": stats,
+            "sidecars": sidecars,
+            "sidecars_live": sidecars_activity_active(sidecars),
             "hidden_indexed": hidden_indexed,
             "show_indexed": show_indexed,
-            "config": ingest_config_snapshot(request.app.state.worker),
+            "config": ingest_config_snapshot(worker),
         }
     )
 

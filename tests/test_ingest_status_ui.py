@@ -14,12 +14,16 @@ from rag_admin.embed_throughput import (
     reset_embed_throughput,
 )
 from rag_admin.ingest_status import (
+    build_sidecars_payload,
+    derive_sidecar_phase,
     enrich_file_rows,
     filter_visible_file_rows,
     ingest_config_snapshot,
     ingest_queue_stats,
     ingest_velocity_text,
     resolve_sort,
+    sidecars_activity_active,
+    sidecars_velocity_clause,
     sort_file_rows,
 )
 
@@ -38,7 +42,35 @@ class _FakeWorker:
             embed_concurrency=8,
             sparse_reindex_mode="off",
             stall_seconds=900,
+            turbovec_url="",
+            turbovec_reindex_mode="idle",
         )
+        self._sidecar = {
+            "sparse": {
+                "configured": False,
+                "mode": "off",
+                "dirty": False,
+                "reindexing": False,
+                "last_docs": None,
+                "last_error": None,
+                "last_finished_at": None,
+                "active": True,
+            },
+            "turbovec": {
+                "configured": False,
+                "mode": "idle",
+                "dirty": False,
+                "reindexing": False,
+                "dual_write": False,
+                "last_docs": None,
+                "last_error": None,
+                "last_finished_at": None,
+                "active": False,
+            },
+        }
+
+    def sidecar_status(self) -> dict:
+        return self._sidecar
 
 
 def test_enrich_file_rows_marks_stalled_running() -> None:
@@ -280,6 +312,96 @@ def test_ingest_config_snapshot_exposes_tuning_knobs() -> None:
     assert snapshot["batch_size"] == 128
     assert snapshot["embed_concurrency"] == 8
     assert snapshot["paused"] is False
+    assert snapshot["turbovec_reindex_mode"] == "idle"
+    assert snapshot["turbovec_configured"] is False
+
+
+def test_derive_sidecar_phase_priority() -> None:
+    assert (
+        derive_sidecar_phase(
+            kind="sparse",
+            configured=True,
+            mode="idle",
+            ok=True,
+            dirty=True,
+            reindexing=True,
+            queue_active=False,
+        )
+        == "reindexing"
+    )
+    assert (
+        derive_sidecar_phase(
+            kind="turbovec",
+            configured=True,
+            mode="idle",
+            ok=True,
+            dirty=False,
+            reindexing=False,
+            queue_active=True,
+            dual_write=True,
+        )
+        == "dual_write"
+    )
+    assert (
+        derive_sidecar_phase(
+            kind="sparse",
+            configured=True,
+            mode="idle",
+            ok=False,
+            dirty=False,
+            reindexing=False,
+            queue_active=True,
+            on_demand=True,
+        )
+        == "stopped_for_ingest"
+    )
+
+
+def test_sidecars_velocity_clause_and_live() -> None:
+    sidecars = {
+        "bm25": {"phase": "pending_reindex", "dirty": True, "reindexing": False},
+        "turbovec": {"phase": "dual_write", "dirty": False, "reindexing": False},
+    }
+    assert "BM25 pending" in sidecars_velocity_clause(sidecars)
+    assert "TurboVec dual-write" in sidecars_velocity_clause(sidecars)
+    assert sidecars_activity_active(sidecars) is True
+
+
+def test_build_sidecars_payload_merges_health() -> None:
+    worker = _FakeWorker()
+    worker.config.sparse_index_url = "http://127.0.0.1:8096"
+    worker.config.turbovec_url = "http://127.0.0.1:8097"
+    worker._sidecar["sparse"].update(
+        {"configured": True, "mode": "idle", "dirty": True}
+    )
+    worker._sidecar["turbovec"].update(
+        {"configured": True, "mode": "idle", "dual_write": True}
+    )
+    payload = build_sidecars_payload(
+        worker,
+        queue_active=1,
+        sparse_health={"ok": False, "body": {"docs": 10}},
+        turbovec_health={"ok": True, "body": {"vectors": 99}},
+        on_demand=True,
+    )
+    assert payload["bm25"]["phase"] == "pending_reindex"
+    assert payload["bm25"]["docs"] == 10
+    assert payload["turbovec"]["phase"] == "dual_write"
+    assert payload["turbovec"]["vectors"] == 99
+    assert payload["turbovec"]["ok"] is True
+
+
+def test_ingest_velocity_text_appends_sidecar_clause() -> None:
+    reset_embed_throughput()
+    text = ingest_velocity_text(
+        {"active": 0, "indexed": 3, "total_chunks": 10},
+        sidecars={
+            "bm25": {"phase": "reindexing"},
+            "turbovec": {"phase": "idle"},
+        },
+    )
+    assert "3 indexed" in text
+    assert "BM25 reindexing" in text
 
 
 def test_flash_redirect_appends_query_params() -> None:

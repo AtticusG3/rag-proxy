@@ -16,7 +16,9 @@ from rag_admin.ingest_status import (
     filter_visible_file_rows,
     ingest_config_snapshot,
     ingest_queue_stats,
+    load_sidecars_payload,
     resolve_sort,
+    sidecars_activity_active,
     sort_file_rows,
     truthy_query_flag,
 )
@@ -108,6 +110,7 @@ async def dashboard(request: Request) -> HTMLResponse:
 @router.get("/jobs", response_class=HTMLResponse)
 async def jobs_page(request: Request) -> HTMLResponse:
     db = request.app.state.db
+    worker = request.app.state.worker
     sort, sort_dir = resolve_sort(
         request.query_params.get("sort"), request.query_params.get("dir")
     )
@@ -118,6 +121,10 @@ async def jobs_page(request: Request) -> HTMLResponse:
         stall_seconds=settings.stall_seconds,
     )
     queue = ingest_queue_stats(files)
+    sidecars = await load_sidecars_payload(
+        worker, queue_active=int(queue["active"] or 0)
+    )
+    queue = ingest_queue_stats(files, sidecars=sidecars)
     files, hidden_indexed = filter_visible_file_rows(
         files,
         hide_indexed_seconds=settings.hide_indexed_seconds,
@@ -125,7 +132,7 @@ async def jobs_page(request: Request) -> HTMLResponse:
     )
     files = sort_file_rows(files, sort=sort, direction=sort_dir)
     jobs = db.ingest.list_jobs(limit=100)
-    ingest_config = ingest_config_snapshot(request.app.state.worker)
+    ingest_config = ingest_config_snapshot(worker)
     hide_indexed_minutes = settings.hide_indexed_seconds // 60
     return templates.TemplateResponse(
         request,
@@ -139,6 +146,8 @@ async def jobs_page(request: Request) -> HTMLResponse:
             "stall_minutes": settings.stall_seconds // 60,
             "ingest_queue": queue,
             "ingest_config": ingest_config,
+            "sidecars": sidecars,
+            "sidecars_live": sidecars_activity_active(sidecars),
             "show_indexed": show_indexed,
             "hidden_indexed": hidden_indexed,
             "hide_indexed_minutes": hide_indexed_minutes,

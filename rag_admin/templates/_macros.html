@@ -112,8 +112,36 @@
   <div><dt>Semantic chunking</dt><dd class="mono">{{ config.chunk_semantic }}</dd></div>
   <div><dt>Embed URL</dt><dd class="mono">{{ config.embed_url }}</dd></div>
   <div><dt>Pool URLs</dt><dd class="mono">{{ config.embed_pool_count }}</dd></div>
-  <div><dt>Sparse reindex</dt><dd class="mono">{{ config.sparse_reindex_mode }}</dd></div>
+  <div><dt>BM25 reindex</dt><dd class="mono">{{ config.sparse_reindex_mode }}</dd></div>
+  <div><dt>TurboVec reindex</dt><dd class="mono">{% if config.turbovec_configured %}{{ config.turbovec_reindex_mode }}{% else %}—{% endif %}</dd></div>
   <div><dt>Stall timeout</dt><dd class="mono">{{ config.stall_minutes }} min</dd></div>
   <div><dt>Collection</dt><dd class="mono">{{ config.qdrant_collection }}</dd></div>
 </dl>
+{% endmacro %}
+
+{% macro sidecar_phase_label(phase) %}
+{%- if phase == "reindexing" -%}Reindexing
+{%- elif phase == "pending_reindex" -%}Pending reindex
+{%- elif phase == "dual_write" -%}Dual-write
+{%- elif phase == "stopped_for_ingest" -%}Paused for ingest
+{%- elif phase == "down" -%}Down
+{%- elif phase == "off" -%}Off
+{%- elif phase == "unconfigured" -%}Not configured
+{%- else -%}Idle
+{%- endif -%}
+{% endmacro %}
+
+{% macro sidecar_panel(title, row, count_key, count_label) %}
+<article class="sidecar-panel">
+  <header class="sidecar-panel__head">
+    <h3 class="sidecar-panel__title">{{ title }}</h3>
+    <span class="pill pill--{{ row.phase | replace('_', '-') }}">{{ sidecar_phase_label(row.phase) }}</span>
+  </header>
+  <dl class="config-dl config-dl--compact">
+    <div><dt>Mode</dt><dd class="mono">{% if row.configured %}{{ row.mode }}{% else %}—{% endif %}</dd></div>
+    <div><dt>Health</dt><dd class="mono">{% if not row.configured %}—{% elif row.ok %}OK{% elif row.ok is sameas false %}DOWN{% else %}—{% endif %}</dd></div>
+    <div><dt>{{ count_label }}</dt><dd class="mono">{% if row[count_key] is not none %}{{ "{:,}".format(row[count_key]) }}{% else %}—{% endif %}</dd></div>
+    {% if row.last_error %}<div class="sidecar-panel__error"><dt>Last error</dt><dd class="error">{{ row.last_error }}</dd></div>{% endif %}
+  </dl>
+</article>
 {% endmacro %}

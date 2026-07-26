@@ -52,10 +52,37 @@ def test_sparse_scheduler_each_reindexes_immediately() -> None:
         sparse_reindex_mode="each",
     )
     scheduler = SparseReindexScheduler(config)
-    with patch("ingest.worker.trigger_sparse_reindex") as trigger:
+    with patch("ingest.worker.trigger_sparse_reindex", return_value=42) as trigger:
         scheduler.after_file()
         trigger.assert_called_once()
+    status = scheduler.status()
+    assert status["reindexing"] is False
+    assert status["dirty"] is False
+    assert status["last_docs"] == 42
 
+
+def test_sparse_scheduler_status_tracks_dirty_then_flush() -> None:
+    config = IngestConfig(
+        zim_dir="/tmp",
+        upload_dir="/tmp",
+        embed_url="http://127.0.0.1:1",
+        qdrant_url="http://127.0.0.1:1",
+        qdrant_collection="test",
+        sparse_index_url="http://127.0.0.1:1",
+        sparse_reindex_mode="idle",
+    )
+    scheduler = SparseReindexScheduler(config)
+    with patch("ingest.worker.trigger_sparse_reindex", return_value=7):
+        with patch.object(scheduler, "_ensure_sidecar"):
+            scheduler.after_file()
+            assert scheduler.status()["dirty"] is True
+            assert scheduler.status()["reindexing"] is False
+            scheduler.flush()
+    status = scheduler.status()
+    assert status["dirty"] is False
+    assert status["reindexing"] is False
+    assert status["last_docs"] == 7
+    assert status["last_finished_at"]
 
 def test_enqueue_sync_skips_indexed_files() -> None:
     with tempfile.TemporaryDirectory() as zim_dir:

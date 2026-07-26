@@ -338,6 +338,10 @@ class SidecarReindexScheduler:
         self._active = active
         self._flush_log = flush_log
         self._dirty = False
+        self._reindexing = False
+        self._last_docs: int | None = None
+        self._last_error: str | None = None
+        self._last_finished_at: str | None = None
         self._lock = threading.Lock()
 
     def _ensure_sidecar(self, config: IngestConfig) -> None:
@@ -346,6 +350,41 @@ class SidecarReindexScheduler:
     def _trigger_reindex(self, config: IngestConfig) -> int | None:
         raise NotImplementedError
 
+    def status(self) -> dict[str, object]:
+        with self._lock:
+            return {
+                "mode": self._mode(self.config).lower(),
+                "active": bool(self._active(self.config)),
+                "dirty": self._dirty,
+                "reindexing": self._reindexing,
+                "last_docs": self._last_docs,
+                "last_error": self._last_error,
+                "last_finished_at": self._last_finished_at,
+            }
+
+    def _run_reindex(self, *, ensure: bool, log_flush: bool = False) -> None:
+        with self._lock:
+            self._reindexing = True
+            self._last_error = None
+        try:
+            if ensure:
+                self._ensure_sidecar(self.config)
+            if log_flush:
+                log.info(self._flush_log)
+            docs = self._trigger_reindex(self.config)
+            with self._lock:
+                self._last_docs = docs
+                self._last_finished_at = _utc_now()
+                self._last_error = None
+        except Exception as exc:
+            with self._lock:
+                self._last_error = str(exc)
+                self._last_finished_at = _utc_now()
+            log.warning("sidecar reindex failed: %s", exc)
+        finally:
+            with self._lock:
+                self._reindexing = False
+
     def after_file(self) -> None:
         if not self._active(self.config):
             return
@@ -353,7 +392,7 @@ class SidecarReindexScheduler:
         if mode == "off":
             return
         if mode == "each":
-            self._trigger_reindex(self.config)
+            self._run_reindex(ensure=False)
             return
         with self._lock:
             self._dirty = True
@@ -368,9 +407,7 @@ class SidecarReindexScheduler:
             if not self._dirty:
                 return
             self._dirty = False
-        self._ensure_sidecar(self.config)
-        log.info(self._flush_log)
-        self._trigger_reindex(self.config)
+        self._run_reindex(ensure=True, log_flush=True)
 
 
 class SparseReindexScheduler(SidecarReindexScheduler):
@@ -441,6 +478,22 @@ class IngestWorker:
     @property
     def paused(self) -> bool:
         return self._paused
+
+    def sidecar_status(self) -> dict[str, dict[str, object]]:
+        """BM25 / TurboVec scheduler observability for the Jobs UI."""
+        sparse = self._sparse.status()
+        turbovec = self._turbovec.status()
+        return {
+            "sparse": {
+                "configured": bool(self.config.sparse_index_url.strip()),
+                **sparse,
+            },
+            "turbovec": {
+                "configured": bool(self.config.turbovec_url.strip()),
+                "dual_write": bool(self.config.turbovec_url.strip()),
+                **turbovec,
+            },
+        }
 
     def set_paused(self, paused: bool) -> None:
         self._paused = paused

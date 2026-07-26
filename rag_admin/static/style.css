@@ -626,10 +626,10 @@ button[disabled]:hover, .btn[disabled]:hover {
   border: 1px solid var(--color-border-subtle);
 }
 .pill--indexed, .pill--done, .pill--downloaded { background: var(--color-ok-soft); color: var(--color-ok); border-color: transparent; }
-.pill--queued, .pill--update_queued, .pill--pending {
+.pill--queued, .pill--update_queued, .pill--pending, .pill--pending-reindex {
   background: var(--color-warn-soft); color: var(--color-warn); border-color: transparent;
 }
-.pill--running, .pill--downloading {
+.pill--running, .pill--downloading, .pill--reindexing, .pill--dual-write {
   background: var(--color-info-soft);
   color: var(--color-info);
   border-color: rgba(126, 176, 232, 0.4);
@@ -643,8 +643,11 @@ button[disabled]:hover, .btn[disabled]:hover {
   background: var(--color-info);
   animation: live-pulse 1.4s ease-in-out infinite;
 }
-.pill--stalled, .pill--failed { background: var(--color-danger-soft); color: var(--color-danger); border-color: transparent; }
-.pill--subscribed { background: var(--color-info-soft); color: var(--color-info); border-color: transparent; }
+.pill--stalled, .pill--failed, .pill--down { background: var(--color-danger-soft); color: var(--color-danger); border-color: transparent; }
+.pill--subscribed, .pill--idle { background: var(--color-info-soft); color: var(--color-info); border-color: transparent; }
+.pill--stopped-for-ingest, .pill--off, .pill--unconfigured {
+  background: var(--color-accent-soft); color: var(--color-text-muted); border-color: transparent;
+}
 
 /* Sortable table headers */
 
@@ -1021,6 +1024,39 @@ form.inline { display: inline; }
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
+}
+
+.sidecar-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+@media (max-width: 720px) {
+  .sidecar-grid { grid-template-columns: 1fr; }
+}
+.sidecar-panel {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+}
+.sidecar-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+.sidecar-panel__title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.config-dl--compact {
+  margin: 0;
+}
+.sidecar-panel__error dd {
+  word-break: break-word;
 }
 
 .config-dl {

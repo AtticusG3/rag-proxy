@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner, ingest_tuning_snapshot, sort_th, priority_control %}
+{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner, ingest_tuning_snapshot, sort_th, priority_control, sidecar_panel %}
 {% block title %}Jobs - RAG Admin{% endblock %}
 {% block content %}
 {{ page_header("Ingest jobs", "Per-file embedding state and background job history.") }}
@@ -8,7 +8,7 @@
 <section class="card">
   <div class="section-head">
     <h2 class="section-title" style="margin:0">Queue</h2>
-    <span id="ingest-live-badge" class="live-badge" {% if ingest_queue.active == 0 %}hidden{% endif %} aria-live="polite">Live</span>
+    <span id="ingest-live-badge" class="live-badge" {% if ingest_queue.active == 0 and not sidecars_live %}hidden{% endif %} aria-live="polite">Live</span>
   </div>
   <p id="ingest-velocity" class="ingest-velocity" aria-live="polite">{{ ingest_queue.velocity_text }}</p>
   <div class="actions-row">
@@ -44,6 +44,17 @@
     {% if show_indexed %}(currently showing all).{% else %}so active work is easier to sort.{% endif %}
     {% endif %}
   </p>
+</section>
+
+<section class="card card--compact" id="sidecar-status-card">
+  <div class="section-head">
+    <h2 class="section-title">BM25 &amp; TurboVec</h2>
+    <a class="btn btn--ghost btn--small" href="/settings?tab=ingest">Edit in Settings</a>
+  </div>
+  <div class="sidecar-grid" id="sidecar-status-grid">
+    {{ sidecar_panel("BM25", sidecars.bm25, "docs", "Docs") }}
+    {{ sidecar_panel("TurboVec", sidecars.turbovec, "vectors", "Vectors") }}
+  </div>
 </section>
 
 <section class="card card--flush">

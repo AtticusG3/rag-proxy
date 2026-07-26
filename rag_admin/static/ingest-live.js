@@ -11,7 +11,19 @@
 
   var velocityEl = document.getElementById("ingest-velocity");
   var liveBadge = document.getElementById("ingest-live-badge");
+  var sidecarGrid = document.getElementById("sidecar-status-grid");
   var timerId = null;
+
+  var PHASE_LABELS = {
+    reindexing: "Reindexing",
+    pending_reindex: "Pending reindex",
+    dual_write: "Dual-write",
+    stopped_for_ingest: "Paused for ingest",
+    down: "Down",
+    off: "Off",
+    unconfigured: "Not configured",
+    idle: "Idle",
+  };
 
   function escapeHtml(value) {
     return String(value)
@@ -48,6 +60,13 @@
       return (n / (1024 * 1024)).toFixed(1) + " MB";
     }
     return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  }
+
+  function formatCount(value) {
+    if (value === null || value === undefined) {
+      return "—";
+    }
+    return Number(value).toLocaleString();
   }
 
   function priorityCell(file) {
@@ -206,6 +225,65 @@
       .join("");
   }
 
+  function healthLabel(row) {
+    if (!row.configured) {
+      return "—";
+    }
+    if (row.ok === true) {
+      return "OK";
+    }
+    if (row.ok === false) {
+      return "DOWN";
+    }
+    return "—";
+  }
+
+  function renderSidecarPanel(title, row, countKey, countLabel) {
+    var phase = row.phase || "idle";
+    var phaseClass = String(phase).replace(/_/g, "-");
+    var phaseLabel = PHASE_LABELS[phase] || phase;
+    var errorHtml = row.last_error
+      ? '<div class="sidecar-panel__error"><dt>Last error</dt><dd class="error">' +
+        escapeHtml(row.last_error) +
+        "</dd></div>"
+      : "";
+    return (
+      '<article class="sidecar-panel">' +
+      '<header class="sidecar-panel__head">' +
+      '<h3 class="sidecar-panel__title">' +
+      escapeHtml(title) +
+      "</h3>" +
+      '<span class="pill pill--' +
+      escapeHtml(phaseClass) +
+      '">' +
+      escapeHtml(phaseLabel) +
+      "</span></header>" +
+      '<dl class="config-dl config-dl--compact">' +
+      "<div><dt>Mode</dt><dd class=\"mono\">" +
+      escapeHtml(row.configured ? row.mode || "—" : "—") +
+      "</dd></div>" +
+      "<div><dt>Health</dt><dd class=\"mono\">" +
+      escapeHtml(healthLabel(row)) +
+      "</dd></div>" +
+      "<div><dt>" +
+      escapeHtml(countLabel) +
+      '</dt><dd class="mono">' +
+      escapeHtml(formatCount(row[countKey])) +
+      "</dd></div>" +
+      errorHtml +
+      "</dl></article>"
+    );
+  }
+
+  function renderSidecars(sidecars) {
+    if (!sidecarGrid || !sidecars) {
+      return;
+    }
+    sidecarGrid.innerHTML =
+      renderSidecarPanel("BM25", sidecars.bm25 || {}, "docs", "Docs") +
+      renderSidecarPanel("TurboVec", sidecars.turbovec || {}, "vectors", "Vectors");
+  }
+
   function formatRate(rate, stats, window) {
     if (rate !== null && rate !== undefined) {
       return Number(rate).toLocaleString() + " chunks/min";
@@ -242,7 +320,7 @@
     return parts.join(" · ");
   }
 
-  function updateVelocity(stats) {
+  function updateVelocity(stats, sidecarsLive) {
     if (!velocityEl) {
       return;
     }
@@ -250,9 +328,9 @@
     velocityEl.hidden = false;
 
     if (liveBadge) {
-      var active = stats.active || 0;
-      liveBadge.hidden = active === 0;
-      liveBadge.textContent = active > 0 ? "Live" : "";
+      var active = (stats.active || 0) > 0 || !!sidecarsLive;
+      liveBadge.hidden = !active;
+      liveBadge.textContent = active ? "Live" : "";
     }
   }
 
@@ -260,7 +338,7 @@
     if (timerId) {
       window.clearTimeout(timerId);
     }
-    timerId = window.setTimeout(refresh, active > 0 ? POLL_ACTIVE_MS : POLL_IDLE_MS);
+    timerId = window.setTimeout(refresh, active ? POLL_ACTIVE_MS : POLL_IDLE_MS);
   }
 
   function refresh() {
@@ -276,9 +354,12 @@
       .then(function (payload) {
         var files = payload.files || [];
         var stats = payload.stats || {};
+        var sidecars = payload.sidecars || {};
+        var sidecarsLive = !!payload.sidecars_live;
         renderRows(files);
-        updateVelocity(stats);
-        scheduleNext(stats.active || 0);
+        renderSidecars(sidecars);
+        updateVelocity(stats, sidecarsLive);
+        scheduleNext((stats.active || 0) > 0 || sidecarsLive);
       })
       .catch(function () {
         scheduleNext(1);
