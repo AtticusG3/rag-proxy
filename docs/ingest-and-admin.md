@@ -118,6 +118,7 @@ Admin-specific (from `.env.example` comments and `rag_admin/config.py`):
 | `INGEST_EMBED_URLS` | — | Comma-separated embed endpoints for ingest round-robin (generated pool file) |
 | `INGEST_MAX_ARTICLES` | `0` | ZIM article limit (`0` = unlimited) |
 | `INGEST_SPARSE_REINDEX` | `idle` | When to trigger sparse sidecar reindex |
+| `INGEST_TURBOVEC_REINDEX` | `idle` | When to rebuild TurboVec from Qdrant (`TURBOVEC_URL`; dual-write is primary) |
 | `INGEST_STALL_MINUTES` | `15` | Mark jobs stalled after no progress |
 | `INGEST_HIDE_INDEXED_MINUTES` | `60` | Hide Indexed rows on `/jobs` after this many minutes (`0` = show all; `?show_indexed=1` overrides) |
 | `RAG_PROXY_URL` | `http://127.0.0.1:8081` | Optional proxy URL for admin smoke hooks |
@@ -135,6 +136,9 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 4. **Embed** — `ingest/embedder.py` calls `EMBED_URL` (same nomic-embed as proxy).
 5. **Write** — `ingest/qdrant_writer.py` upserts to `QDRANT_COLLECTION`.
 6. **Sparse reindex** — optional POST to `SPARSE_INDEX_URL` when `INGEST_SPARSE_REINDEX` triggers (hybrid cognitive mode).
+7. **TurboVec dual-write** — when `TURBOVEC_URL` is set, each upsert also `POST /add` to the dense sidecar; optional `INGEST_TURBOVEC_REINDEX` rebuilds from Qdrant.
+
+If you **clear or drop the Qdrant collection** (`clear_collection`, admin wipe, or recreate), TurboVec still holds the old vectors until you **`POST /reindex`** on the sidecar (same as a full Qdrant→TurboVec rebuild). With `DENSE_BACKEND=turbovec`, stale sidecar data causes wrong or missing retrieval until reindex completes. For bulk dual-write runs, set sidecar `TURBOVEC_AUTO_SAVE=false` and `POST /save` once when ingest finishes ([Configuration — TurboVec rollout](configuration.md#turbovec-rollout-cut-qdrant-ram)).
 
 With `SIDECAR_ON_DEMAND=true` (default), admin starts the rerank/sparse sidecars before ingest and **stops the sparse sidecar during bulk ingest** to free RAM, reindexing once the run settles. Override the units with `SPARSE_SIDECAR_UNIT` / `RERANK_SIDECAR_UNIT` ([Configuration](configuration.md#rag-admin-and-ingest-optional)).
 

@@ -22,7 +22,7 @@ Non-chat routes (`GET /v1/models`, upstream embedding routes, health checks) are
 
 ## Legacy mode (default)
 
-`ENABLE_COGNITIVE_PIPELINE=false` — every chat request with a user message runs embed → dense Qdrant search → inject.
+`ENABLE_COGNITIVE_PIPELINE=false` — every chat request with a user message runs embed → dense search (Qdrant, or TurboVec + Qdrant payload fetch when `DENSE_BACKEND=turbovec`) → inject.
 
 ```mermaid
 sequenceDiagram

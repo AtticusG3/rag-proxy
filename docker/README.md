@@ -1,6 +1,6 @@
 # Docker stack (rag-proxy + llama-swap:cuda)
 
-Clients use **rag-proxy** on port **8088** (`/v1`). Optional **cognitive** profile adds CPU rerank + BM25 sparse sidecars.
+Clients use **rag-proxy** on port **8088** (`/v1`). Optional **cognitive** profile adds CPU rerank, BM25 sparse, and TurboVec dense sidecars.
 
 ## Prerequisites
 
@@ -63,6 +63,7 @@ Use the same API key and paths as llama-swap; only the base URL changes to `http
 | `qdrant` | `qdrant` | `qdrant/qdrant` | 6333 | Vector DB (raised `nofile` ulimits in compose for large collections) |
 | `reranker` | `cognitive` | `sidecars/rerank` | 8095 | Cross-encoder rerank |
 | `sparse-index` | `cognitive` | `sidecars/sparse` | 8096 | BM25 hybrid retrieval |
+| `turbovec-index` | `cognitive` | `sidecars/turbovec` | 8097 | TurboQuant dense ANN |
 
 Internal URLs wired in compose:
 
@@ -72,6 +73,7 @@ Internal URLs wired in compose:
 | `EMBED_URL` | `http://nomic-embed:8089` |
 | `RERANKER_URL` | `http://reranker:8095` |
 | `SPARSE_INDEX_URL` | `http://sparse-index:8096` |
+| `TURBOVEC_URL` | `http://turbovec-index:8097` |
 
 ## Sidecar APIs
 
@@ -98,6 +100,15 @@ Contract matches `rag_proxy/stages/tier2_rerank.py` and `rag_proxy/clients/qdran
 ```
 
 Sparse `/search` uses the `collection` field to select the synced BM25 index. Reindex after ingest; unknown collections return empty results (fail-open). Zero-score BM25 hits are omitted (small collections may return fewer than `limit` results).
+
+**TurboVec** — `POST /search` (set `DENSE_BACKEND=turbovec` on the proxy)
+
+```json
+{"vector": [0.1, ...], "limit": 5, "score_threshold": 0.0}
+-> {"results": [{"id": "md5hex...", "score": 0.82}]}
+```
+
+Payloads are fetched from Qdrant by id in the proxy. Dual-write via ingest `POST /add`; rebuild with `POST /reindex`.
 
 ## Cognitive rollout
 

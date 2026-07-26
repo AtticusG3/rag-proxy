@@ -90,6 +90,7 @@ Full phase commands and verification table: [COGNITIVE_RAG_PLAN.md — Enabling 
 | Feature | Requires |
 | --- | --- |
 | Hybrid retrieval | `SPARSE_INDEX_URL` sidecar (Docker `cognitive` profile or `sidecars/sparse`) |
+| Dense TurboVec | `TURBOVEC_URL` + `DENSE_BACKEND=turbovec` (`sidecars/turbovec`, port 8097 typical) |
 | Reranker | `RERANKER_URL` sidecar (`sidecars/rerank`, port 8095 typical) |
 | Graph | `GRAPH_DB_PATH` SQLite with `entities` / `edges` |
 | MemGraphRAG | `MEMGRAPHRAG_DB_PATH`; build index — see [MemGraphRAG operator guide](memgraphrag.md) |
