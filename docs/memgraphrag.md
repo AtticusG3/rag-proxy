@@ -161,7 +161,7 @@ ENABLE_RERANKER=true
 RERANKER_URL=http://127.0.0.1:8095
 ```
 
-Without `RERANKER_URL`, fact reranking uses uniform scores (still works, weaker ordering).
+Reranking runs only when `ENABLE_RERANKER=true` and `RERANKER_URL` is set. Otherwise (or if the sidecar errors) PPR is seeded with the dense fact-similarity scores — still works, weaker ordering.
 
 Restart the proxy after changes: `sudo systemctl restart rag-proxy`.
 

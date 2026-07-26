@@ -2,7 +2,7 @@
 
 Uses the three-layer memory (schema/fact/passage) for graph-based retrieval:
   1. Score facts against query via embedding similarity
-  2. Rerank facts with cross-encoder
+  2. Rerank facts with the cross-encoder sidecar when ENABLE_RERANKER is on
   3. Personalized PageRank on the fact graph
   4. Aggregate passage scores from PPR
 

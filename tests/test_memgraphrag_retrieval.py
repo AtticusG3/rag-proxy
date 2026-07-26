@@ -12,6 +12,7 @@ import httpx
 import numpy as np
 
 from conftest import FakeAsyncClient
+from rag_proxy.config import settings
 from rag_proxy.memgraphrag.cache import build_memory_index
 from rag_proxy.memgraphrag.memory import ThreeLayerMemory
 from rag_proxy.memgraphrag.retrieval import MemGraphRetriever
@@ -213,7 +214,11 @@ def test_retrieve_returns_empty_when_no_facts_scored() -> None:
 
 
 def test_rerank_facts_fail_open_on_sidecar_error() -> None:
-    """Reranker HTTP errors preserve fact order with neutral scores."""
+    """A failed rerank must abstain, not hand back uniform scores.
+
+    Uniform scores would seed PPR with every candidate fact weighted equally,
+    which is worse than the dense ordering the caller already has.
+    """
     retriever = MemGraphRetriever(
         index=_minimal_index(),
         embed_url="http://embed.test",
@@ -237,7 +242,57 @@ def test_rerank_facts_fail_open_on_sidecar_error() -> None:
             retriever.rerank_facts("q", [0], ["(Alice, knows, Bob)"])
         )
 
-    assert ranked == [(0, 1.0)]
+    assert ranked is None
+
+
+def test_reranker_skipped_when_globally_disabled(monkeypatch) -> None:
+    """MemGraphRAG must not call a reranker sidecar that ENABLE_RERANKER turned off."""
+    monkeypatch.setattr(settings, "enable_reranker", False)
+    monkeypatch.setattr(settings, "reranker_url", "http://rerank.test")
+
+    retriever = MemGraphRetriever(index=_minimal_index(), embed_url="http://embed.test")
+    assert retriever.reranker_url == ""
+
+    ranked = asyncio.run(retriever.rerank_facts("q", [0], ["(Alice, knows, Bob)"]))
+    assert ranked is None
+
+
+def test_retrieve_seeds_ppr_with_dense_scores_without_reranker(monkeypatch) -> None:
+    """With no reranker, PPR seeds must keep the dense similarity ordering."""
+    monkeypatch.setattr(settings, "enable_reranker", False)
+
+    mem = ThreeLayerMemory()
+    schema_idx = mem.add_schema("Person", "knows", "Person")
+    near = mem.add_passage("chunk-near", "Alice knows Bob.", [])
+    far = mem.add_passage("chunk-far", "Zed knows Yan.", [])
+    near_fact = mem.add_fact("Alice", "knows", "Bob", schema_idx, near)
+    far_fact = mem.add_fact("Zed", "knows", "Yan", schema_idx, far)
+    mem.facts[near_fact].embedding = [1.0, 0.0, 0.0]
+    mem.facts[far_fact].embedding = [0.2, 0.98, 0.0]
+    mem.add_passage("chunk-near", "Alice knows Bob.", [near_fact])
+    mem.add_passage("chunk-far", "Zed knows Yan.", [far_fact])
+
+    retriever = MemGraphRetriever(
+        index=build_memory_index(mem),
+        embed_url="http://embed.test",
+        top_k=2,
+        ppr_threshold=0.0,
+    )
+
+    async def post(url: str, json: dict | None = None, **_kwargs):
+        if url.endswith("/v1/embeddings"):
+            return _embedding_response()
+        raise AssertionError(f"unexpected url: {url}")
+
+    with patch(
+        "rag_proxy.memgraphrag.retrieval.httpx.AsyncClient",
+        return_value=FakeAsyncClient(AsyncMock(side_effect=post)),
+    ):
+        hits = asyncio.run(retriever.retrieve("who knows Bob?"))
+
+    assert [h.id for h in hits] == ["chunk-near", "chunk-far"]
+    # Uniform seeds would tie these; the gap proves dense similarity survived.
+    assert hits[0].score > hits[1].score
 
 
 def _baseline_fact_scores(

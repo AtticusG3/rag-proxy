@@ -1,13 +1,14 @@
 """MemGraphRAG retrieval: fact scoring -> rerank -> PPR graph walk -> passage retrieval.
 
-Implements the memory-guided online retrieval from the MemGraphRAG paper:
   1. Embed query, score facts via dense similarity
-  2. Rerank facts with cross-encoder
-  3. Multi-layer memory filtering (schema -> fact)
-  4. Structure-aware node initialization + Personalized PageRank on the memory graph
-  5. Return top passages ranked by PPR score
+  2. Rerank the top facts with the cross-encoder sidecar when one is configured;
+     otherwise the dense similarity scores stand
+  3. Personalized PageRank over the fact graph, seeded by those scores
+  4. Return top passages ranked by aggregated PPR score
 
-When no facts score above zero similarity, returns an empty list (no dense fallback).
+Schema-layer filtering from the paper is not implemented; the schema layer only
+supplies fact adjacency. When no facts score above zero similarity, returns an
+empty list (no dense fallback).
 """
 
 from __future__ import annotations
@@ -51,7 +52,11 @@ class MemGraphRetriever:
         self.index = index
         self.memory = index.memory
         self.embed_url = embed_url or settings.embed_url
-        self.reranker_url = reranker_url or settings.reranker_url
+        # Without ENABLE_RERANKER the sidecar is not running, so falling back to
+        # settings.reranker_url would buy a timeout per query and nothing else.
+        self.reranker_url = reranker_url or (
+            settings.reranker_url if settings.enable_reranker else ""
+        )
         self.top_k = top_k
         self.fact_top_k = fact_top_k
         self.ppr_damping = ppr_damping
@@ -116,13 +121,16 @@ class MemGraphRetriever:
 
     async def rerank_facts(
         self, query: str, fact_indices: list[int], fact_texts: list[str]
-    ) -> list[tuple[int, float]]:
+    ) -> list[tuple[int, float]] | None:
         """Rerank facts using the cross-encoder sidecar.
 
-        Returns list of (fact_idx, score) sorted by score descending.
+        Returns list of (fact_idx, score) sorted by score descending, or None
+        when the sidecar is unavailable or unusable. None means "no opinion" so
+        the caller keeps its own ordering; flattening to uniform scores here
+        would seed PPR with every candidate fact weighted equally.
         """
         if not fact_indices or not self.reranker_url:
-            return list(zip(fact_indices, [1.0] * len(fact_indices)))
+            return None
 
         pairs = [{"query": query, "document": text} for text in fact_texts]
         try:
@@ -142,7 +150,7 @@ class MemGraphRetriever:
             resp.raise_for_status()
             order = resp.json().get("indices", [])
             if not order:
-                return list(zip(fact_indices, [1.0] * len(fact_indices)))
+                return None
             ranked: list[tuple[int, float]] = []
             for rank, pair_idx in enumerate(order):
                 if 0 <= pair_idx < len(fact_indices):
@@ -154,11 +162,11 @@ class MemGraphRetriever:
                     len(ranked),
                     len(fact_indices),
                 )
-                return list(zip(fact_indices, [1.0] * len(fact_indices)))
+                return None
             return ranked
         except Exception as e:
             log.warning("Reranker failed: %s", e)
-            return list(zip(fact_indices, [1.0] * len(fact_indices)))
+            return None
 
     # -- Personalized PageRank ---------------------------------------------
 
@@ -258,16 +266,22 @@ class MemGraphRetriever:
             log.info("No facts scored, returning empty")
             return []
 
-        # Step 2: Take top facts for reranking
-        top_fact_indices = [fi for fi, _ in all_scored[:self.fact_top_k]]
-        top_fact_texts = [
-            self.memory.facts[fi].triple_str
-            for fi in top_fact_indices
+        # Step 2: Take top facts for reranking. Index and text lists must stay
+        # aligned — the sidecar answers with positions into the pair list.
+        top_scored = [
+            (fi, score)
+            for fi, score in all_scored[:self.fact_top_k]
             if fi in self.memory.facts
         ]
+        top_fact_indices = [fi for fi, _ in top_scored]
+        top_fact_texts = [self.memory.facts[fi].triple_str for fi in top_fact_indices]
 
         reranked = await self.rerank_facts(query, top_fact_indices, top_fact_texts)
-        log.info("Reranked %d facts", len(reranked))
+        if reranked is None:
+            # No reranker opinion: keep dense similarity as the PPR seed weights.
+            reranked = top_scored
+        else:
+            log.info("Reranked %d facts", len(reranked))
 
         # Step 3: PPR from reranked facts
         seed_scores = {fi: score for fi, score in reranked if score > 0}

@@ -480,6 +480,10 @@ def build_memory(chunks_data: list[dict], db_path: str, embed_url: str | None = 
         text = chunk["text"]
         triples = chunk.get("triples", [])
 
+        # Passage first: add_fact records the link immediately, so a placeholder
+        # index here would wire every fact in the corpus to passage 0.
+        passage_idx = memory.add_passage(chunk_id, text, [])
+
         fact_indices = []
         for triple in triples:
             head = triple.get("head", "")
@@ -490,17 +494,12 @@ def build_memory(chunks_data: list[dict], db_path: str, embed_url: str | None = 
                 continue
 
             schema_idx = memory.add_schema(schema[0], schema[1], schema[2])
-            # Passage will be added below; for now use placeholder
-            fact_idx = memory.add_fact(head, relation, tail, schema_idx, passage_idx=0)
+            fact_idx = memory.add_fact(head, relation, tail, schema_idx, passage_idx)
             fact_indices.append(fact_idx)
 
-        # Add passage with fact indices (update fact → passage links)
-        passage_idx = memory.add_passage(chunk_id, text, fact_indices)
-
-        # Update fact nodes to point back to this passage
-        for fi in fact_indices:
-            if fi in memory.facts and passage_idx not in memory.facts[fi].passage_indices:
-                memory.facts[fi].passage_indices.append(passage_idx)
+        if fact_indices:
+            # Same chunk_id: merges the passage → fact links.
+            memory.add_passage(chunk_id, text, fact_indices)
 
     if embed_url:
         embed_fact_embeddings(memory, embed_url)
