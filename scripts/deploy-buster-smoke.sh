@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploy rag_proxy on buster and run smoke checks.
-# Default checkout matches rag-admin/rag-proxy systemd WorkingDirectory.
+# Canonical checkout is /home/kevyn/rag-proxy (rag-admin / rag-proxy WorkingDirectory).
+# Do not use a second clone under /opt/ai/repo — that path should be a symlink if present.
 set -euo pipefail
 
 REPO="${REPO_ROOT:-/home/kevyn/rag-proxy}"

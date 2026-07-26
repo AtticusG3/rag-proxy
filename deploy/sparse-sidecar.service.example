@@ -6,8 +6,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=kevyn
-WorkingDirectory=/opt/ai/repo/rag_proxy/sidecars/sparse
-Environment=PYTHONPATH=/opt/ai/repo/rag_proxy
+WorkingDirectory=/home/kevyn/rag-proxy/sidecars/sparse
+Environment=PYTHONPATH=/home/kevyn/rag-proxy
 ExecStart=/opt/ai/venv-sidecars/bin/python app.py
 Restart=on-failure
 RestartSec=30

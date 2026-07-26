@@ -9,7 +9,7 @@
 #   bash scripts/update-buster-embed-gpu.sh
 set -uo pipefail
 
-REPO="${REPO_ROOT:-/opt/ai/repo/rag_proxy}"
+REPO="${REPO_ROOT:-/home/kevyn/rag-proxy}"
 PYTHON="${PYTHON:-/opt/ai/venv/bin/python}"
 HOST_PY="${HOST_PY:-$REPO/scripts/bench_ingest_host.py}"
 CONFIG_DIR="${CONFIG_DIR:-/opt/ai/config}"

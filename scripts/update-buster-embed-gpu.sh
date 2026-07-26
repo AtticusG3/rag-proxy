@@ -3,7 +3,7 @@
 # Run on the host: bash scripts/update-buster-embed-gpu.sh
 set -euo pipefail
 
-REPO="${REPO_ROOT:-/opt/ai/repo/rag_proxy}"
+REPO="${REPO_ROOT:-/home/kevyn/rag-proxy}"
 CONFIG_DIR="${CONFIG_DIR:-/opt/ai/config}"
 BIN_DIR="${BIN_DIR:-/opt/ai/bin}"
 USER_NAME="${DEPLOY_USER:-kevyn}"
@@ -85,12 +85,12 @@ done
 
 if [[ -f "$CONFIG_DIR/nomic-embed-pool.env" ]]; then
   echo "[pool] $(grep -E '^INGEST_EMBED_URLS=|^INGEST_EMBED_CONCURRENCY=' "$CONFIG_DIR/nomic-embed-pool.env" || true)"
-  if /opt/ai/venv/bin/python - "$CONFIG_DIR" "$CONFIG_DIR/nomic-embed-pool.env" <<'PY'
+  if /opt/ai/venv/bin/python - "$CONFIG_DIR" "$CONFIG_DIR/nomic-embed-pool.env" "$REPO" <<'PY'
 import os
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path("/opt/ai/repo/rag_proxy")))
+sys.path.insert(0, sys.argv[3])
 from ingest.port_avoidance import (
     apply_config_env,
     load_env_file,

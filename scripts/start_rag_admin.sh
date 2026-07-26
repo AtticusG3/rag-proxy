@@ -2,7 +2,7 @@
 # Start rag-admin with key=value env load (avoids executing bare commands in env files).
 set -euo pipefail
 
-REPO="${REPO_ROOT:-/opt/ai/repo/rag_proxy}"
+REPO="${REPO_ROOT:-/home/kevyn/rag-proxy}"
 ENV_FILE="${RAG_ADMIN_ENV_FILE:-/opt/ai/config/rag-admin.env}"
 PYTHON=/opt/ai/venv/bin/python
 LOG="${RAG_ADMIN_MANUAL_LOG:-/tmp/rag-admin-manual.log}"
