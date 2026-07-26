@@ -116,7 +116,8 @@ Full reference: [Configuration](docs/configuration.md).
 | **Legacy mode (default)** | Embed, dense Qdrant search, inject — simple and predictable |
 | **Cognitive pipeline (optional)** | Tiered stages with latency budgets and per-stage flags |
 | **Hybrid retrieval** | Dense + BM25 sparse merge when sidecars are enabled |
-| **rag_admin + ingest** | Web UI and worker to index ZIM/PDF/text into Qdrant |
+| **TurboVec (optional)** | Dense ANN sidecar to cut Qdrant RAM (`DENSE_BACKEND=turbovec`) |
+| **rag_admin + ingest** | Web UI, worker, and capacity planner for ZIM/PDF/text into Qdrant |
 | **MCP tools** | KB search (+ `facts` mode) and personal `memory_*` (`sidecars/mcp_rag/`) |
 | **Observability** | Request traces, JSON logs, Prometheus `GET /metrics` |
 
@@ -135,8 +136,10 @@ Per-request overrides (`x-rag-mode`, `x-no-cache`, `x-conversation-id`): [Header
 | [Headers and clients](docs/headers-and-clients.md) | Open WebUI, Cursor, per-request headers |
 | [Deployment](docs/deployment.md) | systemd, Docker |
 | [Observability](docs/observability.md) | Traces, metrics, logs |
+| [Performance](docs/performance.md) | Latency trade-offs, caching, tuning |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues |
 | [Ingest and admin](docs/ingest-and-admin.md) | Content indexing UI and worker |
+| [Ingest capacity planning](docs/ingest-capacity-planning.md) | Multi-resource ingest planner |
 | [MemGraphRAG](docs/memgraphrag.md) | Graph index build and rollout |
 
 ## Deployment

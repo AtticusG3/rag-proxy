@@ -6,7 +6,7 @@ Exposes curated KB retrieval and personal agent memory as MCP tools for Hermes, 
 
 | Tool | Purpose |
 | --- | --- |
-| `search_knowledge_base` | Read curated KB. Modes: `passages` (default), `dense`, `sparse`, `facts` (MemGraphRAG). |
+| `search_knowledge_base` | Read curated KB. Modes: `passages` (default; `hybrid` alias), `dense`, `sparse`, `facts` (MemGraphRAG). |
 | `knowledge_base_status` | Qdrant / sparse / embed / MemGraph health |
 | `memory_store` | Upsert a personal note (separate SQLite; **not** Qdrant) |
 | `memory_recall` | Lexical recall over personal notes only |

@@ -285,7 +285,7 @@ python scripts/catalog_weekly_update.py
 
 | Tool | Role |
 | --- | --- |
-| `search_knowledge_base` | Curated KB read. Modes: `passages` (default), `dense`, `sparse`, `facts` (MemGraphRAG). `min_score` gates the dense leg only. |
+| `search_knowledge_base` | Curated KB read. Modes: `passages` (default; `hybrid` is an alias), `dense`, `sparse`, `facts` (MemGraphRAG). `min_score` gates the dense leg only. |
 | `knowledge_base_status` | Qdrant / sparse / embed / MemGraph health |
 | `memory_store` / `memory_recall` / `memory_forget` | Personal agent notes in `MCP_PERSONAL_STORE_PATH` (SQLite). **Not** Qdrant ingest. |
 

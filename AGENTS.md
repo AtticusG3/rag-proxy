@@ -18,6 +18,8 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag_proxy/context.py` | `RequestContext`, pipeline enums |
 | `rag_proxy/observability.py` | Trace IDs, pipeline summaries, `GET /metrics` |
 | `rag_proxy/legacy_rag.py` | Embed, Qdrant, extract, inject |
+| `rag_proxy/clients/` | Embed/Qdrant/sparse/TurboVec retrieval helpers (async + sync) |
+| `rag_proxy/capture.py` / `capture_writer.py` | Optional transcript JSONL + RAG corpus promotion |
 | `rag_proxy/config.py` | Settings / feature flags |
 | `rag_proxy/upstream_client.py` | Shared upstream httpx pool, `relay_upstream`, stream janitor |
 | `rag_proxy/stages/` | Tier 0–3 stage implementations |
@@ -27,8 +29,9 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag_proxy/stages/tier3_memgraphrag.py` | MemGraphRAG pipeline stage (after graph, before tools) |
 | `scripts/build_memgraphrag_index.py` | Offline indexing: chunk → entity/rel extraction → ontology filter → memory build |
 | `tests/` | Offline pytest |
-| `sidecars/` | CPU rerank + BM25 sparse HTTP sidecars (Docker `cognitive` profile) |
+| `sidecars/` | Rerank, BM25 sparse, TurboVec dense HTTP sidecars (Docker `cognitive` / `turbovec` profiles) |
 | `sidecars/mcp_rag/` | MCP tools: KB search (+ MemGraph `facts` mode) and personal `memory_*` store |
+| `sidecars/turbovec/` | TurboQuant dense ANN sidecar (`TURBOVEC_URL`, `DENSE_BACKEND=turbovec`) |
 | `rag_admin/` | Content Explorer UI, catalog subscriptions, ingest queue |
 | `rag_admin/settings_schema.py` | Settings UI field groups and defaults |
 | `rag_admin/settings_store.py` | Persist Settings to env files + admin SQLite |
@@ -97,10 +100,13 @@ Operator guides: **docs/README.md** (index). Entry point: **README.md** (quick s
 | Cognitive rollout (detail) | `docs/COGNITIVE_RAG_PLAN.md` |
 | Clients and headers | `docs/headers-and-clients.md` |
 | Traces and metrics | `docs/observability.md` |
+| Performance / tuning | `docs/performance.md` |
 | systemd / Docker | `docs/deployment.md` |
 | Troubleshooting | `docs/troubleshooting.md` |
 | Admin UI and ingest | `docs/ingest-and-admin.md` |
+| Ingest capacity planning | `docs/ingest-capacity-planning.md` |
 | MemGraphRAG | `docs/memgraphrag.md` |
+| Codemaps (module map) | `docs/CODEMAPS/INDEX.md` |
 
 ## Cognitive pipeline
 
@@ -126,5 +132,5 @@ Operator guides: **docs/README.md** (index). Entry point: **README.md** (quick s
 - Example systemd units: `rag-proxy.service`, `nomic-embed.service` — edit paths before install; missing venv causes systemd 203/EXEC
 - Shell sessions do not auto-load `.env`; source explicitly (`set -a; . ./.env; set +a`) before smoke scripts
 - Production tuning reference: `SIMILARITY_THRESHOLD=0.65`, `TOP_K=5`, `EMBED_MAX_CHARS=2000`
-- No admin JSON settings API; config via `.env`/systemd restart; per-request `x-rag-mode` / `x-no-cache` / `x-conversation-id` headers; `GET /metrics` is Prometheus counters only
+- Proxy has no in-process settings API (change `.env` / systemd and restart). `rag_admin` Settings UI writes env files (`GET /settings`, `POST /settings/save/{group}`, `GET /api/settings/status`). Per-request `x-rag-mode` / `x-no-cache` / `x-conversation-id` headers; `GET /metrics` is Prometheus counters only
 - Run offline tests from repo root with `.\scripts\run-tests.ps1` (uses `.venv\Scripts\python.exe` when present)

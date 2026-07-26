@@ -24,6 +24,7 @@ Diagrams in these guides use [Mermaid](https://mermaid.js.org/) (rendered on Git
 | [Ingest capacity planning](ingest-capacity-planning.md) | Resource binding, knobs, multi-resource planner reference |
 | [MemGraphRAG](memgraphrag.md) | Offline index build, runtime enable, verify |
 | [Scripts](../scripts/README.md) | Operator and dev script index |
+| [Codemaps](CODEMAPS/INDEX.md) | Module maps for proxy, ingest, admin, sidecars |
 
 ## Quick reference
 
@@ -43,3 +44,4 @@ Diagrams in these guides use [Mermaid](https://mermaid.js.org/) (rendered on Git
 - [.env.example](../.env.example) — environment template
 - [docker/README.md](../docker/README.md) — Docker compose stack
 - [AGENTS.md](../AGENTS.md) — agent/developer map (not operator-facing)
+- [CODEMAPS/INDEX.md](CODEMAPS/INDEX.md) — module codemaps

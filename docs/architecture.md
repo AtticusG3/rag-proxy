@@ -96,12 +96,14 @@ Retrieval skip/light/full decisions: `retrieval_policy.py`. Rollout: [Cognitive 
 | `rag_proxy/retrieval_policy.py` | Tier0 bypass and gating policy |
 | `rag_proxy/context.py` | `RequestContext`, pipeline enums |
 | `rag_proxy/legacy_rag.py` | Embed, Qdrant, extract, inject helpers |
+| `rag_proxy/clients/` | Dense/sparse/TurboVec retrieval (async proxy path + sync MCP/helpers) |
+| `rag_proxy/capture.py` | Optional transcript JSONL capture hooks |
 | `rag_proxy/config.py` | `Settings` from environment |
 | `rag_proxy/upstream_client.py` | Shared httpx pool, stream relay, janitor |
 | `rag_proxy/observability.py` | Trace IDs, pipeline summaries, metrics |
 | `rag_proxy/stages/` | Tier 0–3 stage implementations |
 | `rag_proxy/memgraphrag/` | Three-layer memory + PPR retrieval |
-| `sidecars/` | CPU rerank + BM25 sparse HTTP services (Docker `cognitive` profile) |
+| `sidecars/` | Rerank, BM25 sparse, TurboVec dense, MCP RAG (Docker profiles) |
 
 ## External dependencies
 
@@ -109,7 +111,8 @@ Retrieval skip/light/full decisions: `retrieval_policy.py`. Rollout: [Cognitive 
 | --- | --- | --- |
 | Upstream chat API | `LLAMA_SWAP_URL` | Always — any OpenAI-compatible base URL |
 | nomic-embed | `EMBED_URL` | Always (for RAG) |
-| Qdrant | `QDRANT_URL`, `QDRANT_COLLECTION` | Always (for RAG) |
+| Qdrant | `QDRANT_URL`, `QDRANT_COLLECTION` | Always (for RAG) — payloads always; ANN when `DENSE_BACKEND=qdrant` |
+| TurboVec dense | `TURBOVEC_URL`, `DENSE_BACKEND=turbovec` | Optional dense ANN to cut Qdrant RAM — [Configuration — TurboVec](configuration.md#turbovec-rollout-cut-qdrant-ram) |
 | Sparse BM25 | `SPARSE_INDEX_URL` | `ENABLE_HYBRID_RETRIEVAL=true` |
 | Reranker | `RERANKER_URL` | `ENABLE_RERANKER=true` |
 | Graph SQLite | `GRAPH_DB_PATH` | `ENABLE_GRAPH_LOOKUP=true` |
@@ -122,6 +125,7 @@ flowchart TB
   RP --> LS["upstream chat API\nrequired"]
   RP --> EM["nomic-embed\nrequired for RAG"]
   RP --> QD["Qdrant\nrequired for RAG"]
+  RP -.-> TV["TurboVec dense sidecar"]
   RP -.-> SP["sparse BM25 sidecar"]
   RP -.-> RR["reranker sidecar"]
   RP -.-> GR["graph SQLite"]
@@ -135,6 +139,7 @@ If you do not own the Qdrant collection, coordinate schema and payload fields wi
 
 - **Auth-transparent**: API keys and `Authorization` headers pass through unchanged. The upstream validates credentials.
 - **Chat paths only**: RAG runs on `POST` to `v1/chat/completions` or `api/chat` (`CHAT_PATHS` in `config.py`).
+- **Proxy-native routes**: `GET /metrics` (when `ENABLE_METRICS=true`) and `GET /debug` are handled by rag_proxy, not forwarded. Both honor `PROXY_INTERNAL_TOKEN` when set.
 - **Streaming**: SSE from the upstream is relayed as-is. Upstream streams with no relay activity for `UPSTREAM_STREAM_ABANDON_SEC` are closed by a background janitor.
 
 ## Fail-open
@@ -164,4 +169,4 @@ Chunks are prepended to the existing system message or inserted as a new system 
 
 ## Repository map (developer)
 
-See [AGENTS.md](../AGENTS.md) for the full path table used by contributors and agents.
+See [AGENTS.md](../AGENTS.md) for the full path table used by contributors and agents. Module-oriented maps: [CODEMAPS](CODEMAPS/INDEX.md).
