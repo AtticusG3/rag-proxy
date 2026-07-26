@@ -415,23 +415,38 @@ def apply_plan(
     )
     _prepare_pool_shutdown(config)
     _kill_stray_gpu_embeds(set())
+    # Force-kill pool embeds still holding the GPU after stop (systemctl stop can hang).
+    # Never touch the dedicated query embed (:8089 / nomic-embed.service).
+    time.sleep(1.0)
+    pool_ports = _pool_port_range(config) | planned_ports
+    for pid in sorted(_query_gpu_llama_pids()):
+        if not _is_embed_llama(pid):
+            continue
+        cmd = _process_cmdline(pid)
+        if not any(f"--port {port}" in cmd or f"--port={port}" in cmd for port in pool_ports):
+            continue
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
 
     ctl = _systemctl_shell()
-    restart_cmds = " ".join(f"{ctl} restart {_pool_unit(port)} &" for port in plan.embed_pool.ports)
+    # Prefer start over restart: restart waits on a stuck stop and can hang for minutes.
+    start_cmds = " ".join(f"{ctl} start {_pool_unit(port)} &" for port in plan.embed_pool.ports)
     for port in plan.embed_pool.ports:
         _systemctl("enable", _pool_unit(port), check=False)
-    if restart_cmds:
-        restart_timeout = max(120.0, 90.0 * len(plan.embed_pool.ports))
-        print(f"apply: restarting pool units (timeout {int(restart_timeout)}s)", flush=True)
+    if start_cmds:
+        start_timeout = max(90.0, 45.0 * len(plan.embed_pool.ports))
+        print(f"apply: starting pool units (timeout {int(start_timeout)}s)", flush=True)
         try:
             _run(
-                ["bash", "-lc", f"{restart_cmds} wait"],
+                ["bash", "-lc", f"{start_cmds} wait"],
                 check=False,
-                timeout=restart_timeout,
+                timeout=start_timeout,
             )
         except subprocess.TimeoutExpired:
             print(
-                "warning: pool unit restart timed out; continuing with health probe",
+                "warning: pool unit start timed out; continuing with health probe",
                 file=sys.stderr,
                 flush=True,
             )

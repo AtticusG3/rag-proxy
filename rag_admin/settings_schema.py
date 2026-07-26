@@ -150,7 +150,7 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "pool_scale",
         "16",
         help_text=(
-            "Planner input for llama-server --parallel (GPU-tier capped). "
+            "Planner input for llama-server --parallel (GPU-tier and context capped). "
             "Scale capacity writes the effective value as NOMIC_POOL_PARALLEL."
         ),
     ),

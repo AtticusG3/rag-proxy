@@ -46,6 +46,23 @@ class CapacityPlannerConfig:
     qdrant_huge_collection_points: int = 2_000_000
 
 
+def max_parallel_for_context(
+    *,
+    nomic_context: int,
+    chunk_tokens: int,
+    margin_tokens: int = 64,
+) -> int:
+    """Max --parallel so each llama-server slot fits one ingest chunk.
+
+    llama.cpp divides -c by --parallel; if that per-slot budget is below the
+    chunk size, embeddings return HTTP 400 exceed_context_size and ingest slows
+    to a crawl on retries.
+    """
+    need = max(1, int(chunk_tokens) + max(0, int(margin_tokens)))
+    ctx = max(1, int(nomic_context))
+    return max(1, ctx // need)
+
+
 def load_capacity_planner_config() -> CapacityPlannerConfig:
     return CapacityPlannerConfig(
         ram_reserve_mib=_env_int("INGEST_CAPACITY_RAM_RESERVE_MIB", 4096),
@@ -232,12 +249,32 @@ def plan_ingest_capacity(
             )
 
     # GPU tier caps per-instance parallel on low-bandwidth cards.
+    # Also cap so -c / --parallel still fits INGEST_CHUNK_SIZE_TOKENS (llama.cpp
+    # splits context across slots; undersized slots cause exceed_context_size 400s).
     tier = lookup_gpu_tier(host.gpu.name if host.gpu else None)
-    parallel = min(pool_cfg.parallel_per_instance, tier.parallel_per_instance)
+    nomic_context = _env_int("NOMIC_CONTEXT", 8096)
+    chunk_tokens = _env_int("INGEST_CHUNK_SIZE_TOKENS", 512)
+    context_cap = max_parallel_for_context(
+        nomic_context=nomic_context,
+        chunk_tokens=chunk_tokens,
+    )
+    parallel = min(
+        pool_cfg.parallel_per_instance,
+        tier.parallel_per_instance,
+        context_cap,
+    )
     if parallel < pool_cfg.parallel_per_instance:
+        reasons: list[str] = []
+        if tier.parallel_per_instance < pool_cfg.parallel_per_instance:
+            reasons.append(
+                f"{tier.name}-bandwidth GPU ({host.gpu.name if host.gpu else 'unknown'})"
+            )
+        if context_cap < pool_cfg.parallel_per_instance:
+            reasons.append(
+                f"context budget -c {nomic_context} / chunk {chunk_tokens}+64"
+            )
         rationale["nomic_pool_parallel"] = (
-            f"reduced to {parallel} for {tier.name}-bandwidth GPU "
-            f"({host.gpu.name if host.gpu else 'unknown'})"
+            f"reduced to {parallel} for " + " and ".join(reasons or ["planner caps"])
         )
     else:
         rationale["nomic_pool_parallel"] = f"configured value {parallel}"

@@ -207,7 +207,7 @@ For bulk ingest on a GPU host, run several `llama-server` embed instances (syste
 instances = clamp((gpu_free_mib - NOMIC_POOL_VRAM_RESERVE_MIB) / NOMIC_POOL_VRAM_PER_INSTANCE_MIB)
 ```
 
-On top of that it computes `INGEST_FILE_CONCURRENCY`, `INGEST_BATCH_SIZE`, `INGEST_CHUNK_CONCURRENCY`, semantic chunking on/off, and `NOMIC_POOL_PARALLEL` (capped for low-bandwidth GPUs). It writes the plan to `/opt/ai/config/nomic-embed-pool.env` **before** restarting pool units (so `nomic-embed@.service` loads the planned `--parallel`), syncs that parallel into the scale env, and records a rationale comment per decision. Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example`) and `INGEST_CAPACITY_*` caps ([Configuration](configuration.md)). Full reference: [Ingest capacity planning](ingest-capacity-planning.md).
+On top of that it computes `INGEST_FILE_CONCURRENCY`, `INGEST_BATCH_SIZE`, `INGEST_CHUNK_CONCURRENCY`, semantic chunking on/off, and `NOMIC_POOL_PARALLEL` (capped for low-bandwidth GPUs and so `-c / --parallel` still fits ingest chunk size). It writes the plan to `/opt/ai/config/nomic-embed-pool.env` **before** starting pool units (so `nomic-embed@.service` loads the planned `--parallel`), syncs that parallel into the scale env, and records a rationale comment per decision. Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example`) and `INGEST_CAPACITY_*` caps ([Configuration](configuration.md)). Full reference: [Ingest capacity planning](ingest-capacity-planning.md).
 
 ```bash
 # Dry-run plan

@@ -7,15 +7,16 @@ Type=simple
 User=kevyn
 Restart=on-failure
 RestartSec=3
-EnvironmentFile=-/opt/ai/config/nomic-embed.env
-EnvironmentFile=-/opt/ai/config/nomic-embed-scale.env
-# Generated plan last so NOMIC_POOL_PARALLEL from the capacity planner wins.
-EnvironmentFile=-/opt/ai/config/nomic-embed-pool.env
+# Defaults first; env files override. Do not set NOMIC_POOL_PARALLEL here —
+# Scale Capacity writes the effective value to nomic-embed-pool.env (last file).
 Environment=LLAMA_SERVER_BIN=/opt/ai/bin/llama-server
 Environment=NOMIC_EMBED_MODEL=/opt/ai/models/embed/nomic-embed-text-v1.5.Q8_0.gguf
 Environment=NOMIC_GPU_LAYERS=99
 Environment=NOMIC_CONTEXT=8096
-Environment=NOMIC_POOL_PARALLEL=16
+Environment=NOMIC_POOL_PARALLEL=8
+EnvironmentFile=-/opt/ai/config/nomic-embed.env
+EnvironmentFile=-/opt/ai/config/nomic-embed-scale.env
+EnvironmentFile=-/opt/ai/config/nomic-embed-pool.env
 
 ExecStart=/opt/ai/bin/llama-server \
     -m $NOMIC_EMBED_MODEL \

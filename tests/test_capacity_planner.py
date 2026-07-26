@@ -5,6 +5,7 @@ from __future__ import annotations
 from ingest.bench_fit import BenchFit
 from ingest.capacity_planner import (
     CapacityPlannerConfig,
+    max_parallel_for_context,
     plan_ingest_capacity,
     render_capacity_env,
 )
@@ -44,6 +45,12 @@ POOL_CFG = EmbedPoolConfig(max_instances=8, parallel_per_instance=16)
 PLANNER_CFG = CapacityPlannerConfig()
 
 
+def test_max_parallel_for_context_fits_chunk_slots() -> None:
+    # Default -c 8096 / (512+64) = 14; parallel 16 would undersize slots.
+    assert max_parallel_for_context(nomic_context=8096, chunk_tokens=512) == 14
+    assert max_parallel_for_context(nomic_context=8096, chunk_tokens=512, margin_tokens=0) == 15
+
+
 def test_big_host_scales_to_pool_and_cpu_limits() -> None:
     plan = plan_ingest_capacity(
         host=_host(cores=16, ram_available=32768, gpu=_gpu()),
@@ -52,8 +59,10 @@ def test_big_host_scales_to_pool_and_cpu_limits() -> None:
     )
     # (20480 - 2048) // 1024 = 18, capped at max_instances=8
     assert plan.embed_pool.instance_count == 8
-    assert plan.nomic_pool_parallel == 16  # 3090 is high tier
-    assert plan.ingest_embed_concurrency == 8 * 16
+    # Context budget caps 16 -> 14 so each slot fits chunk+margin under -c 8096
+    assert plan.nomic_pool_parallel == 14
+    assert "context budget" in plan.rationale["nomic_pool_parallel"]
+    assert plan.ingest_embed_concurrency == 8 * 14
     assert plan.ingest_batch_size == 32  # high concurrency -> small batches
     # min(instances=8, cpu 16//2=8, ram (32768-4096)//2048=14, max=8) = 8
     assert plan.ingest_file_concurrency == 8

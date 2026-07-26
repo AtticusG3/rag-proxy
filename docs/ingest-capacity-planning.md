@@ -84,7 +84,7 @@ Two tiers, both worker-global:
 | `NOMIC_POOL_VRAM_RESERVE_MIB` | `2048` | Headroom for other GPU workloads |
 | `NOMIC_POOL_MAX_INSTANCES` | `12` | Hard cap |
 | `NOMIC_POOL_MIN_INSTANCES` | `1` | No-GPU floor |
-| `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | Operator input; GPU-tier capped into `NOMIC_POOL_PARALLEL` |
+| `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | Operator input; GPU-tier and context capped into `NOMIC_POOL_PARALLEL` |
 | `NOMIC_POOL_PARALLEL` | *(written)* | Effective `llama-server --parallel` (pool + scale env; not a Settings UI field) |
 | `NOMIC_POOL_PORT_BASE` | `18089` | First pool port |
 | `NOMIC_POOL_GPU_INDEX` | `0` | `nvidia-smi --id` target (physical index); match `CUDA_VISIBLE_DEVICES` in `nomic-embed.env` to size the card embedding actually runs on |
