@@ -53,12 +53,12 @@
 </section>
 
 {% if active_tab == 'ingest' %}
-<section class="card card--compact">
+<section class="card card--compact" data-settings-live="ingest">
   <div class="section-head">
     <h2 class="section-title">Ingest capacity plan</h2>
     <div class="page-header__actions">
       <form method="post" action="/settings/embed-pool/scale" class="inline" data-busy-label="Starting…">
-        <button type="submit" class="btn" {% if pool_scale_job or pool_scale_starting %}disabled title="A scale job is already running — use Stop scale first"{% endif %}>Scale ingest capacity</button>
+        <button type="submit" id="scale-capacity-btn" class="btn" {% if pool_scale_job or pool_scale_starting %}disabled title="A scale job is already running — use Stop scale first"{% endif %}>Scale ingest capacity</button>
       </form>
       {% if can_restart_embed_pool %}
       <form method="post" action="/settings/restart/embed-pool" class="inline">
@@ -66,14 +66,14 @@
       </form>
       {% endif %}
       <form method="post" action="/settings/embed-pool/stop" class="inline">
-        <button type="submit" class="btn btn--ghost" {% if not pool_scale_job %}disabled{% endif %}>Stop scale</button>
+        <button type="submit" id="stop-scale-btn" class="btn btn--ghost" {% if not pool_scale_job %}disabled{% endif %}>Stop scale</button>
       </form>
     </div>
   </div>
   {% if pool_scale_starting and not pool_scale_job %}
-  <p class="muted">Yielding active ingest files, then capacity scale starts…</p>
+  <p id="pool-scale-starting" class="muted">Yielding active ingest files, then capacity scale starts…</p>
   {% elif pool_scale_job %}
-  <p class="muted">Scaling job <code>{{ pool_scale_job.id[:8] }}</code> since {{ pool_scale_job.started_at }} (pid {{ pool_scale_job.pid }}).</p>
+  <p id="pool-scale-status" class="muted">Scaling job <code>{{ pool_scale_job.id[:8] }}</code> since {{ pool_scale_job.started_at }} (pid {{ pool_scale_job.pid }}).</p>
   <pre id="pool-scale-log" class="log-tail" aria-live="polite">{{ pool_scale_log_tail }}</pre>
   {% elif pool_env.exists %}
   <dl class="config-dl">
@@ -109,24 +109,21 @@
   {% endif %}
   <p class="muted card-note">Planner inputs: <code>{{ pool_env.scale_path }}</code> · Output: <code>{{ pool_env.path }}</code></p>
 </section>
-<section class="card">
+<section class="card" data-settings-live="ingest">
   <div class="section-head">
     <h2 class="section-title">Ingest controls</h2>
     <div class="page-header__actions">
-      {% if ingest_paused %}
-      <form method="post" action="/settings/ingest/resume" class="inline"><button type="submit" class="btn">Resume dense ingest</button></form>
-      {% else %}
-      <form method="post" action="/settings/ingest/pause" class="inline"><button type="submit" class="btn btn--ghost">Pause dense ingest</button></form>
-      {% endif %}
+      <form id="ingest-resume-form" method="post" action="/settings/ingest/resume" class="inline" {% if not ingest_paused %}hidden{% endif %}><button type="submit" class="btn">Resume dense ingest</button></form>
+      <form id="ingest-pause-form" method="post" action="/settings/ingest/pause" class="inline" {% if ingest_paused %}hidden{% endif %}><button type="submit" class="btn btn--ghost">Pause dense ingest</button></form>
       <form method="post" action="/settings/sparse/reindex" class="inline"><button type="submit" class="btn btn--ghost">Rebuild BM25 now</button></form>
     </div>
   </div>
-  <p class="muted">Dense ingest is {% if ingest_paused %}<strong>paused</strong>{% else %}<strong>running</strong>{% endif %}. BM25 mode: <code>{{ ingest_config.sparse_reindex_mode }}</code>. With <code>EMBED_ON_DEMAND=true</code> (default on Linux), nomic embed units unload from VRAM when idle; resume ingest or send a RAG query to warm them again.</p>
+  <p class="muted">Dense ingest is <span id="ingest-pause-label">{% if ingest_paused %}<strong>paused</strong>{% else %}<strong>running</strong>{% endif %}</span>. BM25 mode: <code>{{ ingest_config.sparse_reindex_mode }}</code>. With <code>EMBED_ON_DEMAND=true</code> (default on Linux), nomic embed units unload from VRAM when idle; resume ingest or send a RAG query to warm them again.</p>
 </section>
 {% endif %}
 
 {% if active_tab == 'memgraph_build' %}
-<section class="card">
+<section class="card" data-settings-live="memgraph_build">
   <div class="section-head">
     <h2 class="section-title">MemGraphRAG index build</h2>
     <div class="page-header__actions">
@@ -135,7 +132,7 @@
     </div>
   </div>
   {% if build_job %}
-  <p class="muted">Running job <code>{{ build_job.id[:8] }}</code> since {{ build_job.started_at }} (pid {{ build_job.pid }}).</p>
+  <p id="build-job-active" class="muted">Running job <code>{{ build_job.id[:8] }}</code> since {{ build_job.started_at }} (pid {{ build_job.pid }}).</p>
   {% else %}
   <p class="muted">No build running. Save build settings below, then start. After build completes, enable MemGraphRAG in the runtime tab and restart rag-proxy.</p>
   {% endif %}
@@ -194,5 +191,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/settings.js" defer></script>
+<script src="/static/settings.js?v=scale-ui-1" defer></script>
 {% endblock %}

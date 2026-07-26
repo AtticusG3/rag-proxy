@@ -210,6 +210,12 @@ async def embed_pool_scale_start(request: Request):
         store.set_ingest_paused(was_paused)
         worker.set_paused(was_paused)
 
+    def resume_after_scale() -> None:
+        # Flash promises ingest resumes when the job completes; do not leave the
+        # queue paused just because an earlier failed click had already paused it.
+        store.set_ingest_paused(False)
+        worker.set_paused(False)
+
     def on_success() -> None:
         synced = store.sync_pool_ingest_from_pool_env()
         store.apply_to_worker(
@@ -229,7 +235,7 @@ async def embed_pool_scale_start(request: Request):
                 semantic_after,
                 job_id[:8],
             )
-        restore_pause_state()
+        resume_after_scale()
 
     def on_failure() -> None:
         restore_pause_state()
