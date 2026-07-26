@@ -284,14 +284,17 @@
       renderSidecarPanel("TurboVec", sidecars.turbovec || {}, "vectors", "Vectors");
   }
 
-  function formatRate(rate, stats, window) {
-    if (rate !== null && rate !== undefined) {
+  function formatPrimaryRate(rate, stats) {
+    if (rate !== null && rate !== undefined && Number(rate) > 0) {
       return Number(rate).toLocaleString() + " chunks/min";
     }
-    if (window === "now" && !stats.running && stats.pending > 0) {
+    if (stats.running) {
+      return "measuring…";
+    }
+    if (stats.pending > 0) {
       return "waiting";
     }
-    return "—";
+    return null;
   }
 
   function buildVelocityText(stats) {
@@ -314,9 +317,15 @@
     if (stats.running) {
       parts.push(stats.running + " embedding");
     }
-    parts.push("now " + formatRate(stats.embed_rate_now, stats, "now"));
-    parts.push("5m " + formatRate(stats.embed_rate_5m, stats, "5m"));
-    parts.push("15m " + formatRate(stats.embed_rate_15m, stats, "15m"));
+    var primary = formatPrimaryRate(stats.embed_rate_now, stats);
+    if (primary) {
+      parts.push(primary);
+    }
+    if (stats.embed_rate_5m !== null && stats.embed_rate_5m !== undefined && Number(stats.embed_rate_5m) > 0) {
+      parts.push(
+        "5m avg " + Number(stats.embed_rate_5m).toLocaleString() + " chunks/min"
+      );
+    }
     return parts.join(" · ");
   }
 

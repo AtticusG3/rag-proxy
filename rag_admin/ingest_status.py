@@ -11,7 +11,7 @@ from ingest.stall import is_stalled, seconds_since_update
 
 from rag_admin.embed_throughput import (
     embed_throughput_rates,
-    format_embed_rate,
+    format_primary_rate,
     record_embed_progress,
 )
 
@@ -303,31 +303,16 @@ def ingest_velocity_text(
         parts = [f"{active} in queue", f"{total:,} corpus chunks"]
         if running:
             parts.append(f"{running} embedding")
-        parts.extend(
-            [
-                "now "
-                + format_embed_rate(
-                    stats.get("embed_rate_now"),
-                    running=running,
-                    pending=pending,
-                    window="now",
-                ),
-                "5m "
-                + format_embed_rate(
-                    stats.get("embed_rate_5m"),
-                    running=running,
-                    pending=pending,
-                    window="5m",
-                ),
-                "15m "
-                + format_embed_rate(
-                    stats.get("embed_rate_15m"),
-                    running=running,
-                    pending=pending,
-                    window="15m",
-                ),
-            ]
+        primary = format_primary_rate(
+            stats.get("embed_rate_now"),
+            running=running,
+            pending=pending,
         )
+        if primary:
+            parts.append(primary)
+        rate_5m = stats.get("embed_rate_5m")
+        if rate_5m is not None and int(rate_5m) > 0:
+            parts.append(f"5m avg {int(rate_5m):,} chunks/min")
         base = " · ".join(parts)
 
     if sidecars:

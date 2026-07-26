@@ -120,6 +120,35 @@
   </div>
   <p class="muted">Dense ingest is <span id="ingest-pause-label">{% if ingest_paused %}<strong>paused</strong>{% else %}<strong>running</strong>{% endif %}</span>. BM25 mode: <code>{{ ingest_config.sparse_reindex_mode }}</code>. With <code>EMBED_ON_DEMAND=true</code> (default on Linux), nomic embed units unload from VRAM when idle; resume ingest or send a RAG query to warm them again.</p>
 </section>
+<section class="card" data-settings-live="ingest">
+  <div class="section-head">
+    <h2 class="section-title">Migrate Qdrant → sidecars</h2>
+    <div class="page-header__actions">
+      <form method="post" action="/settings/sidecars/migrate" class="inline" data-busy-label="Starting…">
+        <button type="submit" id="sidecar-migrate-btn" class="btn" {% if migrate_job %}disabled title="Migration already running"{% endif %}>Migrate from Qdrant</button>
+      </form>
+      <form method="post" action="/settings/sidecars/migrate/stop" class="inline">
+        <button type="submit" id="sidecar-migrate-stop-btn" class="btn btn--ghost" {% if not migrate_job %}disabled{% endif %}>Stop migration</button>
+      </form>
+    </div>
+  </div>
+  <p class="muted">One-time rebuild of TurboVec and BM25 from the existing Qdrant collection. Safe to click when already synced or a sidecar is not configured — those steps are skipped with a log message. Does not flip <code>DENSE_BACKEND</code>.</p>
+  {% if migrate_job %}
+  <p id="migrate-job-status" class="muted">Migration job <code>{{ migrate_job.id[:8] }}</code> since {{ migrate_job.started_at }} (pid {{ migrate_job.pid }}).</p>
+  <pre id="migrate-log" class="log-tail" aria-live="polite">{{ migrate_log_tail }}</pre>
+  {% elif migrate_history %}
+  <div class="table-wrap table-wrap--spaced">
+  <table>
+    <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
+    <tbody>
+      {% for job in migrate_history %}
+      <tr><td>{{ job.started_at }}</td><td>{{ job.status }}</td><td>{{ job.message or '-' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
 {% endif %}
 
 {% if active_tab == 'memgraph_build' %}
@@ -191,5 +220,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/settings.js?v=scale-ui-1" defer></script>
+<script src="/static/settings.js?v=migrate-1" defer></script>
 {% endblock %}

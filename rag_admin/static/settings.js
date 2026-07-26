@@ -4,6 +4,10 @@
     document.getElementById("pool-scale-starting")
   );
   var buildBusy = !!document.getElementById("build-job-active");
+  var migrateBusy = !!(
+    document.getElementById("migrate-log") ||
+    document.getElementById("migrate-job-status")
+  );
 
   function setDisabled(el, disabled, titleWhenDisabled) {
     if (!el) {
@@ -22,9 +26,7 @@
     setDisabled(
       document.getElementById("scale-capacity-btn"),
       busy,
-      busy
-        ? "A scale job is already running — use Stop scale first"
-        : ""
+      busy ? "A scale job is already running — use Stop scale first" : ""
     );
     setDisabled(document.getElementById("stop-scale-btn"), !data.pool_scale_job);
     var status = document.getElementById("pool-scale-status");
@@ -32,12 +34,43 @@
       var job = data.pool_scale_job;
       var id = String(job.id || "").slice(0, 8);
       status.textContent =
-        "Scaling job " + id + " since " + (job.started_at || "") +
-        " (pid " + (job.pid || "?") + ").";
+        "Scaling job " +
+        id +
+        " since " +
+        (job.started_at || "") +
+        " (pid " +
+        (job.pid || "?") +
+        ").";
     }
     var poolLog = document.getElementById("pool-scale-log");
     if (poolLog && data.pool_scale_log_tail) {
       poolLog.textContent = data.pool_scale_log_tail;
+    }
+  }
+
+  function applyMigrateUi(data) {
+    var busy = !!data.migrate_job;
+    setDisabled(
+      document.getElementById("sidecar-migrate-btn"),
+      busy,
+      busy ? "Migration already running" : ""
+    );
+    setDisabled(document.getElementById("sidecar-migrate-stop-btn"), !busy);
+    var status = document.getElementById("migrate-job-status");
+    if (status && data.migrate_job) {
+      var job = data.migrate_job;
+      status.textContent =
+        "Migration job " +
+        String(job.id || "").slice(0, 8) +
+        " since " +
+        (job.started_at || "") +
+        " (pid " +
+        (job.pid || "?") +
+        ").";
+    }
+    var migrateLog = document.getElementById("migrate-log");
+    if (migrateLog && data.migrate_log_tail) {
+      migrateLog.textContent = data.migrate_log_tail;
     }
   }
 
@@ -76,15 +109,21 @@
         }
 
         applyScaleUi(data);
+        applyMigrateUi(data);
         if (typeof data.ingest_paused === "boolean") {
           applyPauseUi(data.ingest_paused);
         }
 
         var scaleNow = !!(data.pool_scale_job || data.pool_scale_starting);
         var buildNow = !!data.build_job;
+        var migrateNow = !!data.migrate_job;
 
-        // Job finished (or prep ended): reload so plan/history/buttons match server.
+        // Job finished: reload so history/buttons match server.
         if (scaleBusy && !scaleNow) {
+          window.location.replace("/settings?tab=ingest");
+          return;
+        }
+        if (migrateBusy && !migrateNow) {
           window.location.replace("/settings?tab=ingest");
           return;
         }
@@ -94,6 +133,7 @@
         }
         scaleBusy = scaleNow;
         buildBusy = buildNow;
+        migrateBusy = migrateNow;
       })
       .catch(function () {});
   }

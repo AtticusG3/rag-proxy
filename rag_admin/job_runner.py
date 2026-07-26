@@ -21,7 +21,8 @@ log = logging.getLogger("rag-admin.jobs")
 
 JOB_MEMGRAPH_BUILD = "memgraph_build"
 JOB_EMBED_POOL_SCALE = "embed_pool_scale"
-KNOWN_JOB_TYPES = (JOB_MEMGRAPH_BUILD, JOB_EMBED_POOL_SCALE)
+JOB_SIDECAR_MIGRATE = "sidecar_migrate"
+KNOWN_JOB_TYPES = (JOB_MEMGRAPH_BUILD, JOB_EMBED_POOL_SCALE, JOB_SIDECAR_MIGRATE)
 
 
 def _utc_now() -> str:
@@ -266,6 +267,29 @@ class BackgroundJobRunner:
             message="Ingest capacity scale started (bench + apply)",
             on_success=on_success,
             on_failure=on_failure,
+        )
+
+    def start_sidecar_migrate(self, params: dict[str, Any]) -> str:
+        python = sys.executable
+        script = os.path.join(self.repo_root, "scripts", "migrate_qdrant_sidecars.py")
+        cmd = [
+            python,
+            "-u",
+            script,
+            "--qdrant-url",
+            str(params["qdrant_url"]),
+            "--collection",
+            str(params["collection"]),
+            "--turbovec-url",
+            str(params.get("turbovec_url") or ""),
+            "--sparse-url",
+            str(params.get("sparse_url") or ""),
+        ]
+        return self._start_job(
+            JOB_SIDECAR_MIGRATE,
+            cmd,
+            params=params,
+            message="Qdrant → TurboVec/BM25 migration started",
         )
 
     def stop_active(self, job_type: str) -> bool:

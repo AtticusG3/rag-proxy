@@ -10,6 +10,7 @@ from rag_admin.helpers import flash_redirect, format_size
 from rag_admin.embed_throughput import (
     embed_throughput_rates,
     format_embed_rate,
+    format_primary_rate,
     record_embed_progress,
     reset_embed_throughput,
 )
@@ -261,13 +262,23 @@ def test_embed_throughput_rates_after_progress() -> None:
     assert rates["embed_rate_15m"] is None
 
 
+def test_embed_throughput_ignores_rapid_duplicate_samples() -> None:
+    """Bursty SSR+poll within MIN_ELAPSED_S must not leave now permanently None."""
+    reset_embed_throughput()
+    record_embed_progress(1000, now=0.0)
+    record_embed_progress(1000, now=1.0)  # ignored
+    record_embed_progress(1060, now=60.0)
+    rates = embed_throughput_rates()
+    assert rates["embed_rate_now"] == 60
+
+
 def test_embed_throughput_window_rates_need_full_span() -> None:
     reset_embed_throughput()
     record_embed_progress(0, now=0.0)
     record_embed_progress(300, now=300.0)
-    record_embed_progress(900, now=600.0)
+    # 5m window with 0.5 fraction: 300s span is enough for 5m rate.
     rates = embed_throughput_rates()
-    assert rates["embed_rate_5m"] == 120
+    assert rates["embed_rate_5m"] == 60
     assert rates["embed_rate_15m"] is None
 
 
@@ -283,10 +294,38 @@ def test_embed_throughput_5m_and_15m_differ_with_enough_history() -> None:
     assert rates["embed_rate_5m"] != rates["embed_rate_15m"]
 
 
+def test_format_primary_rate_measuring_when_running() -> None:
+    assert format_primary_rate(None, running=1, pending=0) == "measuring…"
+    assert format_primary_rate(0, running=1, pending=2) == "measuring…"
+    assert format_primary_rate(None, running=0, pending=3) == "waiting"
+    assert format_primary_rate(42, running=1, pending=0) == "42 chunks/min"
+
+
 def test_format_embed_rate_waiting_when_pending_only() -> None:
     assert format_embed_rate(None, running=0, pending=3, window="now") == "waiting"
+    assert format_embed_rate(None, running=1, pending=0, window="now") == "measuring…"
     assert format_embed_rate(None, running=0, pending=3, window="5m") == "—"
     assert format_embed_rate(42, running=1, pending=0, window="now") == "42 chunks/min"
+
+
+def test_ingest_velocity_text_active_queue_measuring() -> None:
+    text = ingest_velocity_text(
+        {
+            "active": 7,
+            "total_chunks": 445_449,
+            "running": 1,
+            "pending": 6,
+            "embed_rate_now": None,
+            "embed_rate_5m": None,
+            "embed_rate_15m": None,
+        }
+    )
+    assert "7 in queue" in text
+    assert "1 embedding" in text
+    assert "measuring…" in text
+    assert "now —" not in text
+    assert "5m —" not in text
+    assert "15m" not in text
 
 
 def test_ingest_velocity_text_idle_queue() -> None:
@@ -303,8 +342,25 @@ def test_ingest_velocity_text_idle_queue() -> None:
     )
     assert "5 in queue" in text
     assert "2,974,689 corpus chunks" in text
-    assert "now waiting" in text
-    assert "5m —" in text
+    assert "waiting" in text
+    assert "5m —" not in text
+    assert "15m" not in text
+
+
+def test_ingest_velocity_text_includes_5m_avg_when_present() -> None:
+    text = ingest_velocity_text(
+        {
+            "active": 2,
+            "total_chunks": 1000,
+            "running": 1,
+            "pending": 1,
+            "embed_rate_now": 420,
+            "embed_rate_5m": 380,
+            "embed_rate_15m": None,
+        }
+    )
+    assert "420 chunks/min" in text
+    assert "5m avg 380 chunks/min" in text
 
 
 def test_ingest_config_snapshot_exposes_tuning_knobs() -> None:

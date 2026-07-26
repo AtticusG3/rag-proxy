@@ -13,7 +13,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from ingest.worker import trigger_sparse_reindex
 from ingest.embed_lifecycle import ensure_embed_urls, on_demand_enabled
 from ingest.embed_urls import parse_ingest_embed_urls
-from rag_admin.job_runner import JOB_EMBED_POOL_SCALE, JOB_MEMGRAPH_BUILD
+from rag_admin.job_runner import (
+    JOB_EMBED_POOL_SCALE,
+    JOB_MEMGRAPH_BUILD,
+    JOB_SIDECAR_MIGRATE,
+)
 from rag_admin.config import settings
 from rag_admin.helpers import flash_redirect
 from rag_admin.service_restart import schedule_restart
@@ -76,15 +80,20 @@ async def settings_page(request: Request, tab: str = "ingest") -> HTMLResponse:
     )
     build_job = job_runner.active_job(JOB_MEMGRAPH_BUILD)
     pool_scale_job = job_runner.active_job(JOB_EMBED_POOL_SCALE)
+    migrate_job = job_runner.active_job(JOB_SIDECAR_MIGRATE)
     pool_scale_starting = job_runner.scale_starting()
     build_history = request.app.state.db.list_background_jobs(JOB_MEMGRAPH_BUILD, limit=5)
     pool_scale_history = request.app.state.db.list_background_jobs(JOB_EMBED_POOL_SCALE, limit=5)
+    migrate_history = request.app.state.db.list_background_jobs(JOB_SIDECAR_MIGRATE, limit=5)
     log_tail = ""
     if build_job:
         log_tail = job_runner.tail_log(build_job["id"])
     pool_scale_log_tail = ""
     if pool_scale_job:
         pool_scale_log_tail = job_runner.tail_log(pool_scale_job["id"])
+    migrate_log_tail = ""
+    if migrate_job:
+        migrate_log_tail = job_runner.tail_log(migrate_job["id"])
 
     return templates.TemplateResponse(
         request,
@@ -106,6 +115,9 @@ async def settings_page(request: Request, tab: str = "ingest") -> HTMLResponse:
             "pool_scale_starting": pool_scale_starting,
             "pool_scale_history": pool_scale_history,
             "pool_scale_log_tail": pool_scale_log_tail,
+            "migrate_job": migrate_job,
+            "migrate_history": migrate_history,
+            "migrate_log_tail": migrate_log_tail,
             "admin_env_path": store.admin_env_path,
             "proxy_env_path": store.proxy_env_path,
             "pool_env": store.pool_env_snapshot(),
@@ -180,6 +192,43 @@ async def sparse_reindex_now(request: Request):
             level="error",
         )
     return flash_redirect("/settings?tab=ingest", f"BM25 reindex complete ({docs} docs).")
+
+
+@router.post("/settings/sidecars/migrate")
+async def sidecar_migrate_start(request: Request):
+    """One-time Qdrant → TurboVec/BM25 rebuild; safe no-op when already synced."""
+    store = _store(request)
+    job_runner = request.app.state.job_runner
+    worker = request.app.state.worker
+    params = {
+        "qdrant_url": store.get_value("QDRANT_URL", settings.qdrant_url),
+        "collection": store.get_value("QDRANT_COLLECTION", settings.qdrant_collection),
+        "turbovec_url": (getattr(worker.config, "turbovec_url", "") or "").strip()
+        or store.get_value("TURBOVEC_URL", ""),
+        "sparse_url": (getattr(worker.config, "sparse_index_url", "") or "").strip()
+        or store.get_value("SPARSE_INDEX_URL", settings.sparse_index_url),
+    }
+    try:
+        job_id = job_runner.start_sidecar_migrate(params)
+    except RuntimeError as exc:
+        return flash_redirect("/settings?tab=ingest", str(exc), level="error")
+    return flash_redirect(
+        "/settings?tab=ingest",
+        f"Sidecar migration started (job {job_id[:8]}). "
+        "Watch the step log below — already-synced sidecars are skipped.",
+    )
+
+
+@router.post("/settings/sidecars/migrate/stop")
+async def sidecar_migrate_stop(request: Request):
+    stopped = request.app.state.job_runner.stop_active(JOB_SIDECAR_MIGRATE)
+    if not stopped:
+        return flash_redirect(
+            "/settings?tab=ingest",
+            "No running sidecar migration to stop.",
+            level="error",
+        )
+    return flash_redirect("/settings?tab=ingest", "Sidecar migration stopped.")
 
 
 @router.post("/settings/embed-pool/scale")
@@ -323,6 +372,7 @@ async def settings_status_api(request: Request) -> JSONResponse:
     job_runner = request.app.state.job_runner
     build_job = job_runner.active_job(JOB_MEMGRAPH_BUILD)
     pool_scale_job = job_runner.active_job(JOB_EMBED_POOL_SCALE)
+    migrate_job = job_runner.active_job(JOB_SIDECAR_MIGRATE)
     payload: dict[str, Any] = {
         "ingest_paused": worker.paused,
         "ingest_config": {
@@ -334,8 +384,10 @@ async def settings_status_api(request: Request) -> JSONResponse:
         "build_job": build_job,
         "pool_scale_job": pool_scale_job,
         "pool_scale_starting": job_runner.scale_starting(),
+        "migrate_job": migrate_job,
         "log_tail": job_runner.tail_log(build_job["id"]) if build_job else "",
         "pool_scale_log_tail": job_runner.tail_log(pool_scale_job["id"]) if pool_scale_job else "",
+        "migrate_log_tail": job_runner.tail_log(migrate_job["id"]) if migrate_job else "",
         "pool_env": store.pool_env_snapshot(),
     }
     services = await service_status(
