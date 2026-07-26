@@ -90,9 +90,7 @@ def run_migration(
         _log(f"[1/3] Qdrant: {points:,} points in {collection}")
 
         if points <= 0:
-            _log("[1/3] Qdrant collection is empty — nothing to migrate.")
-            _log("Migration complete (no work).")
-            return 0
+            _log("[1/3] Qdrant collection is empty — sidecars will be flushed to match.")
 
         # --- TurboVec ---
         tv = turbovec_url.strip()
@@ -107,7 +105,7 @@ def run_migration(
                 _log("[2/3] TurboVec: health probe failed before rebuild — will try reindex anyway.")
             elif not needs_sidecar_rebuild(vectors, points):
                 _log(
-                    f"[2/3] TurboVec: already synced ({vectors:,} vectors ≥ {points:,} points) — skip."
+                    f"[2/3] TurboVec: already synced ({vectors:,} vectors = {points:,} points) — skip."
                 )
             else:
                 _log(
@@ -150,7 +148,7 @@ def run_migration(
                 need = needs_sidecar_rebuild(docs, target)
             if not need:
                 _log(
-                    f"[3/3] BM25: already synced ({docs:,} docs ≥ target {target:,}{cap_note}) — skip."
+                    f"[3/3] BM25: already synced ({docs:,} docs = target {target:,}{cap_note}) — skip."
                 )
             else:
                 _log(

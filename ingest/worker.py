@@ -338,6 +338,7 @@ class SidecarReindexScheduler:
         self._active = active
         self._flush_log = flush_log
         self._dirty = False
+        self._dirty_seq = 0
         self._reindexing = False
         self._last_docs: int | None = None
         self._last_error: str | None = None
@@ -362,7 +363,7 @@ class SidecarReindexScheduler:
                 "last_finished_at": self._last_finished_at,
             }
 
-    def _run_reindex(self, *, ensure: bool, log_flush: bool = False) -> None:
+    def _run_reindex(self, *, ensure: bool, log_flush: bool = False) -> bool:
         with self._lock:
             self._reindexing = True
             self._last_error = None
@@ -372,15 +373,20 @@ class SidecarReindexScheduler:
             if log_flush:
                 log.info(self._flush_log)
             docs = self._trigger_reindex(self.config)
+            # The trigger helpers are fail-open and log the real cause. _active()
+            # already proved the URL is set, so None here means the call failed.
+            ok = docs is not None
             with self._lock:
                 self._last_docs = docs
                 self._last_finished_at = _utc_now()
-                self._last_error = None
+                self._last_error = None if ok else "reindex failed"
+            return ok
         except Exception as exc:
             with self._lock:
                 self._last_error = str(exc)
                 self._last_finished_at = _utc_now()
             log.warning("sidecar reindex failed: %s", exc)
+            return False
         finally:
             with self._lock:
                 self._reindexing = False
@@ -391,11 +397,12 @@ class SidecarReindexScheduler:
         mode = self._mode(self.config).lower()
         if mode == "off":
             return
-        if mode == "each":
-            self._run_reindex(ensure=False)
+        if mode == "each" and self._run_reindex(ensure=False):
             return
+        # Idle mode, or an "each" reindex that failed and needs a retry at idle.
         with self._lock:
             self._dirty = True
+            self._dirty_seq += 1
 
     def flush(self) -> None:
         if not self._active(self.config):
@@ -406,8 +413,13 @@ class SidecarReindexScheduler:
         with self._lock:
             if not self._dirty:
                 return
-            self._dirty = False
-        self._run_reindex(ensure=True, log_flush=True)
+            seq = self._dirty_seq
+        ok = self._run_reindex(ensure=True, log_flush=True)
+        # Stay dirty on failure, and on files ingested mid-reindex, so the next
+        # idle flush retries instead of leaving the sidecar behind Qdrant.
+        with self._lock:
+            if ok and self._dirty_seq == seq:
+                self._dirty = False
 
 
 class SparseReindexScheduler(SidecarReindexScheduler):
@@ -417,7 +429,7 @@ class SparseReindexScheduler(SidecarReindexScheduler):
         super().__init__(
             config,
             mode=lambda c: c.sparse_reindex_mode,
-            active=lambda c: True,
+            active=lambda c: bool(c.sparse_index_url.strip()),
             flush_log="sparse reindex flush (ingest queue idle)",
         )
 
@@ -435,7 +447,7 @@ class TurbovecReindexScheduler(SidecarReindexScheduler):
         super().__init__(
             config,
             mode=lambda c: c.turbovec_reindex_mode,
-            active=lambda c: bool(c.turbovec_url),
+            active=lambda c: bool(c.turbovec_url.strip()),
             flush_log="turbovec reindex flush (ingest queue idle)",
         )
 

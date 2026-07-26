@@ -17,10 +17,12 @@ def sparse_target_docs(qdrant_points: int, *, max_points: int | None) -> int:
 
 
 def needs_sidecar_rebuild(current: int, target: int) -> bool:
-    """True when the sidecar is behind Qdrant (or empty target means nothing to do)."""
-    if target <= 0:
-        return False
-    return int(current) < int(target)
+    """True when the sidecar count disagrees with Qdrant.
+
+    Behind means missing docs. Ahead means ghost entries left by a collection
+    clear or partial wipe, which a rebuild flushes. Both need a full reindex.
+    """
+    return int(current) != int(target)
 
 
 def health_count(body: dict[str, Any] | None, *keys: str) -> int:

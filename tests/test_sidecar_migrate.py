@@ -30,6 +30,16 @@ def test_needs_sidecar_rebuild_safe_when_caught_up_or_empty() -> None:
     assert needs_sidecar_rebuild(99, 100) is True
 
 
+def test_needs_sidecar_rebuild_when_sidecar_holds_ghosts() -> None:
+    """A sidecar ahead of Qdrant is serving deleted content, not 'caught up'.
+
+    Clearing the collection leaves BM25/TurboVec full of entries whose points no
+    longer exist, so retrieval keeps citing wiped documents until a rebuild.
+    """
+    assert needs_sidecar_rebuild(100, 0) is True
+    assert needs_sidecar_rebuild(500, 100) is True
+
+
 def test_health_helpers() -> None:
     assert health_count({"vectors": 12}, "vectors", "docs") == 12
     assert health_count({"docs": "9"}, "vectors", "docs") == 9
@@ -125,7 +135,7 @@ def test_run_migration_skips_when_already_synced(monkeypatch, capsys) -> None:
     assert "Migration complete" in out
 
 
-def test_run_migration_empty_qdrant_is_noop(monkeypatch, capsys) -> None:
+def test_run_migration_empty_qdrant_no_sidecars_is_noop(monkeypatch, capsys) -> None:
     from scripts import migrate_qdrant_sidecars as mig
 
     class FakeResp:
@@ -161,4 +171,61 @@ def test_run_migration_empty_qdrant_is_noop(monkeypatch, capsys) -> None:
     )
     out = capsys.readouterr().out
     assert code == 0
-    assert "nothing to migrate" in out
+    assert "Migration complete" in out
+
+
+def test_run_migration_flushes_sidecars_after_qdrant_clear(monkeypatch, capsys) -> None:
+    """After a collection clear the sidecars must be emptied, not left as-is.
+
+    Otherwise BM25 and TurboVec keep returning chunks whose Qdrant points are
+    gone, and the proxy injects text the operator believes was deleted.
+    """
+    from scripts import migrate_qdrant_sidecars as mig
+
+    reindexed: list[str] = []
+
+    class FakeResp:
+        def __init__(self, payload):
+            self._payload = payload
+            self.status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return self._payload
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url: str):
+            if "/collections/" in url:
+                return FakeResp({"result": {"points_count": 0}})
+            if "18097" in url:
+                return FakeResp({"status": "ok", "vectors": 4200})
+            return FakeResp({"status": "ok", "docs": 4200, "max_points": 0})
+
+        def post(self, url: str, json=None):
+            reindexed.append(url)
+            return FakeResp({"docs": 0, "vectors": 0})
+
+    monkeypatch.setattr(mig.httpx, "Client", FakeClient)
+    monkeypatch.setattr(mig, "ensure_turbovec_sidecar", lambda *a, **k: True)
+    monkeypatch.setattr(mig, "ensure_sparse_sidecar", lambda *a, **k: True)
+
+    code = mig.run_migration(
+        qdrant_url="http://127.0.0.1:6333",
+        collection="nomad_knowledge_base",
+        turbovec_url="http://127.0.0.1:18097",
+        sparse_url="http://127.0.0.1:18096",
+    )
+    assert code == 0
+    assert any("18097" in url and "reindex" in url for url in reindexed)
+    assert any("18096" in url and "reindex" in url for url in reindexed)
