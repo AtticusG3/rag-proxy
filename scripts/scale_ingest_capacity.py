@@ -23,11 +23,17 @@ from ingest.capacity_planner import (  # noqa: E402
     IngestCapacityPlan,
     load_capacity_planner_config,
     plan_ingest_capacity,
+    qdrant_ingest_limits,
     render_capacity_env,
     resolve_semantic_chunking,
 )
 from ingest.bench_fit import fit_from_report_paths  # noqa: E402
-from ingest.embed_pool import EmbedPoolConfig, load_embed_pool_config  # noqa: E402
+from ingest.embed_pool import (  # noqa: E402
+    EmbedPoolConfig,
+    EmbedPoolPlan,
+    load_embed_pool_config,
+    pool_plan_from_env,
+)
 from ingest.host_profile import probe_host  # noqa: E402
 from ingest.port_avoidance import (  # noqa: E402
     apply_config_env,
@@ -35,7 +41,7 @@ from ingest.port_avoidance import (  # noqa: E402
     embed_pool_stop_ports,
     loopback_reserved_ports,
 )
-from rag_admin.env_file import write_env_file  # noqa: E402
+from rag_admin.env_file import read_env_file, write_env_file  # noqa: E402
 from rag_proxy.env_parse import parse_bool  # noqa: E402
 
 DEFAULT_POOL_ENV = "/opt/ai/config/nomic-embed-pool.env"
@@ -338,22 +344,32 @@ def shrink_plan_to_healthy(
     """Rebuild the capacity plan around the subset of healthy embed instances."""
     healthy_ports = tuple(int(url.rsplit(":", 1)[-1]) for url in healthy_urls)
     count = len(healthy_ports)
+    embed_concurrency = count * plan.nomic_pool_parallel
+    if plan.qdrant is not None:
+        _, q_limits = qdrant_ingest_limits(
+            plan.qdrant, host=plan.host, cfg=load_capacity_planner_config()
+        )
+        if q_limits.embed_concurrency_cap is not None:
+            embed_concurrency = min(embed_concurrency, q_limits.embed_concurrency_cap)
     embed_pool = replace(
         plan.embed_pool,
         instance_count=count,
         ports=healthy_ports,
         ingest_embed_urls=",".join(healthy_urls),
-        ingest_embed_concurrency=count * plan.nomic_pool_parallel,
+        ingest_embed_concurrency=embed_concurrency,
     )
     rationale = dict(plan.rationale)
     rationale["embed_pool"] = (
         f"{count} healthy instance(s) after scale "
         f"(planned {plan.embed_pool.instance_count})"
     )
+    rationale["ingest_embed_concurrency"] = (
+        f"{embed_concurrency} ({count} healthy x {plan.nomic_pool_parallel} parallel)"
+    )
     return replace(
         plan,
         embed_pool=embed_pool,
-        ingest_embed_concurrency=embed_pool.ingest_embed_concurrency,
+        ingest_embed_concurrency=embed_concurrency,
         ingest_file_concurrency=max(1, min(plan.ingest_file_concurrency, count)),
         rationale=rationale,
     )
@@ -503,7 +519,12 @@ def write_plan_env(
     return 0
 
 
-def build_plan(args: argparse.Namespace) -> IngestCapacityPlan:
+def build_plan(
+    args: argparse.Namespace,
+    *,
+    frozen_pool: EmbedPoolPlan | None = None,
+    frozen_parallel: int | None = None,
+) -> IngestCapacityPlan:
     data_paths = tuple(
         path
         for path in (os.getenv("ZIM_DIR", ""), os.getenv("UPLOAD_DIR", ""))
@@ -529,12 +550,25 @@ def build_plan(args: argparse.Namespace) -> IngestCapacityPlan:
     )
     semantic_for_bench = resolve_semantic_chunking(host, planner_cfg, semantic_requested)
 
+    # Draft plan (no benches) so embed fit only considers pool-feasible concurrency.
+    draft = plan_ingest_capacity(
+        host=host,
+        pool_config=pool_cfg,
+        planner_config=planner_cfg,
+        semantic_requested=semantic_requested,
+        data_paths=data_paths,
+        frozen_pool=frozen_pool,
+        frozen_parallel=frozen_parallel,
+    )
+    pool_ceiling = draft.embed_pool.instance_count * draft.nomic_pool_parallel
+
     bench = None
     if args.chunk_bench or args.embed_bench:
         bench = fit_from_report_paths(
             args.chunk_bench or None,
             args.embed_bench or None,
             semantic_requested=semantic_for_bench,
+            max_embed_concurrency=pool_ceiling,
         )
 
     return plan_ingest_capacity(
@@ -544,7 +578,23 @@ def build_plan(args: argparse.Namespace) -> IngestCapacityPlan:
         semantic_requested=semantic_requested,
         data_paths=data_paths,
         bench=bench,
+        frozen_pool=frozen_pool,
+        frozen_parallel=frozen_parallel,
     )
+
+
+def _frozen_topology_from_pool_env(pool_env_path: str) -> tuple[EmbedPoolPlan | None, int | None]:
+    """Keep running pool URLs/ports/--parallel when rewriting env without restart."""
+    values = read_env_file(pool_env_path)
+    if not values:
+        return None, None
+    raw_parallel = values.get("NOMIC_POOL_PARALLEL", "").strip()
+    try:
+        parallel = int(raw_parallel) if raw_parallel else None
+    except ValueError:
+        parallel = None
+    frozen = pool_plan_from_env(values, parallel=parallel)
+    return frozen, parallel
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -572,7 +622,23 @@ def main() -> int:
     scale_env = Path(args.scale_env)
     apply_config_env(config_dir=scale_env.parent, scale_env=scale_env if scale_env.is_file() else None)
 
-    plan = build_plan(args)
+    frozen_pool = None
+    frozen_parallel = None
+    if args.write_env_only:
+        frozen_pool, frozen_parallel = _frozen_topology_from_pool_env(args.pool_env)
+        if frozen_pool is not None:
+            print(
+                f"write-env: freezing pool topology "
+                f"({frozen_pool.instance_count} instance(s), "
+                f"parallel={frozen_parallel})",
+                flush=True,
+            )
+
+    plan = build_plan(
+        args,
+        frozen_pool=frozen_pool,
+        frozen_parallel=frozen_parallel,
+    )
     pool = plan.embed_pool
     pool_cfg = load_embed_pool_config()
     reserved = loopback_reserved_ports()

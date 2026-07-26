@@ -181,6 +181,28 @@ def test_persist_plan_env_writes_parallel_to_pool_and_scale(tmp_path: Path) -> N
     assert "NOMIC_POOL_PARALLEL=8" in scale_env.read_text(encoding="utf-8")
 
 
+def test_frozen_topology_from_pool_env(tmp_path: Path) -> None:
+    scale = _load_scale_module()
+    pool_env = tmp_path / "pool.env"
+    pool_env.write_text(
+        "\n".join(
+            [
+                "INGEST_EMBED_URLS=http://127.0.0.1:18089,http://127.0.0.1:18090",
+                "NOMIC_POOL_PORTS=18089,18090",
+                "NOMIC_POOL_INSTANCE_COUNT=2",
+                "NOMIC_POOL_PARALLEL=8",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    frozen, parallel = scale._frozen_topology_from_pool_env(str(pool_env))
+    assert parallel == 8
+    assert frozen is not None
+    assert frozen.instance_count == 2
+    assert frozen.ports == (18089, 18090)
+
+
 def test_apply_plan_persists_env_before_restarting_units(tmp_path: Path) -> None:
     scale = _load_scale_module()
     pool_env = tmp_path / "pool.env"

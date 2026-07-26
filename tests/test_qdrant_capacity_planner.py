@@ -52,6 +52,18 @@ def test_qdrant_huge_collection_caps_embed_and_batch_on_slow_cpu() -> None:
     assert limits.embed_concurrency_cap == 16
 
 
+def test_qdrant_large_collection_on_slow_cpu_allows_parallel_files() -> None:
+    """~1M points on 6 cores soft-caps; must not force serial file ingest."""
+    _, limits = qdrant_ingest_limits(
+        _profile(1_140_000),
+        host=_host(cores=6),
+        cfg=CapacityPlannerConfig(),
+    )
+    assert limits.file_concurrency_cap == 2
+    assert limits.batch_size_cap == 64
+    assert limits.embed_concurrency_cap == 24
+
+
 def test_plan_applies_qdrant_caps_when_profile_provided(monkeypatch) -> None:
     """Planner should lower knobs when Qdrant probe reports a huge collection."""
     monkeypatch.setenv("QDRANT_URL", "http://127.0.0.1:6333")
@@ -74,3 +86,27 @@ def test_plan_applies_qdrant_caps_when_profile_provided(monkeypatch) -> None:
     assert plan.ingest_embed_concurrency <= 16
     assert plan.qdrant is not None
     assert "qdrant" in plan.rationale
+
+
+def test_plan_large_qdrant_keeps_bench_chunk_concurrency(monkeypatch) -> None:
+    """Chunk concurrency is CPU-bound and must survive Qdrant file=2 soft caps."""
+    from ingest.bench_fit import BenchFit
+
+    monkeypatch.setenv("QDRANT_URL", "http://127.0.0.1:6333")
+    monkeypatch.setenv("QDRANT_COLLECTION", "nomad_knowledge_base")
+    monkeypatch.setattr(
+        "ingest.capacity_planner.probe_qdrant_collection",
+        lambda *_a, **_k: _profile(1_140_000),
+    )
+    bench = BenchFit(chunk_concurrency=3, chunk_chunks_per_min=9000.0)
+    plan = plan_ingest_capacity(
+        host=_host(cores=6),
+        pool_config=EmbedPoolConfig(max_instances=2, parallel_per_instance=8),
+        planner_config=CapacityPlannerConfig(max_file_concurrency=8),
+        semantic_requested=False,
+        bench=bench,
+    )
+    assert plan.ingest_file_concurrency == 2
+    # cpu_cap = 6 // 2 = 3
+    assert plan.ingest_chunk_concurrency == 3
+    assert plan.ingest_embed_concurrency <= 24

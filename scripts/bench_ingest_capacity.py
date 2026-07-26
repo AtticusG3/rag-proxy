@@ -153,7 +153,7 @@ def run_chunk_sweep(args: argparse.Namespace) -> list[dict]:
                 bench_chunk_stage(
                     documents,
                     chunk_concurrency=concurrency,
-                    workers=max(concurrency, 2),
+                    workers=concurrency,
                     semantic=semantic,
                 )
             )

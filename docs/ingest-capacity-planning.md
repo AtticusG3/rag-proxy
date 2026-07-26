@@ -125,11 +125,18 @@ the `INGEST_*` keys into the admin env for hot reload:
 | `INGEST_EMBED_URLS`, `INGEST_EMBED_CONCURRENCY` | VRAM pool plan x per-instance parallel |
 | `INGEST_FILE_CONCURRENCY` | min() of pool size, CPU, RAM, disk, and configured caps |
 | `INGEST_BATCH_SIZE` | Inverse of embed concurrency (32 at >=16, 64 at >=8, else 128) |
-| `INGEST_CHUNK_CONCURRENCY` | min(file concurrency, cores / chunk share) |
+| `INGEST_CHUNK_CONCURRENCY` | CPU cap (`cores / chunk share`), optionally from chunk bench knee |
 | `INGEST_CHUNK_SEMANTIC` | Downgraded below RAM/CPU floors, never upgraded |
 | `INGEST_SPARSE_REINDEX` | `off` during bulk (rebuild once at end) |
-| `NOMIC_POOL_PARALLEL` | Derived `--parallel` written to pool + scale env before systemd restart |
+| `NOMIC_POOL_PARALLEL` | Derived `--parallel` written to pool + scale env before systemd start |
 | `CAPACITY_*` | Host snapshot for the admin UI (not synced) |
+
+The admin scale job's post-bench `--write-env-only` pass freezes pool URLs/ports and
+`--parallel` from the existing pool env so a second VRAM probe (while the pool is
+loaded) cannot shrink `INGEST_EMBED_URLS`. Embed bench picks are limited to the pool
+ceiling (`instances x parallel`). Qdrant point-count ceilings are soft: large
+collections (~500k+) on slow CPUs allow `file_concurrency=2`; only huge collections
+(~2M+) force serial files.
 
 Rationale for each decision is printed to the job log and written as comments in the
 pool env file.

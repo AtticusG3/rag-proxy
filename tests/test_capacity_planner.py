@@ -9,7 +9,7 @@ from ingest.capacity_planner import (
     plan_ingest_capacity,
     render_capacity_env,
 )
-from ingest.embed_pool import EmbedPoolConfig
+from ingest.embed_pool import EmbedPoolConfig, EmbedPoolPlan
 from ingest.host_profile import DiskProfile, GpuProfile, HostProfile
 
 
@@ -173,6 +173,31 @@ def test_plan_uses_bench_fit_for_chunk_embed_and_batch() -> None:
     assert plan.ingest_batch_size == 32
     assert "bench" in plan.rationale["ingest_chunk_concurrency"]
     assert "bench" in plan.rationale["ingest_embed_concurrency"]
+
+
+def test_frozen_pool_skips_vram_resize() -> None:
+    frozen = EmbedPoolPlan(
+        instance_count=2,
+        ports=(18089, 18090),
+        ingest_embed_urls="http://127.0.0.1:18089,http://127.0.0.1:18090",
+        ingest_embed_concurrency=16,
+        gpu_total_mib=None,
+        gpu_used_mib=None,
+        gpu_free_mib=500,
+        use_gpu_pool=True,
+    )
+    # Low free VRAM would otherwise collapse to min_instances=1.
+    plan = plan_ingest_capacity(
+        host=_host(cores=6, ram_available=32768, gpu=_gpu(name="NVIDIA GeForce RTX 4060", free=500)),
+        pool_config=EmbedPoolConfig(max_instances=4, parallel_per_instance=8, min_instances=1),
+        planner_config=PLANNER_CFG,
+        frozen_pool=frozen,
+        frozen_parallel=8,
+    )
+    assert plan.embed_pool.instance_count == 2
+    assert plan.embed_pool.ports == (18089, 18090)
+    assert plan.nomic_pool_parallel == 8
+    assert "frozen" in plan.rationale["embed_pool"]
 
 
 def test_render_capacity_env_includes_all_knobs() -> None:

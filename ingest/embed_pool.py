@@ -89,6 +89,69 @@ def compute_instance_count(
     return max(config.min_instances, min(config.max_instances, count))
 
 
+def pool_plan_from_env(
+    values: dict[str, str],
+    *,
+    parallel: int | None = None,
+) -> EmbedPoolPlan | None:
+    """Rebuild pool topology from a previously written pool env (no VRAM probe)."""
+    urls_raw = values.get("INGEST_EMBED_URLS", "").strip()
+    if not urls_raw:
+        return None
+    urls = tuple(url.strip() for url in urls_raw.split(",") if url.strip())
+    if not urls:
+        return None
+
+    ports_raw = values.get("NOMIC_POOL_PORTS", "").strip()
+    if ports_raw:
+        try:
+            ports = tuple(int(part.strip()) for part in ports_raw.split(",") if part.strip())
+        except ValueError:
+            ports = ()
+    else:
+        ports = ()
+    if not ports:
+        parsed: list[int] = []
+        for url in urls:
+            try:
+                parsed.append(int(url.rsplit(":", 1)[-1]))
+            except ValueError:
+                return None
+        ports = tuple(parsed)
+    if len(ports) != len(urls):
+        return None
+
+    try:
+        count = int(values.get("NOMIC_POOL_INSTANCE_COUNT", "").strip() or len(ports))
+    except ValueError:
+        count = len(ports)
+    count = len(ports) if count != len(ports) else count
+
+    if parallel is None:
+        raw_parallel = values.get("NOMIC_POOL_PARALLEL", "").strip()
+        try:
+            parallel = int(raw_parallel) if raw_parallel else 8
+        except ValueError:
+            parallel = 8
+
+    free_raw = values.get("NOMIC_POOL_GPU_FREE_MIB", "").strip()
+    try:
+        free_mib = int(free_raw) if free_raw else None
+    except ValueError:
+        free_mib = None
+
+    return EmbedPoolPlan(
+        instance_count=count,
+        ports=ports,
+        ingest_embed_urls=",".join(urls),
+        ingest_embed_concurrency=count * max(1, parallel),
+        gpu_total_mib=None,
+        gpu_used_mib=None,
+        gpu_free_mib=free_mib,
+        use_gpu_pool=True,
+    )
+
+
 def plan_embed_pool(
     config: EmbedPoolConfig | None = None,
     *,

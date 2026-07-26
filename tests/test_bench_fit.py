@@ -53,10 +53,11 @@ def test_pick_embed_settings_prefers_zero_errors_and_best_rate():
 def test_pick_embed_settings_respects_pool_ceiling():
     runs = [
         _embed_run(16, 32, 2250.0),
+        _embed_run(32, 32, 2800.0),
         _embed_run(64, 32, 3000.0),
     ]
     picked = pick_embed_settings(runs, max_concurrency=32)
-    assert picked == (16, 32, 2250.0)
+    assert picked == (32, 32, 2800.0)
 
 
 def test_fit_from_reports_builds_rationale():

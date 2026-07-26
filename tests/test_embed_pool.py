@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from ingest.embed_pool import EmbedPoolConfig, compute_instance_count, plan_embed_pool
+from ingest.embed_pool import (
+    EmbedPoolConfig,
+    compute_instance_count,
+    plan_embed_pool,
+    pool_plan_from_env,
+)
 
 
 def test_compute_instance_count_respects_reserve_and_cap():
@@ -15,6 +20,23 @@ def test_compute_instance_count_respects_reserve_and_cap():
   assert compute_instance_count(gpu_free_mib=32768, config=cfg) == 8
   assert compute_instance_count(gpu_free_mib=4096, config=cfg) == 2
   assert compute_instance_count(gpu_free_mib=2500, config=cfg) == 1
+
+
+def test_pool_plan_from_env_restores_topology():
+  plan = pool_plan_from_env(
+    {
+      "INGEST_EMBED_URLS": "http://127.0.0.1:18089,http://127.0.0.1:18090",
+      "NOMIC_POOL_PORTS": "18089,18090",
+      "NOMIC_POOL_INSTANCE_COUNT": "2",
+      "NOMIC_POOL_PARALLEL": "8",
+      "NOMIC_POOL_GPU_FREE_MIB": "5563",
+    }
+  )
+  assert plan is not None
+  assert plan.instance_count == 2
+  assert plan.ports == (18089, 18090)
+  assert plan.ingest_embed_concurrency == 16
+  assert plan.gpu_free_mib == 5563
 
 
 def test_plan_embed_pool_without_gpu_falls_back_to_single_port(monkeypatch):

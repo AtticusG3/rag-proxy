@@ -10,7 +10,12 @@ import os
 from dataclasses import dataclass, replace
 
 from ingest.bench_fit import BenchFit
-from ingest.embed_pool import EmbedPoolConfig, EmbedPoolPlan, load_embed_pool_config, plan_embed_pool
+from ingest.embed_pool import (
+    EmbedPoolConfig,
+    EmbedPoolPlan,
+    load_embed_pool_config,
+    plan_embed_pool,
+)
 from ingest.gpu_catalog import lookup_gpu_tier
 from ingest.host_profile import HostProfile, probe_host
 from ingest.port_avoidance import describe_port_skips, loopback_reserved_ports
@@ -168,7 +173,7 @@ def qdrant_ingest_limits(
     host: HostProfile,
     cfg: CapacityPlannerConfig,
 ) -> tuple[dict[str, int], QdrantIngestLimits]:
-    """Derive ingest caps from Qdrant collection size and host CPU."""
+    """Soft ceilings from Qdrant collection size (not a substitute for upsert benches)."""
     caps: dict[str, int] = {}
     points = profile.points_count
     limits = QdrantIngestLimits(
@@ -182,17 +187,19 @@ def qdrant_ingest_limits(
         limits = QdrantIngestLimits(
             file_concurrency_cap=1,
             batch_size_cap=32,
-            embed_concurrency_cap=16,
+            embed_concurrency_cap=24,
         )
     elif points >= cfg.qdrant_large_collection_points:
         caps[f"qdrant large collection ({points:,} points)"] = 2
         limits = QdrantIngestLimits(
             file_concurrency_cap=2,
             batch_size_cap=64,
-            embed_concurrency_cap=24,
+            embed_concurrency_cap=32,
         )
 
-    if host.cpu_logical_cores <= 6 and points >= cfg.qdrant_large_collection_points:
+    # Slow CPUs still share the host with Qdrant, but do not force serial ingest
+    # on merely "large" collections — that erased bench picks on 6-core hosts.
+    if host.cpu_logical_cores <= 6 and points >= cfg.qdrant_huge_collection_points:
         caps[
             f"qdrant slow cpu ({host.cpu_logical_cores} cores) + {points:,} points"
         ] = 1
@@ -200,6 +207,15 @@ def qdrant_ingest_limits(
             file_concurrency_cap=1,
             batch_size_cap=min(limits.batch_size_cap or 32, 32),
             embed_concurrency_cap=min(limits.embed_concurrency_cap or 16, 16),
+        )
+    elif host.cpu_logical_cores <= 6 and points >= cfg.qdrant_large_collection_points:
+        caps[
+            f"qdrant slow cpu ({host.cpu_logical_cores} cores) + {points:,} points"
+        ] = 2
+        limits = QdrantIngestLimits(
+            file_concurrency_cap=2,
+            batch_size_cap=min(limits.batch_size_cap or 64, 64),
+            embed_concurrency_cap=min(limits.embed_concurrency_cap or 24, 24),
         )
 
     if profile.optimizer_status and profile.optimizer_status.lower() not in ("ok", ""):
@@ -223,8 +239,14 @@ def plan_ingest_capacity(
     bench: BenchFit | None = None,
     qdrant_url: str | None = None,
     qdrant_collection: str | None = None,
+    frozen_pool: EmbedPoolPlan | None = None,
+    frozen_parallel: int | None = None,
 ) -> IngestCapacityPlan:
-    """Compute the full ingest capacity plan from a host snapshot."""
+    """Compute the full ingest capacity plan from a host snapshot.
+
+    Pass ``frozen_pool`` / ``frozen_parallel`` on write-env-only passes so a
+    live embed pool is not re-sized from occupied free VRAM.
+    """
     pool_cfg = pool_config or load_embed_pool_config()
     cfg = planner_config or load_capacity_planner_config()
     if host is None:
@@ -258,48 +280,70 @@ def plan_ingest_capacity(
         nomic_context=nomic_context,
         chunk_tokens=chunk_tokens,
     )
-    parallel = min(
-        pool_cfg.parallel_per_instance,
-        tier.parallel_per_instance,
-        context_cap,
-    )
-    if parallel < pool_cfg.parallel_per_instance:
-        reasons: list[str] = []
-        if tier.parallel_per_instance < pool_cfg.parallel_per_instance:
-            reasons.append(
-                f"{tier.name}-bandwidth GPU ({host.gpu.name if host.gpu else 'unknown'})"
-            )
-        if context_cap < pool_cfg.parallel_per_instance:
-            reasons.append(
-                f"context budget -c {nomic_context} / chunk {chunk_tokens}+64"
-            )
+    if frozen_parallel is not None:
+        parallel = max(1, int(frozen_parallel))
         rationale["nomic_pool_parallel"] = (
-            f"reduced to {parallel} for " + " and ".join(reasons or ["planner caps"])
+            f"frozen from running pool ({parallel})"
         )
     else:
-        rationale["nomic_pool_parallel"] = f"configured value {parallel}"
+        parallel = min(
+            pool_cfg.parallel_per_instance,
+            tier.parallel_per_instance,
+            context_cap,
+        )
+        if parallel < pool_cfg.parallel_per_instance:
+            reasons: list[str] = []
+            if tier.parallel_per_instance < pool_cfg.parallel_per_instance:
+                reasons.append(
+                    f"{tier.name}-bandwidth GPU "
+                    f"({host.gpu.name if host.gpu else 'unknown'})"
+                )
+            if context_cap < pool_cfg.parallel_per_instance:
+                reasons.append(
+                    f"context budget -c {nomic_context} / chunk {chunk_tokens}+64"
+                )
+            rationale["nomic_pool_parallel"] = (
+                f"reduced to {parallel} for "
+                + " and ".join(reasons or ["planner caps"])
+            )
+        else:
+            rationale["nomic_pool_parallel"] = f"configured value {parallel}"
 
-    memory = (
-        (host.gpu.total_mib, host.gpu.used_mib, host.gpu.free_mib) if host.gpu else None
-    )
-    embed_pool = plan_embed_pool(
-        replace(pool_cfg, parallel_per_instance=parallel),
-        memory=memory,
-    )
+    if frozen_pool is not None:
+        embed_pool = replace(
+            frozen_pool,
+            ingest_embed_concurrency=frozen_pool.instance_count * parallel,
+        )
+        rationale["embed_pool"] = (
+            f"{embed_pool.instance_count} instance(s) frozen from pool env "
+            f"(skip VRAM re-size)"
+        )
+    else:
+        memory = (
+            (host.gpu.total_mib, host.gpu.used_mib, host.gpu.free_mib)
+            if host.gpu
+            else None
+        )
+        embed_pool = plan_embed_pool(
+            replace(pool_cfg, parallel_per_instance=parallel),
+            memory=memory,
+        )
+        pool_reason = (
+            f"{embed_pool.instance_count} instance(s) from "
+            f"{embed_pool.gpu_free_mib} MiB free VRAM"
+            if embed_pool.use_gpu_pool
+            else f"{embed_pool.instance_count} instance(s), no GPU probe (fallback)"
+        )
+        skip_note = describe_port_skips(
+            requested_base=pool_cfg.port_base,
+            ports=embed_pool.ports,
+            reserved=loopback_reserved_ports(),
+        )
+        if skip_note:
+            pool_reason = f"{pool_reason}; {skip_note}"
+        rationale["embed_pool"] = pool_reason
+
     instances = embed_pool.instance_count
-    pool_reason = (
-        f"{instances} instance(s) from {embed_pool.gpu_free_mib} MiB free VRAM"
-        if embed_pool.use_gpu_pool
-        else f"{instances} instance(s), no GPU probe (fallback)"
-    )
-    skip_note = describe_port_skips(
-        requested_base=pool_cfg.port_base,
-        ports=embed_pool.ports,
-        reserved=loopback_reserved_ports(),
-    )
-    if skip_note:
-        pool_reason = f"{pool_reason}; {skip_note}"
-    rationale["embed_pool"] = pool_reason
 
     semantic, semantic_reason = _semantic_rationale(host, cfg, semantic_requested)
     rationale["ingest_chunk_semantic"] = semantic_reason
@@ -343,21 +387,25 @@ def plan_ingest_capacity(
                 f"(was {limiting} before Qdrant caps)"
             )
 
+    # Chunk concurrency is CPU-bound within a file; do not clamp it to
+    # Qdrant-driven file concurrency (that forced chunk=1 on large collections).
+    chunk_cap = cpu_cap
     if bench and bench.chunk_concurrency is not None:
-        chunk_concurrency = max(1, min(bench.chunk_concurrency, file_concurrency))
+        chunk_concurrency = max(1, min(bench.chunk_concurrency, chunk_cap))
         if bench.rationale.get("ingest_chunk_concurrency"):
             rationale["ingest_chunk_concurrency"] = (
                 f"{chunk_concurrency} ({bench.rationale['ingest_chunk_concurrency']}, "
-                f"capped by file concurrency {file_concurrency})"
+                f"capped by cpu {chunk_cap})"
             )
         else:
             rationale["ingest_chunk_concurrency"] = (
-                f"{chunk_concurrency} from bench, capped by file concurrency {file_concurrency}"
+                f"{chunk_concurrency} from bench, capped by cpu {chunk_cap}"
             )
     else:
-        chunk_concurrency = max(1, min(file_concurrency, cpu_cap))
+        chunk_concurrency = max(1, chunk_cap)
         rationale["ingest_chunk_concurrency"] = (
-            f"{chunk_concurrency} (min of file concurrency and cpu cap)"
+            f"{chunk_concurrency} from cpu cap ({host.cpu_logical_cores} cores / "
+            f"{cfg.chunk_cpu_share})"
         )
 
     if bench and bench.batch_size is not None:
