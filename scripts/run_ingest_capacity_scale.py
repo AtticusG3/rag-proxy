@@ -209,7 +209,7 @@ def main() -> int:
 
     apply_config_env(config_dir=scale_env.parent, scale_env=scale_env if scale_env.is_file() else None)
 
-    status = 0
+    bench_warned = False
     stop_embed_stack(scale_env)
     wait_gpu_clear()
 
@@ -219,7 +219,7 @@ def main() -> int:
     if not args.skip_bench:
         if run_chunk_bench(out_dir) != 0:
             print("warning: chunk benchmark failed", file=sys.stderr, flush=True)
-            status = 1
+            bench_warned = True
 
     if run_scale_apply(
         pool_env=pool_env,
@@ -235,7 +235,7 @@ def main() -> int:
         embed_urls = _read_pool_urls(pool_env)
         if run_embed_bench(out_dir, embed_urls=embed_urls) != 0:
             print("warning: embed benchmark failed", file=sys.stderr, flush=True)
-            status = 1
+            bench_warned = True
 
     print("[plan] writing bench-tuned pool env (pool stays running)", flush=True)
     if run_scale_apply(
@@ -251,8 +251,15 @@ def main() -> int:
         return 1
 
     restart_query_embed()
-    print(f"[done] reports in {out_dir} (exit {status})", flush=True)
-    return status
+    if bench_warned:
+        print(
+            f"[done] reports in {out_dir} (plan applied; optional benches warned)",
+            flush=True,
+        )
+    else:
+        print(f"[done] reports in {out_dir}", flush=True)
+    # Exit 0 whenever the plan applied so admin on_success syncs/hot-reloads the worker.
+    return 0
 
 
 if __name__ == "__main__":

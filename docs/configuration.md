@@ -276,7 +276,7 @@ Used by `scripts/scale_ingest_capacity.py` (legacy entry point `scale_nomic_embe
 | `NOMIC_POOL_PORT_BASE` | `18089` | First pool port (`nomic-embed@PORT`) |
 | `NOMIC_POOL_MAX_INSTANCES` | `12` | Hard cap on pool size |
 | `NOMIC_POOL_MIN_INSTANCES` | `1` | Floor when GPU sizing unavailable |
-| `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | `--parallel` per pool unit (capped by GPU tier) |
+| `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | Planner input for `--parallel` (GPU-tier capped; effective value written as `NOMIC_POOL_PARALLEL`) |
 | `NOMIC_POOL_GPU_INDEX` | `0` | `nvidia-smi --id` target (physical index) the planner probes; match `CUDA_VISIBLE_DEVICES` so it sizes the card embedding runs on |
 | `CUDA_VISIBLE_DEVICES` | *(unset)* | CUDA runtime index that pins embedding to one GPU (set in `nomic-embed.env`; index order can differ from `nvidia-smi`). See [Deployment — Pin embedding to a specific GPU](deployment.md#pin-embedding-to-a-specific-gpu) |
 | `INGEST_CAPACITY_RAM_RESERVE_MIB` | `4096` | RAM headroom before file concurrency caps apply |
@@ -285,14 +285,13 @@ Used by `scripts/scale_ingest_capacity.py` (legacy entry point `scale_nomic_embe
 | `INGEST_CAPACITY_SEMANTIC_CPU_FLOOR` | `4` | Below this core count, semantic chunking is disabled |
 | `INGEST_CAPACITY_CHUNK_CPU_SHARE` | `2` | Cores per concurrent chunking file |
 | `INGEST_CAPACITY_MAX_FILE_CONCURRENCY` | `8` | Hard cap on parallel files |
-| `INGEST_CAPACITY_MIN_DISK_MBPS` | `100` | Below this sequential read speed, file concurrency is capped |
+| `INGEST_CAPACITY_MIN_DISK_MBPS` | `100` | Below this sequential read speed, file concurrency is capped (measured during Scale) |
 | `INGEST_CAPACITY_SLOW_DISK_FILE_CAP` | `2` | File cap applied on slow storage |
 | `INGEST_CAPACITY_SPARSE_REINDEX` | `off` | BM25 reindex mode written by the planner |
-| `INGEST_CAPACITY_QDRANT_RAM_BUDGET_MIB` | `8192` | RAM the planner reserves for Qdrant when co-located, before file concurrency caps |
 | `INGEST_CAPACITY_QDRANT_LARGE_COLLECTION_POINTS` | `500000` | Point count above which the planner treats the collection as large and eases upsert pressure |
 | `INGEST_CAPACITY_QDRANT_HUGE_COLLECTION_POINTS` | `2000000` | Point count above which the planner applies the strictest ingest caps |
 
-The planner writes all `INGEST_*` throughput knobs plus `NOMIC_POOL_*` metadata to the pool env file; the admin scale job syncs the ingest keys into the admin env and hot-reloads the worker. `NOMIC_POOL_PARALLEL` is now written by the planner so systemd `nomic-embed@.service` and the concurrency math stay aligned.
+The planner writes the pool env **before** restarting `nomic-embed@.service` units. That unit loads `nomic-embed-pool.env` last so planned `NOMIC_POOL_PARALLEL` reaches `llama-server --parallel` (also synced into the scale env). The admin scale job syncs ingest keys and hot-reloads the worker even when optional benches warn.
 
 Details: [Ingest and admin](ingest-and-admin.md) and [Ingest capacity planning](ingest-capacity-planning.md).
 

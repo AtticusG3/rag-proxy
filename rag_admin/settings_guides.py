@@ -31,8 +31,8 @@ GROUP_TUNING: dict[str, tuple[TuningSection, ...]] = {
                     "Cap on nomic-embed@PORT systemd units (llama-server count).",
                 ),
                 TuningItem(
-                    "NOMIC_POOL_PARALLEL",
-                    "--parallel per unit (systemd); should match planner parallel per instance.",
+                    "NOMIC_POOL_PARALLEL_PER_INSTANCE",
+                    "Planner input for --parallel; Scale writes effective NOMIC_POOL_PARALLEL for systemd.",
                 ),
                 TuningItem(
                     "NOMIC_POOL_VRAM_RESERVE_MIB",

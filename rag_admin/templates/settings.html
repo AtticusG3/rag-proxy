@@ -1,224 +1,259 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, flash_banner, setting_field %}
+{% from "_macros.html" import flash_banner, setting_field, status_chip, workflow_strip %}
 {% block title %}Settings - RAG Admin{% endblock %}
+{% block container_class %} container--wide{% endblock %}
 {% block content %}
-{{ page_header("Settings", "Persistent overrides for ingest, proxy, MemGraphRAG, and observability.") }}
+{% set qs_mode = mode %}
+<header class="page-header page-header--settings">
+  <div class="page-header__copy">
+    <p class="page-kicker">Control plane</p>
+    <h1>Settings</h1>
+    <p class="page-lead">Configure ingest capacity, retrieval, and the cognitive pipeline. Basic mode hides rarely-touched knobs.</p>
+  </div>
+  <div class="page-header__actions mode-toggle" role="group" aria-label="Settings mode">
+    <a class="mode-toggle__btn{% if mode == 'basic' %} is-active{% endif %}"
+       href="{{ settings_href(active_tab, 'basic') }}">Basic</a>
+    <a class="mode-toggle__btn{% if mode == 'advanced' %} is-active{% endif %}"
+       href="{{ settings_href(active_tab, 'advanced') }}"
+       title="{{ advanced_count }} advanced field(s) in this section">Advanced</a>
+  </div>
+</header>
 {{ flash_banner(request) }}
 
-<nav class="tabs" aria-label="Settings sections">
-  {% for tab in tabs %}
-  <a href="/settings?tab={{ tab }}" class="tab {% if tab == active_tab %}active{% endif %}">{{ tab_labels[tab] }}</a>
-  {% endfor %}
-</nav>
-
-<section class="card card--compact card--spaced">
-  <h2 class="section-title">Service health</h2>
-  <div class="grid stats stats--compact">
-    <div class="stat-card">
-      <div class="stat-card__label">Qdrant</div>
-      <div class="stat-card__value">{% if services.qdrant.ok %}OK{% else %}DOWN{% endif %}</div>
-      <div class="stat-card__meta">{{ services.qdrant.points }} points</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card__label">BM25 sidecar</div>
-      <div class="stat-card__value">{% if services.sparse.ok %}OK{% else %}DOWN{% endif %}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card__label">Embed</div>
-      <div class="stat-card__value">{% if services.embed.ok %}OK{% else %}DOWN{% endif %}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card__label">RAG proxy</div>
-      <div class="stat-card__value">{% if services.proxy.ok %}OK{% else %}DOWN{% endif %}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-card__label">MemGraph DB</div>
-      <div class="stat-card__value">{% if services.memgraph_db.exists %}YES{% else %}NO{% endif %}</div>
-      <div class="stat-card__meta">{{ (services.memgraph_db.bytes / 1048576) | round(1) }} MiB</div>
-    </div>
-  </div>
-  <div class="page-header__actions card-note">
+<section class="status-strip" aria-label="Service health">
+  {{ status_chip("Qdrant", "up" if services.qdrant.ok else "down", services.qdrant.points ~ " pts") }}
+  {{ status_chip("BM25", "up" if services.sparse.ok else "down") }}
+  {{ status_chip("Embed", "up" if services.embed.ok else "down") }}
+  {{ status_chip("Proxy", "up" if services.proxy.ok else "down") }}
+  {{ status_chip("MemGraph DB", "ready" if services.memgraph_db.exists else "missing", ((services.memgraph_db.bytes / 1048576) | round(1)) ~ " MiB") }}
+  <div class="status-strip__actions">
     {% if can_restart_proxy %}
-    <form method="post" action="/settings/restart/proxy" class="inline">
-      <button type="submit" class="btn">Restart rag-proxy</button>
+    <form method="post" action="/settings/restart/proxy?tab={{ active_tab }}&mode={{ qs_mode }}" class="inline">
+      <button type="submit" class="btn btn--ghost btn--small">Restart proxy</button>
     </form>
     {% endif %}
     {% if can_restart_admin %}
-    <form method="post" action="/settings/restart/admin" class="inline">
-      <button type="submit" class="btn btn--ghost">Restart rag-admin</button>
+    <form method="post" action="/settings/restart/admin?tab={{ active_tab }}&mode={{ qs_mode }}" class="inline">
+      <button type="submit" class="btn btn--ghost btn--small">Restart admin</button>
     </form>
     {% endif %}
   </div>
-  <p class="muted card-note">Admin env: <code>{{ admin_env_path }}</code> · Proxy env: <code>{{ proxy_env_path }}</code></p>
 </section>
 
-{% if active_tab == 'ingest' %}
-<section class="card card--compact" data-settings-live="ingest">
-  <div class="section-head">
-    <h2 class="section-title">Ingest capacity plan</h2>
-    <div class="page-header__actions">
-      <form method="post" action="/settings/embed-pool/scale" class="inline" data-busy-label="Starting…">
-        <button type="submit" id="scale-capacity-btn" class="btn" {% if pool_scale_job or pool_scale_starting %}disabled title="A scale job is already running — use Stop scale first"{% endif %}>Scale ingest capacity</button>
-      </form>
-      {% if can_restart_embed_pool %}
-      <form method="post" action="/settings/restart/embed-pool" class="inline">
-        <button type="submit" class="btn btn--ghost">Restart embed pool</button>
-      </form>
-      {% endif %}
-      <form method="post" action="/settings/embed-pool/stop" class="inline">
-        <button type="submit" id="stop-scale-btn" class="btn btn--ghost" {% if not pool_scale_job %}disabled{% endif %}>Stop scale</button>
-      </form>
-    </div>
-  </div>
-  {% if pool_scale_starting and not pool_scale_job %}
-  <p id="pool-scale-starting" class="muted">Yielding active ingest files, then capacity scale starts…</p>
-  {% elif pool_scale_job %}
-  <p id="pool-scale-status" class="muted">Scaling job <code>{{ pool_scale_job.id[:8] }}</code> since {{ pool_scale_job.started_at }} (pid {{ pool_scale_job.pid }}).</p>
-  <pre id="pool-scale-log" class="log-tail" aria-live="polite">{{ pool_scale_log_tail }}</pre>
-  {% elif pool_env.exists %}
-  <dl class="config-dl">
-    <div><dt>Instances</dt><dd class="mono">{{ pool_env.instance_count or '?' }}</dd></div>
-    <div><dt>Ports</dt><dd class="mono">{{ pool_env.ports or '-' }}</dd></div>
-    <div><dt>Pool concurrency</dt><dd class="mono">{{ pool_env.embed_concurrency or '-' }}</dd></div>
-    {% if pool_env.file_concurrency %}<div><dt>Parallel files</dt><dd class="mono">{{ pool_env.file_concurrency }}</dd></div>{% endif %}
-    {% if pool_env.batch_size %}<div><dt>Batch size</dt><dd class="mono">{{ pool_env.batch_size }}</dd></div>{% endif %}
-    {% if pool_env.chunk_concurrency %}<div><dt>Chunk runners</dt><dd class="mono">{{ pool_env.chunk_concurrency }}</dd></div>{% endif %}
-    {% if pool_env.chunk_semantic %}<div><dt>Semantic chunking</dt><dd class="mono">{{ pool_env.chunk_semantic }}</dd></div>{% endif %}
-    {% if pool_env.sparse_reindex %}<div><dt>BM25 during bulk</dt><dd class="mono">{{ pool_env.sparse_reindex }}</dd></div>{% endif %}
-    {% if pool_env.cpu_cores %}<div><dt>CPU cores</dt><dd class="mono">{{ pool_env.cpu_cores }}{% if pool_env.cpu_model %} ({{ pool_env.cpu_model }}){% endif %}</dd></div>{% endif %}
-    {% if pool_env.ram_available_mib %}<div><dt>RAM available (last scale)</dt><dd class="mono">{{ pool_env.ram_available_mib }} MiB</dd></div>{% endif %}
-    {% if pool_env.gpu_name %}<div><dt>GPU</dt><dd class="mono">{{ pool_env.gpu_name }}</dd></div>{% endif %}
-    {% if pool_env.gpu_free_mib %}<div><dt>GPU free (last scale)</dt><dd class="mono">{{ pool_env.gpu_free_mib }} MiB</dd></div>{% endif %}
-    <div><dt>URLs</dt><dd class="mono">{{ pool_env.embed_urls or '-' }}</dd></div>
-    {% if pool_env.probed_at %}<div><dt>Probed</dt><dd class="mono">{{ pool_env.probed_at }}</dd></div>{% endif %}
-  </dl>
-  {% else %}
-  <p class="muted">No capacity plan yet at <code>{{ pool_env.path }}</code>. Save pool planner fields below, then click <strong>Scale ingest capacity</strong>.</p>
-  {% endif %}
-  {% if pool_scale_history and not pool_scale_job %}
-  <div class="table-wrap table-wrap--spaced">
-  <table>
-    <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
-    <tbody>
-      {% for job in pool_scale_history %}
-      <tr><td>{{ job.started_at }}</td><td>{{ job.status }}</td><td>{{ job.message or '-' }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% endif %}
-  <p class="muted card-note">Planner inputs: <code>{{ pool_env.scale_path }}</code> · Output: <code>{{ pool_env.path }}</code></p>
-</section>
-<section class="card" data-settings-live="ingest">
-  <div class="section-head">
-    <h2 class="section-title">Ingest controls</h2>
-    <div class="page-header__actions">
-      <form id="ingest-resume-form" method="post" action="/settings/ingest/resume" class="inline" {% if not ingest_paused %}hidden{% endif %}><button type="submit" class="btn">Resume dense ingest</button></form>
-      <form id="ingest-pause-form" method="post" action="/settings/ingest/pause" class="inline" {% if ingest_paused %}hidden{% endif %}><button type="submit" class="btn btn--ghost">Pause dense ingest</button></form>
-      <form method="post" action="/settings/sparse/reindex" class="inline"><button type="submit" class="btn btn--ghost">Rebuild BM25 now</button></form>
-    </div>
-  </div>
-  <p class="muted">Dense ingest is <span id="ingest-pause-label">{% if ingest_paused %}<strong>paused</strong>{% else %}<strong>running</strong>{% endif %}</span>. BM25 mode: <code>{{ ingest_config.sparse_reindex_mode }}</code>. With <code>EMBED_ON_DEMAND=true</code> (default on Linux), nomic embed units unload from VRAM when idle; resume ingest or send a RAG query to warm them again.</p>
-</section>
-<section class="card" data-settings-live="ingest">
-  <div class="section-head">
-    <h2 class="section-title">Migrate Qdrant → sidecars</h2>
-    <div class="page-header__actions">
-      <form method="post" action="/settings/sidecars/migrate" class="inline" data-busy-label="Starting…">
-        <button type="submit" id="sidecar-migrate-btn" class="btn" {% if migrate_job %}disabled title="Migration already running"{% endif %}>Migrate from Qdrant</button>
-      </form>
-      <form method="post" action="/settings/sidecars/migrate/stop" class="inline">
-        <button type="submit" id="sidecar-migrate-stop-btn" class="btn btn--ghost" {% if not migrate_job %}disabled{% endif %}>Stop migration</button>
-      </form>
-    </div>
-  </div>
-  <p class="muted">One-time rebuild of TurboVec and BM25 from the existing Qdrant collection. Safe to click when already synced or a sidecar is not configured — those steps are skipped with a log message. Does not flip <code>DENSE_BACKEND</code>.</p>
-  {% if migrate_job %}
-  <p id="migrate-job-status" class="muted">Migration job <code>{{ migrate_job.id[:8] }}</code> since {{ migrate_job.started_at }} (pid {{ migrate_job.pid }}).</p>
-  <pre id="migrate-log" class="log-tail" aria-live="polite">{{ migrate_log_tail }}</pre>
-  {% elif migrate_history %}
-  <div class="table-wrap table-wrap--spaced">
-  <table>
-    <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
-    <tbody>
-      {% for job in migrate_history %}
-      <tr><td>{{ job.started_at }}</td><td>{{ job.status }}</td><td>{{ job.message or '-' }}</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% endif %}
-</section>
+{% if workflow_steps %}
+{{ workflow_strip(workflow_steps) }}
 {% endif %}
 
-{% if active_tab == 'memgraph_build' %}
-<section class="card" data-settings-live="memgraph_build">
-  <div class="section-head">
-    <h2 class="section-title">MemGraphRAG index build</h2>
-    <div class="page-header__actions">
-      <form method="post" action="/settings/memgraph/build" class="inline"><button type="submit" class="btn" {% if build_job %}disabled{% endif %}>Start build</button></form>
-      <form method="post" action="/settings/memgraph/stop" class="inline"><button type="submit" class="btn btn--ghost" {% if not build_job %}disabled{% endif %}>Stop</button></form>
-    </div>
-  </div>
-  {% if build_job %}
-  <p id="build-job-active" class="muted">Running job <code>{{ build_job.id[:8] }}</code> since {{ build_job.started_at }} (pid {{ build_job.pid }}).</p>
-  {% else %}
-  <p class="muted">No build running. Save build settings below, then start. After build completes, enable MemGraphRAG in the runtime tab and restart rag-proxy.</p>
-  {% endif %}
-  <pre id="build-log" class="log-tail" aria-live="polite">{{ log_tail }}</pre>
-  {% if build_history %}
-  <div class="table-wrap table-wrap--spaced">
-  <table>
-    <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
-    <tbody>
-      {% for job in build_history %}
-      <tr><td>{{ job.started_at }}</td><td>{{ job.status }}</td><td>{{ job.message or '-' }}</td></tr>
+<div class="settings-plane">
+  <nav class="settings-rail" aria-label="Settings sections">
+    <p class="settings-rail__label">Sections</p>
+    <ul class="settings-rail__list">
+      {% for tab in tabs %}
+      <li>
+        <a href="{{ settings_href(tab, mode) }}"
+           class="settings-rail__link{% if tab == active_tab %} is-active{% endif %}">
+          <span class="settings-rail__title">{{ nav_labels[tab] }}</span>
+          <span class="settings-rail__hint">{{ nav_hints[tab] }}</span>
+        </a>
+        {% if tab == active_tab and field_sections %}
+        <ul class="settings-rail__sub">
+          {% for section in field_sections %}
+          <li><a href="#section-{{ section.id }}">{{ section.label }}</a></li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </li>
       {% endfor %}
-    </tbody>
-  </table>
-  </div>
-  {% endif %}
-</section>
-{% endif %}
+    </ul>
+    <p class="settings-rail__meta faint">{{ admin_env_path }}</p>
+  </nav>
 
-<section class="card">
-  <h2 class="section-title">{{ tab_labels[active_tab] }}</h2>
-  {% if group_tuning %}
-  <details class="tuning-guide" open>
-    <summary class="tuning-guide__summary">How these settings relate</summary>
-    {% for section in group_tuning %}
-    <div class="tuning-guide__section">
-      <h3 class="tuning-guide__title">{{ section.title }}</h3>
-      <p class="muted tuning-guide__intro">{{ section.intro }}</p>
-      {% if section.items %}
-      <dl class="tuning-guide__map">
-        {% for item in section.items %}
-        <div><dt><code>{{ item.key }}</code></dt><dd>{{ item.note }}</dd></div>
-        {% endfor %}
+  <div class="settings-main">
+    {% if active_tab == 'ingest' %}
+    <section class="panel" data-settings-live="ingest">
+      <div class="section-head">
+        <h2 class="section-title">Capacity plan</h2>
+        <div class="page-header__actions">
+          <form method="post" action="/settings/embed-pool/scale?mode={{ qs_mode }}" class="inline" data-busy-label="Starting…">
+            <button type="submit" id="scale-capacity-btn" class="btn btn--small" {% if pool_scale_job or pool_scale_starting %}disabled title="A scale job is already running — use Stop scale first"{% endif %}>Scale capacity</button>
+          </form>
+          {% if can_restart_embed_pool %}
+          <form method="post" action="/settings/restart/embed-pool?mode={{ qs_mode }}" class="inline">
+            <button type="submit" class="btn btn--ghost btn--small">Restart pool</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/settings/embed-pool/stop?mode={{ qs_mode }}" class="inline">
+            <button type="submit" id="stop-scale-btn" class="btn btn--ghost btn--small" {% if not pool_scale_job %}disabled{% endif %}>Stop scale</button>
+          </form>
+        </div>
+      </div>
+      {% if pool_scale_starting and not pool_scale_job %}
+      <p id="pool-scale-starting" class="muted">Yielding active ingest files, then capacity scale starts…</p>
+      {% elif pool_scale_job %}
+      <p id="pool-scale-status" class="muted">Scaling job <code>{{ pool_scale_job.id[:8] }}</code> since {{ pool_scale_job.started_at }} (pid {{ pool_scale_job.pid }}).</p>
+      <pre id="pool-scale-log" class="log-tail" aria-live="polite">{{ pool_scale_log_tail }}</pre>
+      {% elif pool_env.exists %}
+      <dl class="config-dl config-dl--compact">
+        <div><dt>Instances</dt><dd class="mono">{{ pool_env.instance_count or '?' }}</dd></div>
+        <div><dt>Ports</dt><dd class="mono">{{ pool_env.ports or '-' }}</dd></div>
+        <div><dt>Pool concurrency</dt><dd class="mono">{{ pool_env.embed_concurrency or '-' }}</dd></div>
+        {% if pool_env.file_concurrency %}<div><dt>Parallel files</dt><dd class="mono">{{ pool_env.file_concurrency }}</dd></div>{% endif %}
+        {% if pool_env.batch_size %}<div><dt>Batch size</dt><dd class="mono">{{ pool_env.batch_size }}</dd></div>{% endif %}
+        {% if pool_env.gpu_name %}<div><dt>GPU</dt><dd class="mono">{{ pool_env.gpu_name }}</dd></div>{% endif %}
+        {% if pool_env.gpu_free_mib %}<div><dt>GPU free</dt><dd class="mono">{{ pool_env.gpu_free_mib }} MiB</dd></div>{% endif %}
+        <div><dt>URLs</dt><dd class="mono">{{ pool_env.embed_urls or '-' }}</dd></div>
       </dl>
+      {% else %}
+      <p class="muted">No capacity plan yet. Save pool planner fields, then Scale capacity.</p>
       {% endif %}
-    </div>
-    {% endfor %}
-  </details>
-  {% endif %}
-  <p class="muted card-note">Empty fields use the default shown as placeholder text. Clear a field and save to revert to default.</p>
-  <form method="post" action="/settings/save/{{ active_tab }}" class="settings-form">
-    <input type="hidden" name="tab" value="{{ active_tab }}">
-    {% for field in fields %}
-    {{ setting_field(field) }}
-    {% endfor %}
-    <div class="form-actions">
-      <button type="submit" class="btn">Save {{ tab_labels[active_tab] }}</button>
-    </div>
-  </form>
-  {% if active_tab in ['proxy_rag', 'cognitive', 'memgraphrag', 'observability'] and can_restart_proxy %}
-  <form method="post" action="/settings/restart/proxy" class="inline" style="margin-top:0.75rem">
-    <button type="submit" class="btn btn--ghost">Restart rag-proxy</button>
-  </form>
-  {% endif %}
-</section>
+      {% if pool_scale_history and not pool_scale_job %}
+      <div class="table-wrap table-wrap--spaced">
+        <table>
+          <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
+          <tbody>
+            {% for job in pool_scale_history %}
+            <tr><td class="mono">{{ job.started_at }}</td><td>{{ job.status }}</td><td>{{ job.message or '-' }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="panel panel--row" data-settings-live="ingest">
+      <div class="panel__col">
+        <div class="section-head">
+          <h2 class="section-title">Ingest controls</h2>
+          <div class="page-header__actions">
+            <form id="ingest-resume-form" method="post" action="/settings/ingest/resume?mode={{ qs_mode }}" class="inline" {% if not ingest_paused %}hidden{% endif %}><button type="submit" class="btn btn--small">Resume</button></form>
+            <form id="ingest-pause-form" method="post" action="/settings/ingest/pause?mode={{ qs_mode }}" class="inline" {% if ingest_paused %}hidden{% endif %}><button type="submit" class="btn btn--ghost btn--small">Pause</button></form>
+            <form method="post" action="/settings/sparse/reindex?mode={{ qs_mode }}" class="inline"><button type="submit" class="btn btn--ghost btn--small">Rebuild BM25</button></form>
+          </div>
+        </div>
+        <p class="muted">Dense ingest is <span id="ingest-pause-label">{% if ingest_paused %}<strong>paused</strong>{% else %}<strong>running</strong>{% endif %}</span>. BM25 mode: <code>{{ ingest_config.sparse_reindex_mode }}</code>.</p>
+      </div>
+      <div class="panel__col">
+        <div class="section-head">
+          <h2 class="section-title">Migrate Qdrant → sidecars</h2>
+          <div class="page-header__actions">
+            <form method="post" action="/settings/sidecars/migrate?mode={{ qs_mode }}" class="inline" data-busy-label="Starting…">
+              <button type="submit" id="sidecar-migrate-btn" class="btn btn--small" {% if migrate_job %}disabled title="Migration already running"{% endif %}>Migrate</button>
+            </form>
+            <form method="post" action="/settings/sidecars/migrate/stop?mode={{ qs_mode }}" class="inline">
+              <button type="submit" id="sidecar-migrate-stop-btn" class="btn btn--ghost btn--small" {% if not migrate_job %}disabled{% endif %}>Stop</button>
+            </form>
+          </div>
+        </div>
+        {% if migrate_job %}
+        <p id="migrate-job-status" class="muted">Migration <code>{{ migrate_job.id[:8] }}</code> since {{ migrate_job.started_at }}.</p>
+        <pre id="migrate-log" class="log-tail" aria-live="polite">{{ migrate_log_tail }}</pre>
+        {% else %}
+        <p class="muted">One-time TurboVec/BM25 rebuild from Qdrant. Skips already-synced sidecars.</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if active_tab == 'memgraph_build' %}
+    <section class="panel" data-settings-live="memgraph_build">
+      <div class="section-head">
+        <h2 class="section-title">Index build</h2>
+        <div class="page-header__actions">
+          <form method="post" action="/settings/memgraph/build?mode={{ qs_mode }}" class="inline"><button type="submit" class="btn btn--small" {% if build_job %}disabled{% endif %}>Start build</button></form>
+          <form method="post" action="/settings/memgraph/stop?mode={{ qs_mode }}" class="inline"><button type="submit" class="btn btn--ghost btn--small" {% if not build_job %}disabled{% endif %}>Stop</button></form>
+        </div>
+      </div>
+      {% if build_job %}
+      <p id="build-job-active" class="muted">Running job <code>{{ build_job.id[:8] }}</code> since {{ build_job.started_at }} (pid {{ build_job.pid }}).</p>
+      {% else %}
+      <p class="muted">Save build settings below, then start. After completion, enable MemGraph runtime and restart rag-proxy.</p>
+      {% endif %}
+      <pre id="build-log" class="log-tail" aria-live="polite">{{ log_tail }}</pre>
+      {% if build_history %}
+      <div class="table-wrap table-wrap--spaced">
+        <table>
+          <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
+          <tbody>
+            {% for job in build_history %}
+            <tr><td class="mono">{{ job.started_at }}</td><td>{{ job.status }}</td><td>{{ job.message or '-' }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    {% if active_tab == 'cognitive' %}
+    <section class="panel panel--stages" aria-label="Cognitive pipeline stages">
+      <h2 class="section-title">Pipeline map</h2>
+      <ol class="stage-map">
+        {% for sid, label in cognitive_stages %}
+        <li class="stage-map__item"><span class="stage-map__dot" aria-hidden="true"></span>{{ label }}</li>
+        {% endfor %}
+      </ol>
+      <p class="muted card-note">Enable stages top-to-bottom. Use gating log-only while baking in decisions.</p>
+    </section>
+    {% endif %}
+
+    <section class="panel panel--form">
+      <div class="section-head">
+        <h2 class="section-title">{{ tab_labels[active_tab] }}{% if mode == 'advanced' %} · advanced{% endif %}</h2>
+        {% if mode == 'basic' and advanced_count %}
+        <a class="btn btn--ghost btn--small" href="{{ settings_href(active_tab, 'advanced') }}">{{ advanced_count }} advanced</a>
+        {% endif %}
+      </div>
+      {% if group_tuning %}
+      <details class="tuning-guide">
+        <summary class="tuning-guide__summary">How these settings relate</summary>
+        {% for section in group_tuning %}
+        <div class="tuning-guide__section">
+          <h3 class="tuning-guide__title">{{ section.title }}</h3>
+          <p class="muted tuning-guide__intro">{{ section.intro }}</p>
+          {% if section.items %}
+          <dl class="tuning-guide__map">
+            {% for item in section.items %}
+            <div><dt><code>{{ item.key }}</code></dt><dd>{{ item.note }}</dd></div>
+            {% endfor %}
+          </dl>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </details>
+      {% endif %}
+      <p class="muted card-note">Empty fields use the placeholder default. Clear and save to revert.</p>
+      <div id="settings-config-warnings" class="config-warnings" {% if not config_warnings %}hidden{% endif %} role="status">
+        <p class="config-warnings__title">Config checks</p>
+        <ul id="settings-config-warnings-list" class="config-warnings__list">
+          {% for warn in config_warnings %}
+          <li data-warn-key="{{ warn.key }}">{{ warn.message }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <script type="application/json" id="settings-control-plane">{{ control_plane | tojson }}</script>
+      <form method="post" action="/settings/save/{{ active_tab }}" class="settings-form" id="settings-form" data-dirty-track>
+        <input type="hidden" name="tab" value="{{ active_tab }}">
+        <input type="hidden" name="mode" value="{{ mode }}">
+        {% for section in field_sections %}
+        <fieldset class="field-section" id="section-{{ section.id }}">
+          <legend class="field-section__legend">{{ section.label }}</legend>
+          <div class="field-section__grid">
+            {% for field in section.fields %}
+            {{ setting_field(field, show_key=(mode == 'advanced')) }}
+            {% endfor %}
+          </div>
+        </fieldset>
+        {% endfor %}
+        <div class="settings-apply" id="settings-apply">
+          <p class="settings-apply__hint muted" id="settings-dirty-hint" hidden>Unsaved changes</p>
+          <button type="submit" class="btn">Save {{ tab_labels[active_tab] }}</button>
+        </div>
+      </form>
+    </section>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/settings.js?v=migrate-1" defer></script>
+<script src="/static/settings.js?v=switches-1" defer></script>
 {% endblock %}

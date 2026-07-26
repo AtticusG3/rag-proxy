@@ -134,10 +134,13 @@ def test_save_pool_scale_fields_writes_scale_env(tmp_path: Path) -> None:
         pool_scale_env_path=str(scale_env),
         pool_env_path=str(tmp_path / "pool.env"),
     )
-    store.save_group("ingest", {"NOMIC_POOL_MAX_INSTANCES": "8", "NOMIC_POOL_PARALLEL": "12"})
+    store.save_group(
+        "ingest",
+        {"NOMIC_POOL_MAX_INSTANCES": "8", "NOMIC_POOL_PARALLEL_PER_INSTANCE": "12"},
+    )
     written = read_env_file(str(scale_env))
     assert written["NOMIC_POOL_MAX_INSTANCES"] == "8"
-    assert written["NOMIC_POOL_PARALLEL"] == "12"
+    assert written["NOMIC_POOL_PARALLEL_PER_INSTANCE"] == "12"
 
 
 def test_save_ingest_chunk_settings_updates_config(tmp_path: Path) -> None:

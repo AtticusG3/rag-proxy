@@ -42,7 +42,6 @@ class CapacityPlannerConfig:
     min_disk_seq_read_mbps: float = 100.0
     slow_disk_file_cap: int = 2
     sparse_reindex_during_bulk: str = "off"
-    qdrant_ram_budget_mib: int = 8192
     qdrant_large_collection_points: int = 500_000
     qdrant_huge_collection_points: int = 2_000_000
 
@@ -61,7 +60,6 @@ def load_capacity_planner_config() -> CapacityPlannerConfig:
             "INGEST_CAPACITY_SPARSE_REINDEX", "off"
         ).strip().lower()
         or "off",
-        qdrant_ram_budget_mib=_env_int("INGEST_CAPACITY_QDRANT_RAM_BUDGET_MIB", 8192),
         qdrant_large_collection_points=_env_int(
             "INGEST_CAPACITY_QDRANT_LARGE_COLLECTION_POINTS", 500_000
         ),

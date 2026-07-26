@@ -1,8 +1,17 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner, ingest_tuning_snapshot, sort_th, priority_control, sidecar_panel %}
+{% from "_macros.html" import status_pill, empty_state, flash_banner, ingest_tuning_snapshot, sort_th, priority_control, sidecar_panel %}
 {% block title %}Jobs - RAG Admin{% endblock %}
 {% block content %}
-{{ page_header("Ingest jobs", "Per-file embedding state and background job history.") }}
+<header class="page-header">
+  <div class="page-header__copy">
+    <p class="page-kicker">Operations</p>
+    <h1>Jobs</h1>
+    <p class="page-lead">Live ingest queue, sidecar health, and background job history.</p>
+  </div>
+  <div class="page-header__actions">
+    <a class="btn btn--ghost btn--small" href="/settings?tab=ingest">Ingest settings</a>
+  </div>
+</header>
 {{ flash_banner(request) }}
 
 <section class="card">

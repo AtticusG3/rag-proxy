@@ -70,28 +70,90 @@
 </span>
 {% endmacro %}
 
-{% macro setting_field(field) %}
-<label class="field">
+{% macro status_chip(label, state, meta='') %}
+<div class="status-chip status-chip--{{ state }}">
+  <span class="status-chip__dot" aria-hidden="true"></span>
+  <span class="status-chip__label">{{ label }}</span>
+  <span class="status-chip__state">{{ state }}</span>
+  {% if meta %}<span class="status-chip__meta mono">{{ meta }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro workflow_strip(steps) %}
+<ol class="workflow-strip" aria-label="Workflow">
+  {% for step in steps %}
+  <li class="workflow-strip__step{% if step.active %} is-active{% endif %}{% if step.done %} is-done{% endif %}">
+    <span class="workflow-strip__index" aria-hidden="true">{{ loop.index }}</span>
+    <span class="workflow-strip__body">
+      <span class="workflow-strip__label">{{ step.label }}</span>
+      {% if step.note %}<span class="workflow-strip__note">{{ step.note }}</span>{% endif %}
+    </span>
+  </li>
+  {% endfor %}
+</ol>
+{% endmacro %}
+
+{% macro setting_field(field, show_key=false) %}
+{% set requires_csv = field.requires | join(',') %}
+{% set requires_ne_csv = field.requires_nonempty | join(',') %}
+{% if field.field_type == 'bool' %}
+<div class="field field--switch{% if field.advanced %} field--advanced{% endif %}"
+     data-setting-key="{{ field.key }}"
+     data-setting-type="bool"
+     {% if requires_csv %}data-requires="{{ requires_csv }}"{% endif %}
+     {% if requires_ne_csv %}data-requires-nonempty="{{ requires_ne_csv }}"{% endif %}>
+  <div class="field__switch-row">
+    <span class="field__label-row">
+      <span class="field__label" id="label-{{ field.key }}">{{ field.label }}</span>
+      {% if show_key %}
+      <button type="button" class="field__key mono" data-copy-key="{{ field.key }}" title="Copy env key">{{ field.key }}</button>
+      {% endif %}
+      {% if field.help_text %}
+      <button type="button" class="field__help" aria-label="Help for {{ field.label }}" data-tip="{{ field.help_text }}">?</button>
+      {% endif %}
+      {% if not field.has_override %}
+      <span class="field__using-default">default</span>
+      {% endif %}
+      {% if field.hot %}<span class="field__hot">hot</span>{% endif %}
+      {% if field.advanced %}<span class="field__adv">adv</span>{% endif %}
+    </span>
+    <input type="hidden" name="{{ field.key }}" value="{{ 'true' if field.bool_on else 'false' }}" data-bool-value="{{ field.key }}">
+    <button type="button"
+            class="switch{% if field.bool_on %} is-on{% endif %}"
+            role="switch"
+            aria-checked="{{ 'true' if field.bool_on else 'false' }}"
+            aria-labelledby="label-{{ field.key }}"
+            data-bool-switch="{{ field.key }}">
+      <span class="switch__track" aria-hidden="true"><span class="switch__thumb"></span></span>
+      <span class="switch__state" data-switch-state>{{ 'On' if field.bool_on else 'Off' }}</span>
+    </button>
+  </div>
+  <p class="field__warn" data-field-warn hidden></p>
+</div>
+{% else %}
+<label class="field{% if field.advanced %} field--advanced{% endif %}"
+       data-setting-key="{{ field.key }}"
+       data-setting-type="{{ field.field_type }}"
+       {% if requires_csv %}data-requires="{{ requires_csv }}"{% endif %}
+       {% if requires_ne_csv %}data-requires-nonempty="{{ requires_ne_csv }}"{% endif %}>
   <span class="field__label-row">
     <span class="field__label">{{ field.label }}</span>
-    <code class="field__key mono">{{ field.key }}</code>
+    {% if show_key %}
+    <button type="button" class="field__key mono" data-copy-key="{{ field.key }}" title="Copy env key">{{ field.key }}</button>
+    {% endif %}
     {% if field.help_text %}
     <button type="button" class="field__help" aria-label="Help for {{ field.label }}" data-tip="{{ field.help_text }}">?</button>
     {% endif %}
     {% if not field.has_override %}
-    <span class="field__using-default">using default{% if field.default %} ({{ field.placeholder }}){% endif %}</span>
+    <span class="field__using-default">default</span>
     {% endif %}
     {% if field.hot %}<span class="field__hot">hot</span>{% endif %}
+    {% if field.advanced %}<span class="field__adv">adv</span>{% endif %}
   </span>
-  {% if field.field_type == 'bool' %}
-  <select name="{{ field.key }}">
-    <option value="true" {% if field.effective_value in ['true','1','yes','on'] %}selected{% endif %}>true</option>
-    <option value="false" {% if field.effective_value not in ['true','1','yes','on'] %}selected{% endif %}>false</option>
-  </select>
-  {% elif field.field_type == 'select' %}
-  <select name="{{ field.key }}">
-    {% for option in field.options %}
-    <option value="{{ option }}" {% if field.effective_value == option %}selected{% endif %}>{{ option }}</option>
+  {% if field.field_type == 'select' %}
+  <select name="{{ field.key }}" class="field__select">
+    {% for choice in field.option_choices %}
+    <option value="{{ choice.value }}" {% if field.effective_value == choice.value %}selected{% endif %}>{{ choice.label }}</option>
     {% endfor %}
   </select>
   {% elif field.field_type == 'text' %}
@@ -99,8 +161,9 @@
   {% else %}
   <input type="text" name="{{ field.key }}" value="{{ field.display_value }}" placeholder="{{ field.placeholder }}">
   {% endif %}
-  {% if field.help_text %}<span class="field__hint">{{ field.help_text }}</span>{% endif %}
+  <p class="field__warn" data-field-warn hidden></p>
 </label>
+{% endif %}
 {% endmacro %}
 
 {% macro ingest_tuning_snapshot(config) %}

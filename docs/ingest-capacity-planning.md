@@ -48,7 +48,7 @@ Two tiers, both worker-global:
 | --- | --- | --- |
 | Chunk concurrency cap | `INGEST_CHUNK_CONCURRENCY` semaphore in `ingest/chunking.py` | Caps parallel Chonkie executions across files (per-thread runners) |
 | Chunk profile changes need requeue | `scripts/requeue_all_ingest.py` | Changing `INGEST_CHUNK_*` has no effect on already-indexed files without a requeue |
-| Manual pool env drift | `NOMIC_POOL_PARALLEL_PER_INSTANCE` in scale env vs written `NOMIC_POOL_PARALLEL` | Re-run the scale job after editing scale env; planner writes aligned values to the pool env |
+| Manual pool env drift | `NOMIC_POOL_PARALLEL_PER_INSTANCE` in scale env vs written `NOMIC_POOL_PARALLEL` | Re-run Scale after editing scale env; planner writes effective parallel into pool + scale env before unit restart |
 
 ## Knob inventory
 
@@ -84,8 +84,8 @@ Two tiers, both worker-global:
 | `NOMIC_POOL_VRAM_RESERVE_MIB` | `2048` | Headroom for other GPU workloads |
 | `NOMIC_POOL_MAX_INSTANCES` | `12` | Hard cap |
 | `NOMIC_POOL_MIN_INSTANCES` | `1` | No-GPU floor |
-| `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | Concurrency multiplier in the plan |
-| `NOMIC_POOL_PARALLEL` | `16` | `llama-server --parallel` in systemd units |
+| `NOMIC_POOL_PARALLEL_PER_INSTANCE` | `16` | Operator input; GPU-tier capped into `NOMIC_POOL_PARALLEL` |
+| `NOMIC_POOL_PARALLEL` | *(written)* | Effective `llama-server --parallel` (pool + scale env; not a Settings UI field) |
 | `NOMIC_POOL_PORT_BASE` | `18089` | First pool port |
 | `NOMIC_POOL_GPU_INDEX` | `0` | `nvidia-smi --id` target (physical index); match `CUDA_VISIBLE_DEVICES` in `nomic-embed.env` to size the card embedding actually runs on |
 
@@ -128,7 +128,7 @@ the `INGEST_*` keys into the admin env for hot reload:
 | `INGEST_CHUNK_CONCURRENCY` | min(file concurrency, cores / chunk share) |
 | `INGEST_CHUNK_SEMANTIC` | Downgraded below RAM/CPU floors, never upgraded |
 | `INGEST_SPARSE_REINDEX` | `off` during bulk (rebuild once at end) |
-| `NOMIC_POOL_PARALLEL` | Single source for planner math and systemd `--parallel` |
+| `NOMIC_POOL_PARALLEL` | Derived `--parallel` written to pool + scale env before systemd restart |
 | `CAPACITY_*` | Host snapshot for the admin UI (not synced) |
 
 Rationale for each decision is printed to the job log and written as comments in the

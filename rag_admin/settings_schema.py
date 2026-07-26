@@ -144,21 +144,15 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
     ),
     SettingField(
         "NOMIC_POOL_PARALLEL_PER_INSTANCE",
-        "Parallel per instance (planner)",
+        "Parallel per instance",
         "ingest",
         "int",
         "pool_scale",
         "16",
-        help_text="Sets INGEST_EMBED_CONCURRENCY to instances x this value when the pool is scaled.",
-    ),
-    SettingField(
-        "NOMIC_POOL_PARALLEL",
-        "llama-server --parallel",
-        "ingest",
-        "int",
-        "pool_scale",
-        "16",
-        help_text="Passed to each nomic-embed@PORT systemd unit. Match parallel per instance unless you know otherwise.",
+        help_text=(
+            "Planner input for llama-server --parallel (GPU-tier capped). "
+            "Scale capacity writes the effective value as NOMIC_POOL_PARALLEL."
+        ),
     ),
     SettingField(
         "NOMIC_POOL_VRAM_PER_INSTANCE_MIB",
@@ -840,12 +834,12 @@ SETTING_GROUPS: tuple[str, ...] = (
 )
 
 GROUP_LABELS: dict[str, str] = {
-    "ingest": "Dense ingest & BM25",
-    "proxy_rag": "Proxy RAG retrieval",
-    "cognitive": "Cognitive pipeline",
-    "memgraphrag": "MemGraphRAG runtime",
-    "memgraph_build": "MemGraphRAG index build",
-    "observability": "Logging & metrics",
+    "ingest": "Ingest",
+    "proxy_rag": "Retrieval",
+    "cognitive": "Cognitive",
+    "memgraphrag": "MemGraph runtime",
+    "memgraph_build": "MemGraph build",
+    "observability": "Observability",
 }
 
 INGEST_PAUSED_KEY = "INGEST_PAUSED"

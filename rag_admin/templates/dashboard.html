@@ -1,20 +1,29 @@
 {% extends "base.html" %}
-{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner, ingest_active_banner, ingest_tuning_snapshot %}
+{% from "_macros.html" import page_header, status_pill, empty_state, flash_banner, ingest_active_banner %}
 {% block title %}Dashboard - RAG Admin{% endblock %}
 {% block content %}
-{{ page_header("Dashboard", "Corpus health, storage, and ingest activity.") }}
+<header class="page-header">
+  <div class="page-header__copy">
+    <p class="page-kicker">Overview</p>
+    <h1>Dashboard</h1>
+    <p class="page-lead">Corpus health, storage, and next actions.</p>
+  </div>
+  <div class="page-header__actions">
+    <span class="pipeline-chip" title="Edit in Settings → Cognitive">Control plane</span>
+  </div>
+</header>
 {{ flash_banner(request) }}
 {{ ingest_active_banner(stats.ingest_queue) }}
 
 <div class="grid stats">
   <div class="stat-card">
     <p class="stat-card__label">Qdrant vectors</p>
-    <p class="stat-card__value">{{ stats.qdrant_points }}</p>
+    <p class="stat-card__value">{{ "{:,}".format(stats.qdrant_points) }}</p>
     <p class="stat-card__meta mono">{{ stats.collection }}</p>
   </div>
   <div class="stat-card">
     <p class="stat-card__label">Sparse index</p>
-    <p class="stat-card__value">{{ stats.sparse_docs }}</p>
+    <p class="stat-card__value">{{ "{:,}".format(stats.sparse_docs) }}</p>
     <p class="stat-card__meta">{{ stats.sparse_status }}</p>
   </div>
   <div class="stat-card">
@@ -29,29 +38,38 @@
   </div>
 </div>
 
-<section class="card">
-  <h2 class="section-title">Operations</h2>
+<section class="card card--compact">
+  <h2 class="section-title">Next actions</h2>
+  <div class="action-tiles">
+    <a class="action-tile" href="/jobs">
+      <span class="action-tile__title">View live queue</span>
+      <span class="action-tile__meta">{{ stats.pending_files }} pending · {{ stats.running_files }} running</span>
+    </a>
+    <a class="action-tile" href="/settings?tab=ingest">
+      <span class="action-tile__title">Scale ingest capacity</span>
+      <span class="action-tile__meta">Pool planner · VRAM</span>
+    </a>
+    <a class="action-tile" href="/explorer">
+      <span class="action-tile__title">Browse catalogs</span>
+      <span class="action-tile__meta">Subscribe · download</span>
+    </a>
+    <a class="action-tile" href="/settings?tab=cognitive">
+      <span class="action-tile__title">Cognitive pipeline</span>
+      <span class="action-tile__meta">Stages · budgets</span>
+    </a>
+  </div>
   <div class="actions-row">
     <form method="post" action="/api/ingest/sync-form">
       <button type="submit">Scan for new files</button>
     </form>
-    <a class="btn btn--ghost" href="/explorer">Browse catalogs</a>
-    <a class="btn btn--ghost" href="/jobs">View job log</a>
   </div>
-  <p class="muted card-note">Safe scan: only new or failed files are queued. Indexed corpora are not re-embedded. Use scan for files added outside Admin (rsync, manual copy).</p>
-</section>
-
-<section class="card card--compact">
-  <div class="section-head">
-    <h2 class="section-title">Ingest tuning (live)</h2>
-    <a class="btn btn--ghost btn--small" href="/settings?tab=ingest">Edit in Settings</a>
-  </div>
-  {{ ingest_tuning_snapshot(ingest_config) }}
+  <p class="muted card-note">Safe scan leaves indexed corpora unchanged. Prefer Jobs for live progress and Settings for capacity.</p>
 </section>
 
 <section class="card card--flush">
   <div class="card-section-head">
     <h2 class="section-title section-title--flush">Recent jobs</h2>
+    <a class="btn btn--ghost btn--small" href="/jobs">Open Jobs</a>
   </div>
   <div class="table-wrap">
   <table>
@@ -63,7 +81,7 @@
         <td>{{ job.job_type }}</td>
         <td>{{ status_pill(job.status) }}</td>
         <td class="muted">{{ job.message or '' }}</td>
-        <td class="faint">{{ job.created_at or '' }}</td>
+        <td class="faint mono">{{ job.created_at or '' }}</td>
       </tr>
     {% else %}
       <tr><td colspan="5">{{ empty_state("No jobs yet", "Run sync after adding files or subscribing in Explorer.") }}</td></tr>

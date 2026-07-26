@@ -35,6 +35,7 @@ from ingest.port_avoidance import (  # noqa: E402
     embed_pool_stop_ports,
     loopback_reserved_ports,
 )
+from rag_admin.env_file import write_env_file  # noqa: E402
 from rag_proxy.env_parse import parse_bool  # noqa: E402
 
 DEFAULT_POOL_ENV = "/opt/ai/config/nomic-embed-pool.env"
@@ -289,6 +290,47 @@ def _write_pool_env(path: str, plan: IngestCapacityPlan) -> None:
     )
 
 
+def _sync_runtime_parallel(scale_env_path: str, parallel: int) -> None:
+    """Write derived NOMIC_POOL_PARALLEL into scale env (systemd EnvironmentFile)."""
+    updates = {"NOMIC_POOL_PARALLEL": str(parallel)}
+    target = Path(scale_env_path)
+    try:
+        write_env_file(str(target), updates, create=True)
+        return
+    except PermissionError:
+        pass
+    except OSError:
+        pass
+
+    staging = Path(tempfile.gettempdir()) / f"nomic-embed-scale.{_staging_suffix()}.env"
+    if target.is_file():
+        try:
+            staging.write_text(target.read_text(encoding="utf-8"), encoding="utf-8")
+        except OSError:
+            staging.write_text("", encoding="utf-8")
+    else:
+        staging.write_text("", encoding="utf-8")
+    write_env_file(str(staging), updates, create=True)
+    sudo_copy = _run(["sudo", "-n", "cp", str(staging), str(target)], check=False)
+    if sudo_copy.returncode == 0:
+        _run(["sudo", "-n", "chmod", "644", str(target)], check=False)
+        return
+    raise PermissionError(
+        f"cannot write NOMIC_POOL_PARALLEL to {target}; staged at {staging}"
+    )
+
+
+def _persist_plan_env(
+    plan: IngestCapacityPlan,
+    *,
+    pool_env_path: str,
+    scale_env_path: str,
+) -> None:
+    """Write pool plan + derived --parallel before systemd units reload env files."""
+    _write_pool_env(pool_env_path, plan)
+    _sync_runtime_parallel(scale_env_path, plan.nomic_pool_parallel)
+
+
 def shrink_plan_to_healthy(
     plan: IngestCapacityPlan,
     healthy_urls: list[str],
@@ -330,15 +372,42 @@ def _finalize_pool_units(
     _kill_stray_gpu_embeds(healthy_ports)
 
 
-def apply_plan(plan: IngestCapacityPlan, *, pool_env_path: str, wait_health: bool) -> int:
+def apply_plan(
+    plan: IngestCapacityPlan,
+    *,
+    pool_env_path: str,
+    scale_env_path: str,
+    wait_health: bool,
+) -> int:
     config = load_embed_pool_config()
     if not plan.embed_pool.use_gpu_pool:
         print("no GPU detected: writing capacity plan only (no systemd changes)", flush=True)
-        _write_pool_env(pool_env_path, plan)
+        try:
+            _persist_plan_env(
+                plan, pool_env_path=pool_env_path, scale_env_path=scale_env_path
+            )
+        except PermissionError as exc:
+            print(f"error: {exc}", file=sys.stderr, flush=True)
+            return 1
         return 0
 
     planned_ports = set(plan.embed_pool.ports)
     target_urls = [f"http://127.0.0.1:{port}" for port in plan.embed_pool.ports]
+
+    # Persist env before restart so nomic-embed@.service EnvironmentFiles see
+    # the planned NOMIC_POOL_PARALLEL on first start.
+    try:
+        _persist_plan_env(
+            plan, pool_env_path=pool_env_path, scale_env_path=scale_env_path
+        )
+    except PermissionError as exc:
+        print(f"error: {exc}", file=sys.stderr, flush=True)
+        return 1
+    print(
+        f"apply: wrote pool env + NOMIC_POOL_PARALLEL={plan.nomic_pool_parallel} "
+        f"before restarting units",
+        flush=True,
+    )
 
     print(
         f"apply: stopping pool units, then starting {len(planned_ports)} instance(s)",
@@ -385,24 +454,37 @@ def apply_plan(plan: IngestCapacityPlan, *, pool_env_path: str, wait_health: boo
             file=sys.stderr,
         )
         plan = shrink_plan_to_healthy(plan, healthy_urls)
+        try:
+            _persist_plan_env(
+                plan, pool_env_path=pool_env_path, scale_env_path=scale_env_path
+            )
+        except PermissionError as exc:
+            print(f"error: {exc}", file=sys.stderr, flush=True)
+            return 1
 
-    try:
-        _write_pool_env(pool_env_path, plan)
-    except PermissionError as exc:
-        print(f"error: {exc}", file=sys.stderr, flush=True)
-        return 1
     print(f"apply: pool env written to {pool_env_path}", flush=True)
     return 0
 
 
-def write_plan_env(plan: IngestCapacityPlan, *, pool_env_path: str) -> int:
+def write_plan_env(
+    plan: IngestCapacityPlan,
+    *,
+    pool_env_path: str,
+    scale_env_path: str,
+) -> int:
     """Write the capacity plan without restarting systemd pool units."""
     try:
-        _write_pool_env(pool_env_path, plan)
+        _persist_plan_env(
+            plan, pool_env_path=pool_env_path, scale_env_path=scale_env_path
+        )
     except PermissionError as exc:
         print(f"error: {exc}", file=sys.stderr, flush=True)
         return 1
-    print(f"write-env: pool env written to {pool_env_path} (no systemd restart)", flush=True)
+    print(
+        f"write-env: pool env written to {pool_env_path} "
+        f"(NOMIC_POOL_PARALLEL={plan.nomic_pool_parallel}; no systemd restart)",
+        flush=True,
+    )
     return 0
 
 
@@ -419,7 +501,17 @@ def build_plan(args: argparse.Namespace) -> IngestCapacityPlan:
     )
     pool_cfg = load_embed_pool_config()
     planner_cfg = load_capacity_planner_config()
-    host = probe_host(disk_paths=data_paths, gpu_index=pool_cfg.gpu_index)
+    bench_disks = bool(data_paths)
+    if bench_disks:
+        print(
+            f"probe: sequential disk bench for {len(data_paths)} data path(s)",
+            flush=True,
+        )
+    host = probe_host(
+        disk_paths=data_paths,
+        gpu_index=pool_cfg.gpu_index,
+        bench_disks=bench_disks,
+    )
     semantic_for_bench = resolve_semantic_chunking(host, planner_cfg, semantic_requested)
 
     bench = None
@@ -438,7 +530,6 @@ def build_plan(args: argparse.Namespace) -> IngestCapacityPlan:
         data_paths=data_paths,
         bench=bench,
     )
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -508,11 +599,16 @@ def main() -> int:
         return 0
 
     if args.write_env_only:
-        return write_plan_env(plan, pool_env_path=args.pool_env)
+        return write_plan_env(
+            plan,
+            pool_env_path=args.pool_env,
+            scale_env_path=args.scale_env,
+        )
 
     return apply_plan(
         plan,
         pool_env_path=args.pool_env,
+        scale_env_path=args.scale_env,
         wait_health=not args.no_wait_health,
     )
 

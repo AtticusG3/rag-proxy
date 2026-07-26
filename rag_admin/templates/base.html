@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0e1218">
+  <meta name="theme-color" content="#07090c">
   <title>{% block title %}RAG Admin{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=instrument-1">
 </head>
-<body class="{% if request.url.path == '/login' %}page-auth{% endif %}">
+<body class="{% if request.url.path == '/login' %}page-auth{% endif %}{% block body_class %}{% endblock %}">
   <a class="skip-link" href="#main">Skip to content</a>
 
   {% if request.url.path != '/login' %}
@@ -18,7 +18,7 @@
           <span class="sidebar__mark" aria-hidden="true"></span>
           <span class="sidebar__brand-text">
             <strong>RAG Admin</strong>
-            <span>Corpus indexing</span>
+            <span>Instrument</span>
           </span>
         </a>
       </div>
@@ -78,13 +78,13 @@
       <span class="sidebar__mark" aria-hidden="true"></span>
       <span class="sidebar__brand-text">
         <strong>RAG Admin</strong>
-        <span>Corpus indexing</span>
+        <span>Instrument</span>
       </span>
     </div>
   </header>
   {% endif %}
 
-  <main id="main" class="container{% if request.url.path == '/login' %} container--auth{% endif %}">
+  <main id="main" class="container{% if request.url.path == '/login' %} container--auth{% endif %}{% block container_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 

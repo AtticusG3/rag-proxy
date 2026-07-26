@@ -160,3 +160,61 @@ def test_write_pool_env_uses_sudo_when_target_not_writable(tmp_path: Path) -> No
     staging = Path(tempfile.gettempdir()) / f"nomic-embed-pool.{scale._staging_suffix()}.env"
     assert staging.read_text(encoding="utf-8") == plan_text
     assert run_mock.call_args_list[0].args[0][:3] == ["sudo", "-n", "cp"]
+
+
+def test_persist_plan_env_writes_parallel_to_pool_and_scale(tmp_path: Path) -> None:
+    scale = _load_scale_module()
+    pool_env = tmp_path / "pool.env"
+    scale_env = tmp_path / "scale.env"
+    plan = MagicMock()
+    plan.nomic_pool_parallel = 8
+    plan_text = "NOMIC_POOL_PARALLEL=8\nINGEST_EMBED_URLS=http://127.0.0.1:18089\n"
+
+    with patch.object(scale, "render_capacity_env", return_value=plan_text):
+        scale._persist_plan_env(
+            plan,
+            pool_env_path=str(pool_env),
+            scale_env_path=str(scale_env),
+        )
+
+    assert "NOMIC_POOL_PARALLEL=8" in pool_env.read_text(encoding="utf-8")
+    assert "NOMIC_POOL_PARALLEL=8" in scale_env.read_text(encoding="utf-8")
+
+
+def test_apply_plan_persists_env_before_restarting_units(tmp_path: Path) -> None:
+    scale = _load_scale_module()
+    pool_env = tmp_path / "pool.env"
+    scale_env = tmp_path / "scale.env"
+    order: list[str] = []
+
+    plan = MagicMock()
+    plan.nomic_pool_parallel = 8
+    plan.embed_pool.use_gpu_pool = True
+    plan.embed_pool.ports = (18089,)
+    plan.embed_pool.instance_count = 1
+
+    def persist(*_args, **_kwargs):
+        order.append("persist")
+
+    def prepare(*_args, **_kwargs):
+        order.append("prepare")
+
+    with patch.object(scale, "load_embed_pool_config", return_value=scale.EmbedPoolConfig()):
+        with patch.object(scale, "_persist_plan_env", side_effect=persist):
+            with patch.object(scale, "_prepare_pool_shutdown", side_effect=prepare):
+                with patch.object(scale, "_kill_stray_gpu_embeds"):
+                    with patch.object(scale, "_systemctl"):
+                        with patch.object(scale, "_run"):
+                            with patch.object(
+                                scale, "_wait_for_health", return_value=["http://127.0.0.1:18089"]
+                            ):
+                                with patch.object(scale, "_finalize_pool_units"):
+                                    rc = scale.apply_plan(
+                                        plan,
+                                        pool_env_path=str(pool_env),
+                                        scale_env_path=str(scale_env),
+                                        wait_health=True,
+                                    )
+
+    assert rc == 0
+    assert order[:2] == ["persist", "prepare"]
