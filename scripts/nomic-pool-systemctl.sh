@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Allowlisted systemctl wrapper for nomic embed pool lifecycle.
+# Allowlisted systemctl wrapper for nomic embed pool + sidecar lifecycle.
 # Installed to /opt/ai/bin/nomic-pool-systemctl; invoked via passwordless sudo.
 set -euo pipefail
 
@@ -7,7 +7,10 @@ SYSTEMCTL="${SYSTEMCTL:-/usr/bin/systemctl}"
 
 _allowed_unit() {
   case "$1" in
-    nomic-embed@*.service | nomic-embed.service | nomic-embed-scale.service | sparse-sidecar.service | rerank-sidecar.service) return 0 ;;
+    nomic-embed@*.service | nomic-embed.service | nomic-embed-scale.service | \
+    sparse-sidecar.service | rerank-sidecar.service | turbovec-sidecar.service)
+      return 0
+      ;;
   esac
   return 1
 }
@@ -23,6 +26,9 @@ case "$cmd" in
       exit 1
     fi
     exec "$SYSTEMCTL" "$cmd" "$@"
+    ;;
+  daemon-reload)
+    exec "$SYSTEMCTL" daemon-reload
     ;;
   list-units)
     for arg in "$@"; do
