@@ -19,6 +19,9 @@ docker/config.yaml
 # Local ZIM sanitize spike dumps
 zim_spike_out/
 
+# Local ZIM/PDF corpora for ingest testing (GB-scale binaries)
+example_zim/
+
 # OS cruft
 Thumbs.db
 Desktop.ini
