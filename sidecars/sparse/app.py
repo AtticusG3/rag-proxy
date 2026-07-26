@@ -16,7 +16,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from core import DEFAULT_COLLECTION as _DEFAULT_COLLECTION
-from core import IndexRegistry, SparseIndex
+from core import PROVENANCE_KEYS, IndexRegistry, SparseIndex
 
 try:
     from rag_proxy.chunk_text import PAYLOAD_TEXT_KEYS
@@ -34,14 +34,25 @@ PORT = int(os.getenv("SPARSE_PORT", "8096"))
 # 0 = index everything. Otherwise stop after N points (BM25 sampling for large collections).
 MAX_POINTS = int(os.getenv("SPARSE_MAX_POINTS", "0"))
 
-# Payload keys fetched from Qdrant (text + recency metadata only).
+# Payload keys fetched from Qdrant (text + provenance + recency metadata only).
 _SCROLL_PAYLOAD_KEYS = tuple(
     dict.fromkeys(
-        (*PAYLOAD_TEXT_KEYS, "updated_at", "mtime", "timestamp"),
+        (*PAYLOAD_TEXT_KEYS, *PROVENANCE_KEYS, "updated_at", "mtime", "timestamp"),
     )
 )
 
 registry = IndexRegistry()
+
+# A full sync holds a second copy of the corpus in RAM; never build two at once.
+# Created lazily so the lock binds to the running loop (Python < 3.10).
+_sync_lock: asyncio.Lock | None = None
+
+
+def _get_sync_lock() -> asyncio.Lock:
+    global _sync_lock
+    if _sync_lock is None:
+        _sync_lock = asyncio.Lock()
+    return _sync_lock
 
 
 async def _scroll_page(
@@ -68,6 +79,11 @@ async def _scroll_page(
 
 
 async def sync_collection(collection: str) -> int:
+    async with _get_sync_lock():
+        return await _sync_collection_locked(collection)
+
+
+async def _sync_collection_locked(collection: str) -> int:
     index = SparseIndex()
     indexed = 0
     truncated = False

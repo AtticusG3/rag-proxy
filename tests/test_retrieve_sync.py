@@ -111,6 +111,38 @@ def test_hybrid_retrieve_with_dense_ids_tags_dense_sources() -> None:
     assert {str(h["id"]) for h in hits} == {"d1", "s1"}
 
 
+def test_hybrid_retrieve_reserves_slots_for_sparse_only_hits() -> None:
+    """Sync fusion must reserve sparse slots like the async proxy path.
+
+    With a heavy dense weight, plain RRF hands every slot to dense hits, so
+    exact-term matches that only BM25 found are dropped. MCP callers would then
+    get different results than the proxy for the same query and config.
+    """
+    cfg = _config(enable_hybrid=True, hybrid_dense_weight=0.9)
+    dense_hits = [
+        {"id": f"d{i}", "score": 0.9 - i / 100, "payload": {"text": f"dense {i}"}}
+        for i in range(8)
+    ]
+    sparse_hits = [
+        {"id": "s1", "score": 5.0, "payload": {"text": "exact term match"}},
+        {"id": "s2", "score": 4.0, "payload": {"text": "another exact match"}},
+    ]
+
+    with patch("rag_proxy.clients.retrieve_sync.embed_query", return_value=[0.1, 0.2]):
+        with patch(
+            "rag_proxy.clients.retrieve_sync.dense_search", return_value=dense_hits
+        ):
+            with patch(
+                "rag_proxy.clients.retrieve_sync.sparse_search",
+                return_value=sparse_hits,
+            ):
+                hits, _ = hybrid_retrieve_with_dense_ids(cfg, "query", limit=8)
+
+    ids = [str(h["id"]) for h in hits]
+    assert len(ids) == 8
+    assert "s1" in ids
+
+
 def test_rerank_pairs_returns_sidecar_order() -> None:
     """Rerank pairs returns indices from the sidecar response."""
     cfg = _config()

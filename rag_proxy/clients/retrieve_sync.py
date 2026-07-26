@@ -76,6 +76,40 @@ def rrf_merge(
     return merged[:limit]
 
 
+def merge_fused_with_sparse_reserve(
+    fused_ids: list[str],
+    sparse_only_ids: list[str],
+    limit: int,
+) -> list[str]:
+    """Reserve slots for sparse-only docs, then fill from RRF order."""
+    if not sparse_only_ids:
+        return fused_ids[:limit]
+
+    reserve = min(len(sparse_only_ids), max(1, limit // 4))
+    main_slots = max(0, limit - reserve)
+    merged_ids: list[str] = []
+    seen: set[str] = set()
+    for doc_id in fused_ids:
+        if len(merged_ids) >= main_slots:
+            break
+        if doc_id not in seen:
+            merged_ids.append(doc_id)
+            seen.add(doc_id)
+    for doc_id in sparse_only_ids:
+        if doc_id not in seen:
+            merged_ids.append(doc_id)
+            seen.add(doc_id)
+        if len(merged_ids) >= limit:
+            break
+    for doc_id in fused_ids:
+        if len(merged_ids) >= limit:
+            break
+        if doc_id not in seen:
+            merged_ids.append(doc_id)
+            seen.add(doc_id)
+    return merged_ids[:limit]
+
+
 def _headers(config: RetrieveConfig) -> dict[str, str]:
     return {"User-Agent": config.user_agent}
 
@@ -272,10 +306,16 @@ def hybrid_retrieve_with_dense_ids(
     ]
 
     by_id: dict[str, dict] = {str(h.get("id", "")): h for h in dense_hits}
+    sparse_only_ids: list[str] = []
     for h in sparse_raw:
         cid = str(h.get("id", ""))
         if cid and cid not in by_id and _hit_has_text(h):
             by_id[cid] = h
+            sparse_only_ids.append(cid)
+
+    # Same reserve as the async proxy path: RRF alone lets dense sweep every
+    # slot, so lexical-only matches (exact terms, rare tokens) never surface.
+    fused_ids = merge_fused_with_sparse_reserve(fused_ids, sparse_only_ids, limit)
 
     ordered: list[dict] = []
     for doc_id in fused_ids:

@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 
 from rag_proxy.clients.retrieval_async import embed_text, search_qdrant_dense, sparse_search
-from rag_proxy.clients.retrieve_sync import rrf_merge
+from rag_proxy.clients.retrieve_sync import merge_fused_with_sparse_reserve, rrf_merge
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit
 from rag_proxy.chunk_text import extract_chunk_text
@@ -77,40 +77,6 @@ async def _dense_chunks(
         vector, limit=limit, score_threshold=score_threshold
     )
     return [_hit_to_chunk(h, "dense") for h in dense_hits if extract_chunk_text(h)]
-
-
-def merge_fused_with_sparse_reserve(
-    fused_ids: list[str],
-    sparse_only_ids: list[str],
-    limit: int,
-) -> list[str]:
-    """Reserve slots for sparse-only docs, then fill from RRF order."""
-    if not sparse_only_ids:
-        return fused_ids[:limit]
-
-    reserve = min(len(sparse_only_ids), max(1, limit // 4))
-    main_slots = max(0, limit - reserve)
-    merged_ids: list[str] = []
-    seen: set[str] = set()
-    for doc_id in fused_ids:
-        if len(merged_ids) >= main_slots:
-            break
-        if doc_id not in seen:
-            merged_ids.append(doc_id)
-            seen.add(doc_id)
-    for doc_id in sparse_only_ids:
-        if doc_id not in seen:
-            merged_ids.append(doc_id)
-            seen.add(doc_id)
-        if len(merged_ids) >= limit:
-            break
-    for doc_id in fused_ids:
-        if len(merged_ids) >= limit:
-            break
-        if doc_id not in seen:
-            merged_ids.append(doc_id)
-            seen.add(doc_id)
-    return merged_ids[:limit]
 
 
 async def hybrid_search(

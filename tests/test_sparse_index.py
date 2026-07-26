@@ -12,18 +12,21 @@ sys.path.insert(0, str(SPARSE_DIR))
 from core import IndexRegistry, SparseIndex, point_to_doc, slim_payload  # noqa: E402
 
 
-def test_slim_payload_keeps_text_and_recency_only() -> None:
+def test_slim_payload_keeps_text_provenance_and_recency() -> None:
+    """Sparse-only hits never re-fetch Qdrant, so title/source must stay in the slim payload."""
     full = {
         "text": "hello world",
+        "source": "/zim/archive.zim",
         "source_path": "/data/huge/archive.zim",
-        "title": "Very Long Title" * 100,
+        "title": "Catalysts",
         "updated_at": "2026-01-01T00:00:00Z",
     }
     slim = slim_payload(full, "hello world")
     assert slim["text"] == "hello world"
     assert slim["updated_at"] == "2026-01-01T00:00:00Z"
+    assert slim["title"] == "Catalysts"
+    assert slim["source"] == "/zim/archive.zim"
     assert "source_path" not in slim
-    assert "title" not in slim
 
 
 def test_point_to_doc_skips_empty_text() -> None:
@@ -32,7 +35,14 @@ def test_point_to_doc_skips_empty_text() -> None:
 
 def test_sparse_index_search_returns_matching_docs() -> None:
     points = [
-        {"id": "a", "payload": {"text": "python asyncio tutorial"}},
+        {
+            "id": "a",
+            "payload": {
+                "text": "python asyncio tutorial",
+                "title": "Asyncio",
+                "source": "/zim/python.zim",
+            },
+        },
         {"id": "b", "payload": {"text": "rust ownership basics"}},
         {"id": "c", "payload": {"text": "python asyncio patterns"}},
     ]
@@ -43,6 +53,9 @@ def test_sparse_index_search_returns_matching_docs() -> None:
     hits = index.search("python asyncio", limit=2)
     ids = {h["id"] for h in hits}
     assert ids == {"a", "c"}
+    by_id = {h["id"]: h for h in hits}
+    assert by_id["a"]["payload"]["title"] == "Asyncio"
+    assert by_id["a"]["payload"]["source"] == "/zim/python.zim"
     for hit in hits:
         assert "text" in hit["payload"]
         assert "source_path" not in hit["payload"]

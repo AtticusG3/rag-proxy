@@ -21,6 +21,9 @@ DEFAULT_COLLECTION = "nomad_knowledge_base"
 # Small metadata kept for proxy recency boost on sparse-only hits.
 _RECENCY_KEYS = ("updated_at", "mtime", "timestamp")
 
+# Sparse-only hits never touch Qdrant, so citations come from these keys alone.
+PROVENANCE_KEYS = ("source", "title", "chunk_idx")
+
 _TOKEN_RE = re.compile(r"\w+")
 
 
@@ -36,7 +39,7 @@ class IndexedDoc:
 
 
 def slim_payload(full: dict[str, Any], text: str) -> dict[str, Any]:
-    """Keep chunk text plus recency fields; drop bulky ingest metadata."""
+    """Keep chunk text, provenance and recency fields; drop bulky ingest metadata."""
     slim: dict[str, Any] = {}
     for key in PAYLOAD_TEXT_KEYS:
         value = full.get(key)
@@ -45,7 +48,7 @@ def slim_payload(full: dict[str, Any], text: str) -> dict[str, Any]:
             break
     if not slim and text:
         slim["text"] = text
-    for key in _RECENCY_KEYS:
+    for key in (*PROVENANCE_KEYS, *_RECENCY_KEYS):
         value = full.get(key)
         if value is not None:
             slim[key] = value
