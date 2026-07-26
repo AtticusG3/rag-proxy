@@ -34,9 +34,16 @@ DEFAULT_DIM = 768
 DEFAULT_BIT_WIDTH = 4
 
 
+def _strip_hex_id(hex_id: str) -> str:
+    """Ingest writes bare 32-char hex; a Qdrant scroll echoes the same id back in
+    dashed UUID form. Both must canonicalise to the same key or /reindex and
+    /remove miss every point written by dual-write."""
+    return str(hex_id).strip().lower().replace("-", "")
+
+
 def hex_id_to_u64(hex_id: str) -> int:
     """Map Qdrant MD5 hex point id to uint64 for IdMapIndex (first 16 hex digits)."""
-    cleaned = str(hex_id).strip().lower()
+    cleaned = _strip_hex_id(hex_id)
     if len(cleaned) < 16:
         raise ValueError(f"hex id too short for u64 map: {hex_id!r}")
     return int(cleaned[:16], 16)
@@ -44,7 +51,7 @@ def hex_id_to_u64(hex_id: str) -> int:
 
 def normalize_qdrant_hex_id(hex_id: str) -> str:
     """Require canonical 32-char hex as produced by ingest (MD5 point ids)."""
-    cleaned = str(hex_id).strip().lower()
+    cleaned = _strip_hex_id(hex_id)
     if len(cleaned) != 32:
         raise ValueError(f"hex id must be 32 chars (Qdrant MD5): {hex_id!r}")
     int(cleaned, 16)

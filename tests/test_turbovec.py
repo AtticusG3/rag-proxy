@@ -42,6 +42,17 @@ def test_normalize_qdrant_hex_id_rejects_short_ids():
         turbovec_core.normalize_qdrant_hex_id("abc")
 
 
+def test_dashed_uuid_from_qdrant_maps_to_the_dual_write_id():
+    """Ingest dual-writes bare hex; a Qdrant scroll returns the same point as a
+    dashed UUID. If they canonicalise differently, /reindex and /remove operate on
+    ids that were never added and the rebuild dies on the first page."""
+    bare = "00000468c899c290e5c51718ca7521d3"
+    dashed = "00000468-c899-c290-e5c5-1718ca7521d3"
+
+    assert turbovec_core.normalize_qdrant_hex_id(dashed) == bare
+    assert turbovec_core.hex_id_to_u64(dashed) == turbovec_core.hex_id_to_u64(bare)
+
+
 def test_merge_dense_scores_with_payloads_preserves_order():
     from rag_proxy.clients.retrieval_core import merge_dense_scores_with_payloads
 
@@ -562,6 +573,52 @@ def test_turbovec_sidecar_http_add_search(monkeypatch):
                 rem = client.post("/remove", json={"ids": [ids[0]]})
                 assert rem.status_code == 200
                 assert rem.json()["removed"] == 1
+    finally:
+        if prior_core is None:
+            sys.modules.pop("core", None)
+        else:
+            sys.modules["core"] = prior_core
+
+
+@pytest.mark.skipif(
+    not turbovec_core.HAS_TURBOVEC,
+    reason="turbovec package not installed",
+)
+def test_shutdown_persists_index_even_with_auto_save_off(monkeypatch):
+    """TURBOVEC_AUTO_SAVE=false is a per-write throughput switch, not a durability
+    one. Bulk ingest runs with it off, so if shutdown skips the save a routine
+    restart silently drops the whole corpus and dense retrieval returns nothing."""
+    import numpy as np
+    from fastapi.testclient import TestClient
+
+    prior_core = sys.modules.get("core")
+    sys.modules["core"] = turbovec_core
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            index_path = Path(tmp) / "idx.tvim"
+            ids = ["33333333333333333333333333333333"]
+            vectors = np.eye(1, 8, dtype=np.float32).tolist()
+
+            def _boot():
+                sys.modules.pop("turbovec_app_http", None)
+                mod = _load_module("turbovec_app_http", "sidecars/turbovec/app.py")
+                mod.DIM = 8
+                mod.BIT_WIDTH = 4
+                mod.INDEX_PATH = index_path
+                mod.AUTO_SAVE = False
+                return mod
+
+            with TestClient(_boot().app) as client:
+                assert client.post(
+                    "/add", json={"ids": ids, "vectors": vectors}
+                ).json()["added"] == 1
+                # No /save call: only the shutdown hook can persist this.
+
+            with TestClient(_boot().app) as client:
+                health = client.get("/health").json()
+                assert health["vectors"] == 1, "index lost on clean restart"
+                found = client.post("/search", json={"vector": vectors[0], "limit": 1})
+                assert found.json()["results"][0]["id"] == ids[0]
     finally:
         if prior_core is None:
             sys.modules.pop("core", None)

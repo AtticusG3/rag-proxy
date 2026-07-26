@@ -29,8 +29,9 @@ INDEX_PATH = Path(
     os.getenv("TURBOVEC_INDEX_PATH", "/var/lib/rag_proxy/turbovec/index.tvim")
 )
 SCROLL_BATCH = int(os.getenv("TURBOVEC_SCROLL_BATCH", "256"))
-# When true, persist .tvim after each /add, /remove, /reindex, and on shutdown.
-# Bulk ingest dual-writes many /add calls; set TURBOVEC_AUTO_SAVE=false and POST /save once.
+# When true, persist .tvim after each /add, /remove, and /reindex. Shutdown always
+# saves regardless. Bulk ingest dual-writes many /add calls; set TURBOVEC_AUTO_SAVE=false
+# and POST /save once.
 AUTO_SAVE = os.getenv("TURBOVEC_AUTO_SAVE", "true").strip().lower() in (
     "1",
     "true",
@@ -167,11 +168,13 @@ async def lifespan(_app: FastAPI):
         index.reset()
     yield
     if index is not None:
-        if AUTO_SAVE:
-            try:
-                await asyncio.to_thread(index.save)
-            except Exception as exc:
-                log.warning("shutdown save failed: %s", exc)
+        # Always save on shutdown, even with AUTO_SAVE off: that flag only skips
+        # the per-write fsync for bulk ingest. Skipping it here discarded the
+        # whole in-memory index on a clean restart.
+        try:
+            await asyncio.to_thread(index.save)
+        except Exception as exc:
+            log.warning("shutdown save failed: %s", exc)
         index.close()
         index = None
 
