@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Deploy rag_proxy on buster (/opt/ai) and run smoke checks.
+# Deploy rag_proxy on buster and run smoke checks.
+# Default checkout matches rag-admin/rag-proxy systemd WorkingDirectory.
 set -euo pipefail
 
-REPO="${REPO_ROOT:-/opt/ai/repo/rag_proxy}"
+REPO="${REPO_ROOT:-/home/kevyn/rag-proxy}"
 VENV="${VENV_PYTHON:-/opt/ai/venv/bin/python}"
 PIP="${VENV_PIP:-/opt/ai/venv/bin/pip}"
 PROXY_ENV="${PROXY_ENV_FILE:-/opt/ai/config/rag-proxy.env}"
