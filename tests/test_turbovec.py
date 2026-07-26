@@ -375,6 +375,64 @@ def test_turbovec_index_add_search_remove_roundtrip():
     not turbovec_core.HAS_TURBOVEC,
     reason="turbovec package not installed",
 )
+def test_rebuild_keeps_old_index_searchable_until_commit():
+    """A reindex must not blank the sidecar while it scrolls Qdrant.
+
+    Resetting in place makes every dense search return nothing for the length of
+    the rebuild, which silently drops retrieval when DENSE_BACKEND=turbovec.
+    """
+    import numpy as np
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "idx.tvim"
+        idx = turbovec_core.TurboIndex(dim=8, bit_width=4, index_path=path)
+        try:
+            old_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            new_id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            vectors = np.eye(2, 8, dtype=np.float32).tolist()
+            idx.add([old_id], [vectors[0]])
+
+            rebuild = idx.rebuild()
+            rebuild.add([new_id], [vectors[1]])
+            assert idx.search(vectors[0], limit=1)[0]["id"] == old_id
+
+            assert rebuild.commit() == 1
+            assert idx.search(vectors[1], limit=1)[0]["id"] == new_id
+            assert idx.search(vectors[0], limit=1, score_threshold=0.99) == []
+        finally:
+            idx.close()
+
+
+@pytest.mark.skipif(
+    not turbovec_core.HAS_TURBOVEC,
+    reason="turbovec package not installed",
+)
+def test_aborted_rebuild_leaves_live_index_intact():
+    """A failed scroll must not strand the sidecar on a half-built corpus."""
+    import numpy as np
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "idx.tvim"
+        idx = turbovec_core.TurboIndex(dim=8, bit_width=4, index_path=path)
+        try:
+            old_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            vectors = np.eye(2, 8, dtype=np.float32).tolist()
+            idx.add([old_id], [vectors[0]])
+
+            rebuild = idx.rebuild()
+            rebuild.add(["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"], [vectors[1]])
+            rebuild.abort()
+
+            assert len(idx) == 1
+            assert idx.search(vectors[0], limit=1)[0]["id"] == old_id
+        finally:
+            idx.close()
+
+
+@pytest.mark.skipif(
+    not turbovec_core.HAS_TURBOVEC,
+    reason="turbovec package not installed",
+)
 def test_search_skips_ann_hit_when_id_map_row_missing():
     """ANN may return a u64, but without id_map we must not synthesize a Qdrant id."""
     import sqlite3

@@ -64,6 +64,12 @@ class IdStore:
             "u64 TEXT PRIMARY KEY NOT NULL, "
             "hex_id TEXT NOT NULL UNIQUE)"
         )
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS id_map_staging ("
+            "u64 TEXT PRIMARY KEY NOT NULL, "
+            "hex_id TEXT NOT NULL UNIQUE)"
+        )
+        self._conn.execute("DELETE FROM id_map_staging")
         self._conn.commit()
 
     def close(self) -> None:
@@ -94,6 +100,30 @@ class IdStore:
         with self._lock:
             self._conn.execute("DELETE FROM id_map")
             self._conn.commit()
+
+    def stage_many(self, pairs: list[tuple[int, str]]) -> None:
+        """Buffer rebuild rows; they replace id_map only on commit_staged()."""
+        if not pairs:
+            return
+        with self._lock:
+            self._conn.executemany(
+                "INSERT OR REPLACE INTO id_map_staging (u64, hex_id) VALUES (?, ?)",
+                [(str(uid), hid) for uid, hid in pairs],
+            )
+            self._conn.commit()
+
+    def clear_staged(self) -> None:
+        with self._lock:
+            self._conn.execute("DELETE FROM id_map_staging")
+            self._conn.commit()
+
+    def commit_staged(self) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM id_map")
+            self._conn.execute(
+                "INSERT INTO id_map (u64, hex_id) SELECT u64, hex_id FROM id_map_staging"
+            )
+            self._conn.execute("DELETE FROM id_map_staging")
 
     def hex_for_u64(self, u64_id: int) -> str | None:
         with self._lock:
@@ -185,24 +215,38 @@ class TurboIndex:
             self._index = IdMapIndex(dim=self.dim, bit_width=self.bit_width)
             self._ids.clear()
 
-    def add(self, hex_ids: list[str], vectors: list[list[float]]) -> int:
+    def _prepare(
+        self, hex_ids: list[str], vectors: list[list[float]]
+    ) -> tuple[np.ndarray, np.ndarray, list[tuple[int, str]]]:
         if len(hex_ids) != len(vectors):
             raise ValueError("ids and vectors length mismatch")
-        if not hex_ids:
-            return 0
         canonical = [normalize_qdrant_hex_id(h) for h in hex_ids]
         arr = np.asarray(vectors, dtype=np.float32)
         if arr.ndim != 2 or arr.shape[1] != self.dim:
             raise ValueError(f"vectors must be shape (n, {self.dim}), got {arr.shape}")
         u64_ids = np.asarray([hex_id_to_u64(h) for h in canonical], dtype=np.uint64)
         pairs = [(int(u64_ids[i]), canonical[i]) for i in range(len(canonical))]
+        return arr, u64_ids, pairs
+
+    @staticmethod
+    def _add_deduped(index: Any, arr: np.ndarray, u64_ids: np.ndarray) -> None:
+        for uid in u64_ids.tolist():
+            if int(uid) in index:
+                index.remove(int(uid))
+        index.add_with_ids(arr, u64_ids)
+
+    def add(self, hex_ids: list[str], vectors: list[list[float]]) -> int:
+        if not hex_ids:
+            return 0
+        arr, u64_ids, pairs = self._prepare(hex_ids, vectors)
         with self._lock:
-            for uid in u64_ids.tolist():
-                if int(uid) in self._index:
-                    self._index.remove(int(uid))
-            self._index.add_with_ids(arr, u64_ids)
+            self._add_deduped(self._index, arr, u64_ids)
             self._ids.put_many(pairs)
         return len(hex_ids)
+
+    def rebuild(self) -> "TurboRebuild":
+        """Start a full rebuild; the live index keeps serving until commit()."""
+        return TurboRebuild(self)
 
     def remove(self, hex_ids: list[str]) -> int:
         if not hex_ids:
@@ -272,3 +316,35 @@ class TurboIndex:
             "id_map_rows": self._ids.count(),
             "index_path": str(self.index_path),
         }
+
+
+class TurboRebuild:
+    """Off-to-the-side full rebuild.
+
+    Resetting in place leaves the sidecar answering every search with zero hits
+    for the whole reindex, so vectors accumulate here and swap in atomically.
+    """
+
+    def __init__(self, owner: TurboIndex) -> None:
+        self._owner = owner
+        self._index = IdMapIndex(dim=owner.dim, bit_width=owner.bit_width)
+        self._count = 0
+        owner._ids.clear_staged()
+
+    def add(self, hex_ids: list[str], vectors: list[list[float]]) -> int:
+        if not hex_ids:
+            return 0
+        arr, u64_ids, pairs = self._owner._prepare(hex_ids, vectors)
+        TurboIndex._add_deduped(self._index, arr, u64_ids)
+        self._owner._ids.stage_many(pairs)
+        self._count = len(self._index)
+        return len(hex_ids)
+
+    def commit(self) -> int:
+        with self._owner._lock:
+            self._owner._index = self._index
+            self._owner._ids.commit_staged()
+        return self._count
+
+    def abort(self) -> None:
+        self._owner._ids.clear_staged()

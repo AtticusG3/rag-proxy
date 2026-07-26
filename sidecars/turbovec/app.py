@@ -40,6 +40,17 @@ AUTO_SAVE = os.getenv("TURBOVEC_AUTO_SAVE", "true").strip().lower() in (
 
 index: Optional[TurboIndex] = None
 
+# A rebuild holds a second copy of the index in RAM; never run two at once.
+# Created lazily so the lock binds to the running loop (Python < 3.10).
+_reindex_lock: Optional[asyncio.Lock] = None
+
+
+def _get_reindex_lock() -> asyncio.Lock:
+    global _reindex_lock
+    if _reindex_lock is None:
+        _reindex_lock = asyncio.Lock()
+    return _reindex_lock
+
 
 def _require_index() -> TurboIndex:
     if index is None:
@@ -102,33 +113,45 @@ def _point_vector(point: dict[str, Any]) -> list[float] | None:
 
 
 async def sync_from_qdrant(collection: str) -> int:
+    async with _get_reindex_lock():
+        return await _sync_from_qdrant_locked(collection)
+
+
+async def _sync_from_qdrant_locked(collection: str) -> int:
     idx = _require_index()
-    await asyncio.to_thread(idx.reset)
-    added = 0
+    rebuild = idx.rebuild()
     offset: str | int | None = None
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        while True:
-            batch, offset = await _scroll_page(client, collection, offset, SCROLL_BATCH)
-            if batch:
-                ids: list[str] = []
-                vectors: list[list[float]] = []
-                for point in batch:
-                    point_id = point.get("id")
-                    vector = _point_vector(point)
-                    if point_id is None or vector is None:
-                        continue
-                    if len(vector) != idx.dim:
-                        continue
-                    ids.append(str(point_id))
-                    vectors.append(vector)
-                if ids:
-                    added += await asyncio.to_thread(idx.add, ids, vectors)
-            if offset is None:
-                break
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            while True:
+                batch, offset = await _scroll_page(
+                    client, collection, offset, SCROLL_BATCH
+                )
+                if batch:
+                    ids: list[str] = []
+                    vectors: list[list[float]] = []
+                    for point in batch:
+                        point_id = point.get("id")
+                        vector = _point_vector(point)
+                        if point_id is None or vector is None:
+                            continue
+                        if len(vector) != idx.dim:
+                            continue
+                        ids.append(str(point_id))
+                        vectors.append(vector)
+                    if ids:
+                        await asyncio.to_thread(rebuild.add, ids, vectors)
+                if offset is None:
+                    break
+        count = await asyncio.to_thread(rebuild.commit)
+    except BaseException:
+        # Leave the previous index installed rather than half a corpus.
+        await asyncio.to_thread(rebuild.abort)
+        raise
     if AUTO_SAVE:
         await asyncio.to_thread(idx.save)
-    log.info("turbovec reindex collection=%s vectors=%d", collection, added)
-    return added
+    log.info("turbovec reindex collection=%s vectors=%d", collection, count)
+    return count
 
 
 @asynccontextmanager
