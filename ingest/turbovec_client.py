@@ -86,7 +86,7 @@ def trigger_reindex(
     if not url:
         return None
     try:
-        with httpx.Client(timeout=600.0) as client:
+        with httpx.Client(timeout=1800.0) as client:
             response = client.post(
                 f"{url.rstrip('/')}/reindex",
                 json={"collection": collection},

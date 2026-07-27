@@ -400,6 +400,19 @@ def test_derive_sidecar_phase_priority() -> None:
     )
     assert (
         derive_sidecar_phase(
+            kind="turbovec",
+            configured=True,
+            mode="each",
+            ok=True,
+            dirty=True,
+            reindexing=False,
+            queue_active=True,
+            dual_write=True,
+        )
+        == "dual_write"
+    )
+    assert (
+        derive_sidecar_phase(
             kind="sparse",
             configured=True,
             mode="idle",

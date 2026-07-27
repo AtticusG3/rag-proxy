@@ -157,10 +157,12 @@ def derive_sidecar_phase(
         return "unconfigured"
     if reindexing:
         return "reindexing"
+    if kind == "turbovec" and dual_write and queue_active:
+        # Dual-write keeps TurboVec current during ingest; a failed per-file
+        # full reindex (each mode at corpus scale) should not mask that.
+        return "dual_write"
     if dirty:
         return "pending_reindex"
-    if kind == "turbovec" and dual_write and queue_active:
-        return "dual_write"
     if ok is False:
         return "down"
     if mode == "off":

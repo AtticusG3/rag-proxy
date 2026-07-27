@@ -244,7 +244,7 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "idle",
         hot=True,
         options=("off", "each", "idle"),
-        help_text="When to rebuild TurboVec from Qdrant (dual-write is primary; reindex for recovery).",
+        help_text="When to rebuild TurboVec from Qdrant (dual-write is primary; reindex for recovery). At corpus scale use idle, not each -- each triggers a full scroll (~10+ min) after every file.",
     ),
     SettingField(
         "RAG_PROXY_URL",

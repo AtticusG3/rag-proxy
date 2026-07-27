@@ -299,7 +299,7 @@ def trigger_sparse_reindex(config: IngestConfig) -> int | None:
         return None
     url = f"{config.sparse_index_url.rstrip('/')}/reindex"
     try:
-        with httpx.Client(timeout=300.0) as client:
+        with httpx.Client(timeout=1800.0) as client:
             response = client.post(url, json={"collection": config.qdrant_collection})
             response.raise_for_status()
             return int(response.json().get("docs", 0))
