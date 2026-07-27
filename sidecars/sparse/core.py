@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import gc
-import re
 import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from rank_bm25 import BM25Okapi
+import bm25s
 
 try:
     from rag_proxy.chunk_text import PAYLOAD_TEXT_KEYS, extract_chunk_text
@@ -24,18 +23,26 @@ _RECENCY_KEYS = ("updated_at", "mtime", "timestamp")
 # Sparse-only hits never touch Qdrant, so citations come from these keys alone.
 PROVENANCE_KEYS = ("source", "title", "chunk_idx")
 
-_TOKEN_RE = re.compile(r"\w+")
+# Match the whole-word tokens the sidecar has always indexed rather than the
+# bm25s default, which drops single-character tokens.
+_TOKEN_PATTERN = r"(?u)\w+"
 
-
-def tokenize(text: str) -> list[str]:
-    return _TOKEN_RE.findall(text.lower())
+# Stopwords carry ~0 BM25 weight but appear in nearly every document, so keeping
+# them turns their rows in the score matrix dense. Dropping them is what makes a
+# full-corpus index fit in RAM.
+_TOKENIZE_KWARGS: dict[str, Any] = {
+    "token_pattern": _TOKEN_PATTERN,
+    "stopwords": "en",
+    "stemmer": None,
+    "show_progress": False,
+}
 
 
 @dataclass
 class IndexedDoc:
     doc_id: str
     payload: dict[str, Any]
-    tokens: list[str]
+    text: str
 
 
 def slim_payload(full: dict[str, Any], text: str) -> dict[str, Any]:
@@ -63,21 +70,16 @@ def point_to_doc(point: dict[str, Any]) -> IndexedDoc | None:
     doc_id = str(point.get("id", ""))
     if not doc_id:
         return None
-    tokens = tokenize(text)
-    if not tokens:
-        return None
-    return IndexedDoc(
-        doc_id=doc_id,
-        payload=slim_payload(payload, text),
-        tokens=tokens,
-    )
+    slim = slim_payload(payload, text)
+    # Same str object the payload already holds, so the corpus costs no extra memory.
+    return IndexedDoc(doc_id=doc_id, payload=slim, text=text)
 
 
 class SparseIndex:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._docs: list[IndexedDoc] = []
-        self._bm25: BM25Okapi | None = None
+        self._bm25: bm25s.BM25 | None = None
         self.collection = ""
         self.last_sync = 0.0
         self.point_count = 0
@@ -89,8 +91,16 @@ class SparseIndex:
                 self._docs.append(doc)
 
     def finalize(self, collection: str) -> int:
-        corpus = [doc.tokens for doc in self._docs]
-        bm25 = BM25Okapi(corpus) if corpus else None
+        bm25: bm25s.BM25 | None = None
+        if self._docs:
+            corpus_tokens = bm25s.tokenize(
+                [doc.text for doc in self._docs], **_TOKENIZE_KWARGS
+            )
+            bm25 = bm25s.BM25()
+            bm25.index(corpus_tokens, show_progress=False)
+            # Token ids are the build-time peak; the score matrix replaces them.
+            del corpus_tokens
+            gc.collect()
         with self._lock:
             self._bm25 = bm25
             self.collection = collection
@@ -100,34 +110,29 @@ class SparseIndex:
 
     def search(self, query: str, limit: int) -> list[dict[str, Any]]:
         with self._lock:
-            if not self._bm25 or not self._docs:
+            if self._bm25 is None or not self._docs:
                 return []
             docs = self._docs
             bm25 = self._bm25
 
-        query_tokens = tokenize(query)
-        if not query_tokens:
+        if limit <= 0:
             return []
-        query_token_set = set(query_tokens)
-        scores = bm25.get_scores(query_tokens)
-        candidate_n = min(len(docs), max(limit * 10, limit))
-        ranked = sorted(
-            range(len(scores)),
-            key=lambda i: float(scores[i]),
-            reverse=True,
-        )[:candidate_n]
+        query_tokens = bm25s.tokenize(query, **_TOKENIZE_KWARGS)
+        # retrieve() raises when k exceeds the corpus size.
+        k = min(limit, len(docs))
+        indices, scores = bm25.retrieve(query_tokens, k=k, show_progress=False)
 
         results: list[dict[str, Any]] = []
-        for index in ranked:
-            if len(results) >= limit:
-                break
-            doc = docs[index]
-            if not query_token_set.intersection(doc.tokens):
+        for position, score in zip(indices[0], scores[0]):
+            # Every IDF is non-negative here, so a positive score means the doc
+            # shares at least one query term. Zeros are padding, not matches.
+            if score <= 0:
                 continue
+            doc = docs[int(position)]
             results.append(
                 {
                     "id": doc.doc_id,
-                    "score": float(scores[index]),
+                    "score": float(score),
                     "payload": doc.payload,
                 }
             )

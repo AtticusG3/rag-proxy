@@ -61,6 +61,51 @@ def test_sparse_index_search_returns_matching_docs() -> None:
         assert "source_path" not in hit["payload"]
 
 
+def test_search_does_not_pad_results_with_unmatched_docs() -> None:
+    """bm25s always returns k rows, padding with zero-score docs. Those are not
+    matches -- letting them through would feed unrelated ids into the proxy's RRF
+    merge, where rank alone decides and a zero score is invisible."""
+    points = [
+        {"id": "a", "payload": {"text": "python asyncio tutorial"}},
+        {"id": "b", "payload": {"text": "rust ownership basics"}},
+        {"id": "c", "payload": {"text": "baking sourdough bread"}},
+    ]
+    index = SparseIndex()
+    index.add_points(points)
+    index.finalize("test")
+
+    hits = index.search("asyncio", limit=5)
+    assert [h["id"] for h in hits] == ["a"]
+    assert hits[0]["score"] > 0
+
+
+def test_stopword_only_query_matches_nothing() -> None:
+    """Stopwords are dropped at index time to keep the full corpus in RAM, so a
+    query made only of them has no terms left and must return nothing rather than
+    the entire corpus."""
+    index = SparseIndex()
+    index.add_points([{"id": "a", "payload": {"text": "python asyncio tutorial"}}])
+    index.finalize("test")
+
+    assert index.search("the and of", limit=5) == []
+
+
+def test_search_ranks_denser_term_matches_first() -> None:
+    """Score ordering drives the sparse leg's rank, so the doc covering both query
+    terms must outrank the one covering a single term."""
+    points = [
+        {"id": "both", "payload": {"text": "python asyncio guide to asyncio"}},
+        {"id": "one", "payload": {"text": "python packaging guide"}},
+    ]
+    index = SparseIndex()
+    index.add_points(points)
+    index.finalize("test")
+
+    hits = index.search("python asyncio", limit=2)
+    assert [h["id"] for h in hits] == ["both", "one"]
+    assert hits[0]["score"] > hits[1]["score"]
+
+
 def test_registry_install_replaces_old_index() -> None:
     registry = IndexRegistry()
     first = SparseIndex()
