@@ -124,6 +124,16 @@ class IdStore:
             self._conn.execute("DELETE FROM id_map_staging")
             self._conn.commit()
 
+    def delete_staged(self, u64_ids: list[int]) -> None:
+        if not u64_ids:
+            return
+        with self._lock:
+            self._conn.executemany(
+                "DELETE FROM id_map_staging WHERE u64 = ?",
+                [(str(uid),) for uid in u64_ids],
+            )
+            self._conn.commit()
+
     def commit_staged(self) -> None:
         with self._lock, self._conn:
             self._conn.execute("DELETE FROM id_map")
@@ -184,6 +194,7 @@ class TurboIndex:
         self._lock = threading.Lock()
         self._ids = IdStore(self.id_db_path)
         self._index = IdMapIndex(dim=dim, bit_width=bit_width)
+        self._rebuild: "TurboRebuild | None" = None
 
     def close(self) -> None:
         self._ids.close()
@@ -249,11 +260,16 @@ class TurboIndex:
         with self._lock:
             self._add_deduped(self._index, arr, u64_ids)
             self._ids.put_many(pairs)
+            if self._rebuild is not None:
+                self._rebuild.record_add(arr, u64_ids, pairs)
         return len(hex_ids)
 
     def rebuild(self) -> "TurboRebuild":
         """Start a full rebuild; the live index keeps serving until commit()."""
-        return TurboRebuild(self)
+        rebuild = TurboRebuild(self)
+        with self._lock:
+            self._rebuild = rebuild
+        return rebuild
 
     def remove(self, hex_ids: list[str]) -> int:
         if not hex_ids:
@@ -267,6 +283,8 @@ class TurboIndex:
                     removed += 1
                 u64_list.append(uid)
             self._ids.delete_many(u64_list)
+            if self._rebuild is not None:
+                self._rebuild.record_remove(u64_list)
         return removed
 
     def search(
@@ -330,12 +348,19 @@ class TurboRebuild:
 
     Resetting in place leaves the sidecar answering every search with zero hits
     for the whole reindex, so vectors accumulate here and swap in atomically.
+
+    The staged index reflects the Qdrant scroll as it was when the rebuild
+    started. Dual-write keeps hitting the live index throughout that scroll --
+    ~10 minutes at corpus scale -- so those writes are journalled and replayed
+    into the staged index at commit time. Without the replay the swap silently
+    drops every point ingested during the rebuild window.
     """
 
     def __init__(self, owner: TurboIndex) -> None:
         self._owner = owner
         self._index = IdMapIndex(dim=owner.dim, bit_width=owner.bit_width)
         self._count = 0
+        self._journal: list[tuple[str, Any]] = []
         owner._ids.clear_staged()
 
     def add(self, hex_ids: list[str], vectors: list[list[float]]) -> int:
@@ -347,11 +372,39 @@ class TurboRebuild:
         self._count = len(self._index)
         return len(hex_ids)
 
+    def record_add(self, arr: np.ndarray, u64_ids: np.ndarray, pairs: list[tuple[int, str]]) -> None:
+        """Journal a live add. Caller must hold the owner lock."""
+        self._journal.append(("add", (arr, u64_ids, pairs)))
+
+    def record_remove(self, u64_ids: list[int]) -> None:
+        """Journal a live remove. Caller must hold the owner lock."""
+        self._journal.append(("remove", list(u64_ids)))
+
+    def _replay_journal(self) -> None:
+        for kind, payload in self._journal:
+            if kind == "add":
+                arr, u64_ids, pairs = payload
+                TurboIndex._add_deduped(self._index, arr, u64_ids)
+                self._owner._ids.stage_many(pairs)
+            else:
+                for uid in payload:
+                    self._index.remove(int(uid))
+                self._owner._ids.delete_staged(payload)
+        self._journal.clear()
+
     def commit(self) -> int:
         with self._owner._lock:
+            # Same lock the live add/remove path takes, so nothing can slip in
+            # between the last replayed write and the swap.
+            self._replay_journal()
             self._owner._index = self._index
             self._owner._ids.commit_staged()
+            self._owner._rebuild = None
+            self._count = len(self._index)
         return self._count
 
     def abort(self) -> None:
+        with self._owner._lock:
+            self._owner._rebuild = None
+            self._journal.clear()
         self._owner._ids.clear_staged()

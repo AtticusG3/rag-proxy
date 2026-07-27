@@ -444,6 +444,73 @@ def test_aborted_rebuild_leaves_live_index_intact():
     not turbovec_core.HAS_TURBOVEC,
     reason="turbovec package not installed",
 )
+def test_dual_write_during_rebuild_survives_the_swap():
+    """Ingest keeps dual-writing for the ~10 min a full reindex takes.
+
+    The staged index only holds the Qdrant snapshot from when the scroll began,
+    so committing it must not discard points that landed in the meantime -- that
+    silently strands them out of dense retrieval until the next reindex.
+    """
+    import numpy as np
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "idx.tvim"
+        idx = turbovec_core.TurboIndex(dim=8, bit_width=4, index_path=path)
+        try:
+            scrolled_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            live_id = "cccccccccccccccccccccccccccccccc"
+            vectors = np.eye(3, 8, dtype=np.float32).tolist()
+            idx.add([scrolled_id], [vectors[0]])
+
+            rebuild = idx.rebuild()
+            rebuild.add([scrolled_id], [vectors[0]])
+            idx.add([live_id], [vectors[2]])
+
+            assert rebuild.commit() == 2
+            assert len(idx) == 2
+            assert idx.search(vectors[2], limit=1)[0]["id"] == live_id
+            assert idx.search(vectors[0], limit=1)[0]["id"] == scrolled_id
+        finally:
+            idx.close()
+
+
+@pytest.mark.skipif(
+    not turbovec_core.HAS_TURBOVEC,
+    reason="turbovec package not installed",
+)
+def test_delete_during_rebuild_is_not_resurrected_by_the_swap():
+    """A point deleted mid-rebuild is still in the staged snapshot.
+
+    Replaying only adds would bring it back to life on commit, leaving dense
+    hits pointing at a Qdrant id that no longer exists.
+    """
+    import numpy as np
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "idx.tvim"
+        idx = turbovec_core.TurboIndex(dim=8, bit_width=4, index_path=path)
+        try:
+            kept_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            doomed_id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            vectors = np.eye(2, 8, dtype=np.float32).tolist()
+            idx.add([kept_id, doomed_id], vectors)
+
+            rebuild = idx.rebuild()
+            rebuild.add([kept_id, doomed_id], vectors)
+            assert idx.remove([doomed_id]) == 1
+
+            assert rebuild.commit() == 1
+            assert len(idx) == 1
+            assert idx.search(vectors[0], limit=1)[0]["id"] == kept_id
+            assert [h["id"] for h in idx.search(vectors[1], limit=2)] == [kept_id]
+        finally:
+            idx.close()
+
+
+@pytest.mark.skipif(
+    not turbovec_core.HAS_TURBOVEC,
+    reason="turbovec package not installed",
+)
 def test_search_skips_ann_hit_when_id_map_row_missing():
     """ANN may return a u64, but without id_map we must not synthesize a Qdrant id."""
     import sqlite3
