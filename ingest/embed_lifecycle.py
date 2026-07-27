@@ -110,6 +110,15 @@ def uses_dedicated_query_embed_unit() -> bool:
     return port == dedicated_query_embed_port()
 
 
+def query_embed_always_on() -> bool:
+    """Keep the query embed resident while the ingest pool still idle-stops.
+
+    EMBED_ON_DEMAND is all-or-nothing, so trading first-query latency for VRAM
+    on :8089 would otherwise also pin every pool instance.
+    """
+    return parse_bool(os.getenv("EMBED_QUERY_ALWAYS_ON"), False)
+
+
 def unit_for_embed_url(url: str) -> str | None:
     port = embed_port(url)
     if port is None:
@@ -253,7 +262,7 @@ def collect_embed_stop_units(*, pool_env_path: str | None = None) -> list[str]:
     )
     config = load_embed_pool_config()
     units: set[str] = set()
-    if uses_dedicated_query_embed_unit():
+    if uses_dedicated_query_embed_unit() and not query_embed_always_on():
         units.add(QUERY_EMBED_UNIT)
     for url in _read_env_urls(pool_env_path):
         unit = unit_for_embed_url(url)

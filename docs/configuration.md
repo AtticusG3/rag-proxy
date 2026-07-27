@@ -254,6 +254,7 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `EMBED_STARTUP_TIMEOUT_SEC` | `120` | Max wait for embed health after on-demand start |
 | `EMBED_ACTIVITY_STAMP_PATH` | `/var/lib/rag_proxy/embed_last_activity` | Shared last-embed timestamp (ingest + proxy) |
 | `EMBED_ON_DEMAND` | `true` | Start/stop nomic systemd units around embed work (Linux + systemctl) |
+| `EMBED_QUERY_ALWAYS_ON` | `false` | Exempt the query embed (`nomic-embed.service`, :8089) from the idle stop so RAG queries never wait for llama-server to load. Pool instances still unload. Costs ~1 GiB VRAM |
 | `EMBED_IDLE_STOP_SEC` | `180` | Unload all nomic units after this many idle seconds (queue empty) |
 | `EMBED_IDLE_PAUSED_SEC` | `30` | Unload after pause when no embed activity |
 | `NOMIC_QUERY_EMBED_PORT` | `8089` | Port bound by `nomic-embed.service`; on-demand start only touches this unit when `EMBED_URL` points here (else it starts the matching `nomic-embed@PORT`) |
