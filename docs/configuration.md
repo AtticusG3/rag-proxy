@@ -313,7 +313,7 @@ Not loaded by `rag_proxy/config.py`. Set in Docker compose or sidecar unit env.
 
 TurboVec `TURBOVEC_AUTO_SAVE` defaults to `true` (save after each mutating request). Set `false` during bulk ingest dual-write; finish with `POST /save`. See [TurboVec rollout](#turbovec-rollout-cut-qdrant-ram).
 
-Sparse `SPARSE_MAX_POINTS` defaults to `0` (index the whole collection). The BM25 index costs roughly **6.3 KB per document** — 1.5M docs settle near 9.4 GB with a 12.8 GB build peak, and a rebuild transiently holds the old index alongside the new one. Cap it only on memory-constrained hosts; `GET /health` reports `truncated: true` when the cap is hiding part of the corpus. Every `SPARSE_REFRESH_SEC` tick rebuilds from scratch (~12 min at 1.5M docs), so raise that interval when the ingest worker already reindexes on idle via `INGEST_SPARSE_REINDEX`.
+Sparse `SPARSE_MAX_POINTS` defaults to `0` (index the whole collection). The BM25 index costs roughly **6.3 KB per document** — 1.5M docs settle near 9.4 GB with a 12.8 GB build peak, and a rebuild transiently holds the old index alongside the new one. Cap it only on memory-constrained hosts; `GET /health` reports `truncated: true` when the cap is hiding part of the corpus. Every `SPARSE_REFRESH_SEC` tick rebuilds from scratch (~12 min at 1.5M docs), so keep that interval long — the shipped unit uses 6 h. It is only a safety net, because the ingest worker already reindexes on idle via `INGEST_SPARSE_REINDEX`.
 
 Proxy references rerank/sparse/turbovec via `RERANKER_URL`, `SPARSE_INDEX_URL`, and `TURBOVEC_URL` only.
 

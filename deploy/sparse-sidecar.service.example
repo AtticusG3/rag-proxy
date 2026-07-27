@@ -18,10 +18,10 @@ Environment=SPARSE_HOST=127.0.0.1
 Environment=QDRANT_URL=http://127.0.0.1:6333
 Environment=QDRANT_COLLECTION=nomad_knowledge_base
 Environment=LOG_LEVEL=INFO
-# Every tick rebuilds the whole index from Qdrant. At 1.5M docs that is ~12 min of
-# scrolling, so raise this well above the default if the ingest worker already
-# reindexes on idle (INGEST_SPARSE_REINDEX).
-Environment=SPARSE_REFRESH_SEC=3600
+# Every tick rebuilds the whole index from Qdrant: ~12 min of scrolling at 1.5M docs.
+# This is only a safety net -- the ingest worker already reindexes on idle
+# (INGEST_SPARSE_REINDEX) -- so keep it infrequent. Hourly costs a 20% duty cycle.
+Environment=SPARSE_REFRESH_SEC=21600
 Environment=SPARSE_SCROLL_BATCH=256
 # 0 = full corpus. Measured ~6.3 KB/doc: 1.5M docs settles near 9.4 GB with a
 # 12.8 GB build peak, and a rebuild briefly holds the old index too.
