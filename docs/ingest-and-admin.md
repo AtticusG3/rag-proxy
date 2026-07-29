@@ -279,6 +279,12 @@ Cron helper for subscription update checks:
 python scripts/catalog_weekly_update.py
 ```
 
+For Kiwix/DevDocs packages, auto-update keeps **only the newest dated ZIM** per
+`package_key`. When a newer archive is downloaded, older siblings are removed from
+disk and from all indexes (Qdrant, BM25, MemGraphRAG, ingest state). Running
+"Check updates" (or the weekly cron) also retires orphans left from earlier
+version bumps.
+
 ## MCP retrieval tools
 
 `sidecars/mcp_rag/` exposes MCP tools for IDE/agent integration (Hermes, Cursor, OpenClaw) — separate from the HTTP proxy path:

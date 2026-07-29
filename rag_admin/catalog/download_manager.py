@@ -77,12 +77,22 @@ class CatalogDownloadManager:
         catalog_path: str | None = None,
     ) -> int:
         meta = fetch_remote_meta(remote_url)
-        file_name = Path(self._local_path_for(source_id, remote_url)).name
-        local_path = self._local_path_for(source_id, remote_url)
+        dest_path = self._local_path_for(source_id, remote_url)
+        file_name = Path(dest_path).name
         if not package_key:
             parsed = parse_zim_stamp(file_name)
             if parsed is not None:
                 package_key = parsed[0]
+        # Prefer the currently indexed path when bumping a dated package so the
+        # downloader can retire the previous archive after the new file lands.
+        local_path = dest_path
+        if package_key:
+            existing = self.db.get_subscription_by_package(
+                source_id, package_key, catalog_path or ""
+            )
+            prev = (existing or {}).get("local_path")
+            if prev and str(prev) != dest_path:
+                local_path = str(prev)
         sub_id = self.db.create_subscription(
             source_id=source_id,
             remote_url=remote_url,
@@ -97,6 +107,61 @@ class CatalogDownloadManager:
         self.db.update_subscription(sub_id, status="queued")
         return sub_id
 
+    def _retire_local_file(self, path: str) -> None:
+        """Drop a local archive from indexes and disk (no-op if path empty)."""
+        if not path:
+            return
+        if self.ingest_worker is not None:
+            self.ingest_worker.remove_file_from_index(path)
+            return
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except OSError:
+                log.warning("failed to remove superseded file %s", path)
+
+    def _purge_superseded_package_files(
+        self, *, package_key: str | None, keep_path: str
+    ) -> None:
+        """Remove older dated ZIMs for the same package; keep only keep_path.
+
+        Scans zim_dir and ingest file_state so orphans left by prior version bumps
+        (when local_path was rewritten before the old file was retired) are healed.
+        """
+        if not package_key or not keep_path:
+            return
+        keep_name = Path(keep_path).name.lower()
+        candidates: set[str] = set()
+        if os.path.isdir(self.zim_dir):
+            for name in os.listdir(self.zim_dir):
+                if name.endswith(".part"):
+                    continue
+                parsed = parse_zim_stamp(name)
+                if parsed is None or parsed[0] != package_key:
+                    continue
+                if name.lower() == keep_name:
+                    continue
+                candidates.add(os.path.join(self.zim_dir, name))
+        ingest = getattr(self.db, "ingest", None)
+        if ingest is not None:
+            for row in ingest.list_file_states():
+                name = row.get("file_name") or Path(row["file_path"]).name
+                parsed = parse_zim_stamp(str(name))
+                if parsed is None or parsed[0] != package_key:
+                    continue
+                if str(name).lower() == keep_name:
+                    continue
+                candidates.add(str(row["file_path"]))
+        for path in sorted(candidates):
+            if Path(path).name.lower() == keep_name:
+                continue
+            log.info(
+                "retiring superseded package file %s (keep %s)",
+                path,
+                keep_path,
+            )
+            self._retire_local_file(path)
+
     def _maybe_queue_newer_zim(self, row: dict[str, Any]) -> bool:
         package_key = row.get("package_key")
         catalog_path = row.get("catalog_path")
@@ -106,12 +171,12 @@ class CatalogDownloadManager:
         latest = resolve_latest_item(listing.get("items", []), package_key)
         if latest is None or latest.url == row.get("remote_url"):
             return False
-        local_path = self._local_path_for(row["source_id"], latest.url)
+        # Keep local_path on the currently indexed file until download finishes so
+        # _download_one can retire it. Only remote_url/file_name point at the newer ZIM.
         self.db.update_subscription(
             row["id"],
             remote_url=latest.url,
             file_name=latest.name,
-            local_path=local_path,
             status="update_queued",
             last_error=None,
         )
@@ -160,6 +225,20 @@ class CatalogDownloadManager:
             if needs:
                 self.db.update_subscription(row["id"], status="update_queued")
                 queued.append(row["id"])
+            else:
+                # Already on latest remote URL: still drop older dated siblings left
+                # on disk / in ingest from earlier buggy version bumps.
+                keep = self._local_path_for(row["source_id"], row["remote_url"])
+                self._purge_superseded_package_files(
+                    package_key=row.get("package_key"),
+                    keep_path=keep,
+                )
+                if keep != row.get("local_path"):
+                    self.db.update_subscription(
+                        row["id"],
+                        local_path=keep,
+                        file_name=Path(keep).name,
+                    )
         return queued
 
     def process_pending_downloads(self, max_items: int = 10) -> int:
@@ -193,17 +272,22 @@ class CatalogDownloadManager:
     def _download_one(self, row: dict[str, Any]) -> None:
         sub_id = row["id"]
         remote_url = row["remote_url"]
-        local_path = row["local_path"]
+        # Destination always follows remote_url so dated version bumps land on the
+        # new filename even when local_path still points at the previous archive.
+        local_path = self._local_path_for(row["source_id"], remote_url)
+        previous_path = row.get("local_path") or ""
         self.db.update_subscription(sub_id, status="downloading", last_error=None)
 
-        old_path = local_path if os.path.isfile(local_path) else None
-        if old_path and self.ingest_worker:
+        same_path = bool(previous_path) and os.path.normpath(
+            previous_path
+        ) == os.path.normpath(local_path)
+        if same_path and os.path.isfile(local_path) and self.ingest_worker:
             from ingest.qdrant_writer import delete_by_source
 
             delete_by_source(
                 self.ingest_worker.config.qdrant_url,
                 self.ingest_worker.config.qdrant_collection,
-                old_path,
+                local_path,
             )
 
         tmp_path = f"{local_path}.part"
@@ -229,6 +313,8 @@ class CatalogDownloadManager:
         self.db.update_subscription(
             sub_id,
             status="downloaded",
+            file_name=Path(local_path).name,
+            local_path=local_path,
             remote_size=meta.get("size_bytes"),
             remote_modified=meta.get("modified"),
             last_downloaded=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -241,6 +327,16 @@ class CatalogDownloadManager:
         )
         if self.ingest_worker:
             self.ingest_worker.enqueue_file(local_path)
+
+        package_key = row.get("package_key")
+        if not package_key:
+            parsed = parse_zim_stamp(Path(local_path).name)
+            if parsed is not None:
+                package_key = parsed[0]
+        self._purge_superseded_package_files(
+            package_key=package_key,
+            keep_path=local_path,
+        )
 
     def retry_subscription(self, sub_id: int) -> bool:
         row = self.db.get_subscription(sub_id)
