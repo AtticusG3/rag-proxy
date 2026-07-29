@@ -110,10 +110,18 @@ async def fetch_qdrant_chunks(
             resp.raise_for_status()
             facet = resp.json()["result"]["hits"]
     except httpx.HTTPStatusError as exc:
-        if exc.response.status_code in (404, 405, 501):
+        # 404/405/501: facet route missing. 400: often "no payload index" for the
+        # stratify field (common on large unindexed corpora). Facet is optional.
+        if exc.response.status_code in (400, 404, 405, 501):
+            detail = ""
+            try:
+                detail = exc.response.text[:300]
+            except Exception:
+                detail = ""
             log.warning(
-                "Qdrant facet API unavailable (HTTP %s); falling back to scroll sampling",
+                "Qdrant facet unavailable (HTTP %s)%s; falling back to scroll sampling",
                 exc.response.status_code,
+                f": {detail}" if detail else "",
             )
             return await fetch_qdrant_chunks_via_scroll(
                 qdrant_url=qdrant_url,
@@ -310,7 +318,14 @@ async def fetch_qdrant_chunks_via_scroll(
 # ---------------------------------------------------------------------------
 
 class LLMClient:
-    """Minimal OpenAI-compatible LLM client."""
+    """Minimal OpenAI-compatible LLM client for offline MemGraph extraction.
+
+    coding-model (and peers) start llama-server with huge ``--n-predict`` and
+    ``--reasoning-budget`` defaults meant for long coding sessions. Extraction
+    only needs a short JSON object, so we disable thinking and cap
+    ``max_tokens`` to the answer budget — otherwise reasoning burns the cap
+    and content arrives empty/truncated (or the upstream OOMs on long thinks).
+    """
 
     def __init__(self, base_url: str, model: str, api_key: str = "rag-proxy", temperature: float = 0.0):
         self.base_url = base_url.rstrip("/")
@@ -319,7 +334,7 @@ class LLMClient:
         self.temperature = temperature
         self._cache: dict[str, str] = {}
 
-    async def chat(self, system: str, user: str, max_tokens: int = 1024) -> str:
+    async def chat(self, system: str, user: str, max_tokens: int = 768) -> str:
         key = hashlib.md5(f"{system}{user}".encode()).hexdigest()
         if key in self._cache:
             return self._cache[key]
@@ -331,7 +346,11 @@ class LLMClient:
                 {"role": "user", "content": user},
             ],
             "temperature": self.temperature,
+            # Answer budget only (JSON). Do not rely on server --n-predict 65536.
             "max_tokens": max_tokens,
+            # CLI sets --reasoning-budget ~53k; per-request thinking_budget_tokens
+            # is ignored or injects the budget-exceeded message. Template kwargs works.
+            "chat_template_kwargs": {"enable_thinking": False},
         }
         async with httpx.AsyncClient(timeout=300) as client:
             resp = await client.post(
@@ -340,9 +359,34 @@ class LLMClient:
                 headers={"Authorization": f"Bearer {self.api_key}"},
             )
             resp.raise_for_status()
-            text = resp.json()["choices"][0]["message"]["content"]
+            message = resp.json()["choices"][0]["message"]
+            text = (message.get("content") or "").strip()
+            if not text:
+                text = (message.get("reasoning_content") or "").strip()
             self._cache[key] = text
             return text
+
+
+def _extract_json_object(raw: str) -> dict | None:
+    """Parse the first JSON object from model output (optional markdown fence)."""
+    text = raw.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start < 0 or end <= start:
+        return None
+    try:
+        data = json.loads(text[start:end])
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
 
 # ---------------------------------------------------------------------------
 # Extraction prompts
@@ -389,11 +433,8 @@ async def extract_entities(llm: LLMClient, text: str) -> list[dict]:
     """Extract entities from text using LLM. Returns [] on failure (with warning)."""
     try:
         raw = await llm.chat(ENTITY_PROMPT_SYSTEM, f"Text:\n{text}")
-        # Find JSON in response
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start >= 0 and end > start:
-            data = json.loads(raw[start:end])
+        data = _extract_json_object(raw)
+        if data is not None:
             return data.get("entities", [])
         log.warning("Entity extraction: no JSON object found in response (len=%d)", len(raw))
     except Exception as e:
@@ -406,10 +447,8 @@ async def extract_relations(llm: LLMClient, text: str, entities: list[dict]) -> 
         entity_list = "\n".join(f"- {e['text']} ({e['type']})" for e in entities)
         user_msg = f"Text:\n{text}\n\nEntities:\n{entity_list}"
         raw = await llm.chat(RELATION_PROMPT_SYSTEM, user_msg)
-        start = raw.find("{")
-        end = raw.rfind("}") + 1
-        if start >= 0 and end > start:
-            data = json.loads(raw[start:end])
+        data = _extract_json_object(raw)
+        if data is not None:
             return data.get("triples", [])
         log.warning("Relation extraction: no JSON object found in response (len=%d)", len(raw))
     except Exception as e:

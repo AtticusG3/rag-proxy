@@ -29,8 +29,8 @@ class _FakeResponse:
         return self._body
 
 
-def test_fetch_qdrant_chunks_falls_back_when_facet_missing() -> None:
-    """Facet 404 must route to scroll sampling on older/custom Qdrant builds."""
+def _assert_facet_falls_back(status_code: int) -> None:
+    """Facet failures must not abort the build: scroll sampling is the fallback."""
     scroll_chunks = [
         {
             "chunk_id": "pt-1",
@@ -47,7 +47,7 @@ def test_fetch_qdrant_chunks_falls_back_when_facet_missing() -> None:
 
             async def post(self, url: str, json: dict[str, Any] | None = None) -> _FakeResponse:
                 if url.endswith("/facet"):
-                    return _FakeResponse(status_code=404)
+                    return _FakeResponse(status_code=status_code)
                 raise AssertionError(url)
 
             async def __aenter__(self) -> _FakeClient:
@@ -69,6 +69,16 @@ def test_fetch_qdrant_chunks_falls_back_when_facet_missing() -> None:
 
     chunks = asyncio.run(_run())
     assert chunks == scroll_chunks
+
+
+def test_fetch_qdrant_chunks_falls_back_when_facet_missing() -> None:
+    """Facet 404 must route to scroll sampling on older/custom Qdrant builds."""
+    _assert_facet_falls_back(404)
+
+
+def test_fetch_qdrant_chunks_falls_back_when_facet_lacks_payload_index() -> None:
+    """Facet 400 (no index on stratify field) must not kill MemGraph builds."""
+    _assert_facet_falls_back(400)
 
 
 def test_scroll_sampling_returns_text_chunks() -> None:
