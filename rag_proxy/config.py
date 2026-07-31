@@ -47,10 +47,19 @@ class Settings:
     # Upstream / data plane
     llama_swap_url: str = field(default_factory=lambda: os.getenv("LLAMA_SWAP_URL", "http://127.0.0.1:8080"))
     embed_url: str = field(default_factory=lambda: os.getenv("EMBED_URL", "http://127.0.0.1:8089"))
+    # OpenAI-compatible embeddings model id (nomic id until llama-swap cutover sets embed-pool).
+    embed_model: str = field(
+        default_factory=lambda: (
+            os.getenv("EMBED_MODEL", "nomic-embed-text-v1.5").strip()
+            or "nomic-embed-text-v1.5"
+        )
+    )
     qdrant_url: str = field(default_factory=lambda: os.getenv("QDRANT_URL", "http://192.168.1.36:6333"))
     qdrant_collection: str = field(
         default_factory=lambda: os.getenv("QDRANT_COLLECTION", "nomad_knowledge_base")
     )
+    # Dense vector width for new Qdrant collections (768 nomic; 2560 for qwen3-embedding-4b).
+    qdrant_vector_size: int = field(default_factory=lambda: _env_int("QDRANT_VECTOR_SIZE", 768))
     top_k: int = field(default_factory=lambda: _env_int("TOP_K", 5))
     similarity_threshold: float = field(
         default_factory=lambda: _env_float("SIMILARITY_THRESHOLD", 0.65)
@@ -204,6 +213,19 @@ class Settings:
     recency_weight: float = field(default_factory=lambda: _env_float("RECENCY_WEIGHT", 0.1))
     reranker_url: str = field(
         default_factory=lambda: os.getenv("RERANKER_URL", "http://127.0.0.1:8095")
+    )
+    # sidecar = POST {RERANKER_URL}/rerank with pairs/indices; openai = POST /v1/rerank
+    # (llama-swap / llama-server). Default sidecar preserves the cognitive rerank unit.
+    rerank_api: str = field(
+        default_factory=lambda: (
+            os.getenv("RERANK_API", "sidecar").strip().lower() or "sidecar"
+        )
+    )
+    # Model id for RERANK_API=openai (e.g. reranker-pool). Unused for sidecar POST body.
+    rerank_model: str = field(
+        default_factory=lambda: (
+            os.getenv("RERANK_MODEL", "reranker-pool").strip() or "reranker-pool"
+        )
     )
     rerank_top_k: int = field(default_factory=lambda: _env_int("RERANK_TOP_K", 5))
     rerank_timeout_ms: int = field(default_factory=lambda: _env_int("RERANK_TIMEOUT_MS", 200))

@@ -48,6 +48,7 @@ def test_promote_rag_record_embeds_and_upserts_to_derived_collection(monkeypatch
     monkeypatch.setattr(settings, "rag_corpus_require_chunks", False)
     monkeypatch.setattr(settings, "qdrant_url", "http://qdrant")
     monkeypatch.setattr(settings, "rag_corpus_collection", "derived")
+    monkeypatch.setenv("QDRANT_VECTOR_SIZE", "3")
     upserts = []
 
     async def fake_embedding(text: str):

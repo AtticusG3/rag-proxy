@@ -63,7 +63,7 @@ def test_embed_query_uses_openai_embeddings_contract() -> None:
     assert len(captured) == 1
     url, payload = captured[0]
     assert url == "http://embed.test/v1/embeddings"
-    assert payload == {"model": "nomic-embed-text-v1.5", "input": "who knows Bob?"}
+    assert payload == {"model": settings.embed_model, "input": "who knows Bob?"}
 
 
 def test_score_facts_uses_precomputed_embeddings_only() -> None:

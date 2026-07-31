@@ -179,11 +179,12 @@ def _enable_start_unit(unit: str) -> None:
 
 
 def _probe_embed(url: str, *, timeout: float = 5.0) -> bool:
+    model = os.getenv("EMBED_MODEL", "nomic-embed-text-v1.5").strip() or "nomic-embed-text-v1.5"
     try:
         with httpx.Client(timeout=timeout) as client:
             response = client.post(
                 f"{url.rstrip('/')}/v1/embeddings",
-                json={"model": "nomic-embed-text-v1.5", "input": ["pool-health"]},
+                json={"model": model, "input": ["pool-health"]},
             )
             response.raise_for_status()
             return "embedding" in response.text

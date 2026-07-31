@@ -9,6 +9,11 @@ from dataclasses import dataclass
 import httpx
 
 from rag_proxy.chunk_text import extract_chunk_text
+from rag_proxy.clients.rerank_adapter import (
+    parse_rerank_indices,
+    rerank_request_payload,
+    rerank_request_url,
+)
 from rag_proxy.clients.retrieval_core import (
     dense_search_payload,
     embed_payload,
@@ -228,7 +233,7 @@ def rerank_pairs(
     *,
     top_k: int | None = None,
 ) -> list[int]:
-    """Rerank query-document pairs via sidecar; returns indices in ranked order."""
+    """Rerank query-document pairs via sidecar or OpenAI-style /v1/rerank."""
     if not config.enable_rerank or not config.reranker_url or not pairs:
         cap = top_k if top_k is not None else len(pairs)
         return list(range(min(cap, len(pairs))))
@@ -238,13 +243,17 @@ def rerank_pairs(
             timeout=config.rerank_timeout_sec, headers=_headers(config)
         ) as client:
             r = client.post(
-                f"{config.reranker_url.rstrip('/')}/rerank",
-                json={"pairs": pairs, "top_k": effective_top_k},
+                rerank_request_url(config.reranker_url),
+                json=rerank_request_payload(pairs, effective_top_k),
             )
             r.raise_for_status()
-            order = r.json().get("indices", [])
+            order = parse_rerank_indices(
+                r.json(),
+                n_pairs=len(pairs),
+                top_k=effective_top_k,
+            )
             if order:
-                return [i for i in order if 0 <= i < len(pairs)]
+                return order
     except Exception as e:
         log.warning(f"Rerank failed: {e}")
     return list(range(min(effective_top_k, len(pairs))))

@@ -173,6 +173,8 @@ sudo systemctl restart rag-admin.service   # picks up INGEST_EMBED_URLS from poo
 
 Query RAG uses `:8089` (`nomic-embed.service`). Bulk ingest uses the pool on `18089+` (`nomic-embed@PORT`). With `EMBED_ON_DEMAND=true` (default on Linux), both stop and disable when idle; ingest or a RAG query starts them again automatically.
 
+**Preferred path:** route embeddings through llama-swap (`EMBED_URL` → swap, `EMBED_MODEL=embed-pool`, `EMBED_ON_DEMAND=false`) and retire these nomic units after a parallel 2560-d reindex — see [Configuration — Llama-swap embed cutover](configuration.md#llama-swap-embed-cutover-preferred).
+
 On-demand start maps `EMBED_URL` to a unit by port: only a URL on `NOMIC_QUERY_EMBED_PORT` (`:8089`) starts `nomic-embed.service`; an `EMBED_URL` on a pool port starts the matching `nomic-embed@PORT` instead. When `EMBED_URL` is not on `:8089`, `scripts/run_ingest_capacity_scale.py` skips the query-embed restart so it does not spin up an unused unit.
 
 #### Pin embedding to a specific GPU

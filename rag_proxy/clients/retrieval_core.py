@@ -5,9 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from rag_proxy.config import settings
+
 log = logging.getLogger("rag-proxy")
 
-EMBED_MODEL = "nomic-embed-text-v1.5"
+# Default model id when EMBED_MODEL is unset (legacy nomic until llama-swap cutover).
+DEFAULT_EMBED_MODEL = "nomic-embed-text-v1.5"
+# Back-compat alias; prefer settings.embed_model / embed_payload() at call time.
+EMBED_MODEL = DEFAULT_EMBED_MODEL
 
 
 def prepare_embed_text(text: str, max_chars: int) -> str:
@@ -23,8 +28,9 @@ def embed_input_too_large(response_text: str) -> bool:
     return "too large to process" in response_text
 
 
-def embed_payload(text: str, *, model: str = EMBED_MODEL) -> dict[str, Any]:
-    return {"model": model, "input": text}
+def embed_payload(text: str, *, model: str | None = None) -> dict[str, Any]:
+    """Build OpenAI-compatible embeddings body; model defaults to settings.embed_model."""
+    return {"model": model if model is not None else settings.embed_model, "input": text}
 
 
 def dense_search_payload(
