@@ -9,9 +9,11 @@ Restart the proxy after changing `.env`.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `LLAMA_SWAP_URL` | `http://127.0.0.1:8080` | Upstream OpenAI-compatible chat API base URL (historical name; not limited to llama-swap). Examples: llama-swap, llama-server, vLLM, OpenRouter, OpenAI |
-| `EMBED_URL` | `http://127.0.0.1:8089` | nomic-embed llama-server |
+| `EMBED_URL` | `http://127.0.0.1:8089` | OpenAI-compatible embeddings base (legacy nomic-embed `:8089`, or llama-swap e.g. `:8081`) |
+| `EMBED_MODEL` | `nomic-embed-text-v1.5` | Embeddings model id sent in `/v1/embeddings`. Cutover: `embed-pool` (resolves to qwen3-embedding-4b on Buster llama-swap) |
 | `QDRANT_URL` | `http://192.168.1.36:6333` | Qdrant HTTP API |
 | `QDRANT_COLLECTION` | `nomad_knowledge_base` | Collection name |
+| `QDRANT_VECTOR_SIZE` | `768` | Dense vector width when creating collections (`2560` for full qwen3-embedding-4b) |
 | `TOP_K` | `5` | Max chunks to retrieve |
 | `SIMILARITY_THRESHOLD` | `0.65` | Minimum cosine score to inject |
 | `PROXY_HOST` | `0.0.0.0` | Bind address |
@@ -19,6 +21,52 @@ Restart the proxy after changing `.env`.
 | `LOG_LEVEL` | `INFO` | Python log level |
 | `EMBED_MAX_CHARS` | `2000` | Truncate query text before embed |
 | `EMBED_RETRIES` | `2` | Embed request retries |
+
+### Llama-swap embed cutover (preferred)
+
+Prefer serving embeddings through llama-swap (`embed-pool` → `qwen3-embedding-4b`, **2560-d**) instead of dedicated `nomic-embed*` units:
+
+1. Point `EMBED_URL` at llama-swap (e.g. `http://127.0.0.1:8081` on Buster — not the Hermes gateway on `:8080`).
+2. Set `EMBED_MODEL=embed-pool`, `EMBED_ON_DEMAND=false`, `QDRANT_VECTOR_SIZE=2560`.
+3. Build a **new** collection (e.g. `nomad_knowledge_base_qwen3`); re-ingest — nomic 768-d and Qwen 2560-d are not interchangeable.
+4. Flip `QDRANT_COLLECTION` after validation; keep the old collection read-only until confident.
+5. Clear `INGEST_EMBED_URLS` / disable nomic systemd units on the host (Phase B). Repo unit cleanup is a later PR (Phase C).
+
+When `EMBED_URL` is llama-swap, always set `EMBED_ON_DEMAND=false` so proxy/admin never `systemctl start nomic-embed*`.
+
+**Buster host runbook (operator):**
+
+```bash
+# Confirm chat upstream is llama-swap :8081 (not gateway :8080)
+# In rag-proxy.env / rag-admin.env:
+#   LLAMA_SWAP_URL=http://127.0.0.1:8081
+#   EMBED_URL=http://127.0.0.1:8081
+#   EMBED_MODEL=embed-pool
+#   EMBED_ON_DEMAND=false
+#   QDRANT_VECTOR_SIZE=2560
+#   QDRANT_COLLECTION=nomad_knowledge_base_qwen3
+# Optional chunk align: INGEST_CHUNK_TOKENIZER=Qwen/Qwen3-Embedding-4B
+# Cap concurrency (~2 embed slots): keep INGEST_EMBED_CONCURRENCY <= 2
+
+curl -s http://127.0.0.1:8081/v1/models | head
+curl -s -X POST http://127.0.0.1:8081/v1/embeddings \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"embed-pool","input":"smoke"}'
+# Expect data[0].embedding length 2560
+
+# Create empty collection via ensure_collection / admin ingest of a small slice
+# Full ~3M re-ingest: long wall time; monitor llama-swap /running for CUDA contention
+# Then rebuild MemGraph with MEMGRAPH_BUILD_EMBED_URL pointing at the same EMBED_URL
+# Flip production QDRANT_COLLECTION (+ MCP/admin); keep old 768-d collection read-only
+# systemctl disable --now nomic-embed nomic-embed-scale; clear INGEST_EMBED_URLS
+
+# Phase 2 rerank (after embed stable):
+#   RERANKER_URL=http://127.0.0.1:8081
+#   RERANK_API=openai
+#   RERANK_MODEL=reranker-pool
+```
+
+Full ~3M point reindex is deferred to the host operator; do not kick it from a remote agent without confirmation.
 
 ## Upstream HTTP pool
 
@@ -109,7 +157,9 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 | `TURBOVEC_URL` | *(empty)* | TurboVec dense sidecar (`sidecars/turbovec`, port 8097 typical) |
 | `QDRANT_VECTORS_ON_DISK` | `false` | New collections store float32 vectors on disk (mmap); use after TurboVec is primary |
 | `RECENCY_WEIGHT` | `0.1` | Recency boost on hits |
-| `RERANKER_URL` | `http://127.0.0.1:8095` | Cross-encoder sidecar |
+| `RERANKER_URL` | `http://127.0.0.1:8095` | Rerank base URL (cognitive sidecar, or llama-swap when `RERANK_API=openai`) |
+| `RERANK_API` | `sidecar` | `sidecar` = `POST /rerank` pairs/indices; `openai` = `POST /v1/rerank` (llama-swap / llama-server) |
+| `RERANK_MODEL` | `reranker-pool` | Model id for `RERANK_API=openai` (e.g. `reranker-pool` → jina-reranker-v3.5). Unused in sidecar POST body |
 | `RERANK_TOP_K` | `5` | Chunks after rerank |
 | `RERANK_TIMEOUT_MS` | `200` | Rerank stage budget/timeout |
 
@@ -253,7 +303,7 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `EMBED_IDLE_POLL_SEC` | `15` | Admin idle-guard poll interval |
 | `EMBED_STARTUP_TIMEOUT_SEC` | `120` | Max wait for embed health after on-demand start |
 | `EMBED_ACTIVITY_STAMP_PATH` | `/var/lib/rag_proxy/embed_last_activity` | Shared last-embed timestamp (ingest + proxy) |
-| `EMBED_ON_DEMAND` | `true` | Start/stop nomic systemd units around embed work (Linux + systemctl) |
+| `EMBED_ON_DEMAND` | `true` | Start/stop nomic systemd units around embed work (Linux + systemctl). Set **`false`** when `EMBED_URL` is llama-swap |
 | `EMBED_QUERY_ALWAYS_ON` | `false` | Exempt the query embed (`nomic-embed.service`, :8089) from the idle stop so RAG queries never wait for llama-server to load. Pool instances still unload. Costs ~1 GiB VRAM |
 | `EMBED_IDLE_STOP_SEC` | `180` | Unload all nomic units after this many idle seconds (queue empty) |
 | `EMBED_IDLE_PAUSED_SEC` | `30` | Unload after pause when no embed activity |

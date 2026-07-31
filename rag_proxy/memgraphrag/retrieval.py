@@ -19,6 +19,11 @@ import logging
 import httpx
 import numpy as np
 
+from rag_proxy.clients.rerank_adapter import (
+    parse_rerank_indices,
+    rerank_request_payload,
+    rerank_request_url,
+)
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit
 from rag_proxy.memgraphrag.cache import MemoryIndex
@@ -30,8 +35,6 @@ except ImportError:
     get_reranker_client = None  # type: ignore[assignment,misc]
 
 log = logging.getLogger("rag-proxy.memgraphrag.retrieval")
-
-_EMBED_MODEL = "nomic-embed-text-v1.5"
 
 
 class MemGraphRetriever:
@@ -67,12 +70,12 @@ class MemGraphRetriever:
     # -- embedding ---------------------------------------------------------
 
     async def _embed_query(self, query: str) -> list[float]:
-        """Embed a query string via the nomic-embed OpenAI-compatible API."""
+        """Embed a query string via the OpenAI-compatible embeddings API."""
         trimmed = query.strip()
         if not trimmed:
             return []
         url = f"{self.embed_url.rstrip('/')}/v1/embeddings"
-        payload = {"model": _EMBED_MODEL, "input": trimmed}
+        payload = {"model": settings.embed_model, "input": trimmed}
         if get_embed_client is not None:
             try:
                 client = get_embed_client()
@@ -122,7 +125,7 @@ class MemGraphRetriever:
     async def rerank_facts(
         self, query: str, fact_indices: list[int], fact_texts: list[str]
     ) -> list[tuple[int, float]] | None:
-        """Rerank facts using the cross-encoder sidecar.
+        """Rerank facts using the cross-encoder sidecar or OpenAI-style /v1/rerank.
 
         Returns list of (fact_idx, score) sorted by score descending, or None
         when the sidecar is unavailable or unusable. None means "no opinion" so
@@ -135,8 +138,8 @@ class MemGraphRetriever:
         pairs = [{"query": query, "document": text} for text in fact_texts]
         try:
             timeout = settings.rerank_timeout_ms / 1000.0 + 0.5
-            url = f"{self.reranker_url.rstrip('/')}/rerank"
-            payload = {"pairs": pairs, "top_k": len(fact_indices)}
+            url = rerank_request_url(self.reranker_url)
+            payload = rerank_request_payload(pairs, len(fact_indices))
             resp = None
             if get_reranker_client is not None:
                 try:
@@ -148,7 +151,11 @@ class MemGraphRetriever:
                 async with httpx.AsyncClient(timeout=timeout) as client:
                     resp = await client.post(url, json=payload)
             resp.raise_for_status()
-            order = resp.json().get("indices", [])
+            order = parse_rerank_indices(
+                resp.json(),
+                n_pairs=len(fact_indices),
+                top_k=len(fact_indices),
+            )
             if not order:
                 return None
             ranked: list[tuple[int, float]] = []

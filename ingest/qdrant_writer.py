@@ -20,6 +20,30 @@ DEFAULT_UPSERT_BACKOFF_SEC = 2.0
 _RETRYABLE_HTTP = frozenset({408, 429, 500, 502, 503, 504})
 
 
+def configured_vector_size() -> int:
+    """Dense vector width for new collections (QDRANT_VECTOR_SIZE; default 768)."""
+    raw = os.getenv("QDRANT_VECTOR_SIZE")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_VECTOR_SIZE
+    try:
+        size = int(str(raw).strip())
+    except (TypeError, ValueError):
+        log.warning(
+            "Invalid QDRANT_VECTOR_SIZE=%r; using default %s",
+            raw,
+            DEFAULT_VECTOR_SIZE,
+        )
+        return DEFAULT_VECTOR_SIZE
+    if size <= 0:
+        log.warning(
+            "Non-positive QDRANT_VECTOR_SIZE=%r; using default %s",
+            raw,
+            DEFAULT_VECTOR_SIZE,
+        )
+        return DEFAULT_VECTOR_SIZE
+    return size
+
+
 def qdrant_vectors_on_disk() -> bool:
     raw = os.getenv("QDRANT_VECTORS_ON_DISK", "").strip().lower()
     return raw in ("1", "true", "yes", "on")
@@ -126,16 +150,17 @@ def make_point_id(text: str, source: str, chunk_idx: int) -> str:
 def ensure_collection(
     qdrant_url: str,
     collection: str,
-    vector_size: int = DEFAULT_VECTOR_SIZE,
+    vector_size: int | None = None,
     *,
     client: httpx.Client | None = None,
 ) -> None:
+    size = configured_vector_size() if vector_size is None else vector_size
     base = qdrant_url.rstrip("/")
     if client is not None:
-        _ensure_collection_with_client(client, base, collection, vector_size)
+        _ensure_collection_with_client(client, base, collection, size)
         return
     with httpx.Client(timeout=30.0) as owned:
-        _ensure_collection_with_client(owned, base, collection, vector_size)
+        _ensure_collection_with_client(owned, base, collection, size)
 
 
 def _ensure_collection_with_client(
@@ -248,9 +273,10 @@ def delete_by_source(
 def clear_collection(
     qdrant_url: str,
     collection: str,
-    vector_size: int = DEFAULT_VECTOR_SIZE,
+    vector_size: int | None = None,
 ) -> int:
     """Drop and recreate a collection; returns the prior point count (0 if missing)."""
+    size = configured_vector_size() if vector_size is None else vector_size
     base = qdrant_url.rstrip("/")
     with httpx.Client(timeout=120.0) as client:
         prior = 0
@@ -264,7 +290,7 @@ def clear_collection(
             delete.raise_for_status()
         response = client.put(
             f"{base}/collections/{collection}",
-            json={"vectors": _vectors_config(vector_size)},
+            json={"vectors": _vectors_config(size)},
         )
         response.raise_for_status()
         return prior
@@ -278,7 +304,17 @@ def build_point(
     chunk_idx: int,
     embedding: list[float],
     extra: dict[str, Any] | None = None,
+    expected_vector_size: int | None = None,
 ) -> dict[str, Any]:
+    expected = (
+        configured_vector_size()
+        if expected_vector_size is None
+        else expected_vector_size
+    )
+    if len(embedding) != expected:
+        raise ValueError(
+            f"embedding dim {len(embedding)} does not match QDRANT_VECTOR_SIZE={expected}"
+        )
     payload: dict[str, Any] = {
         "text": text[:2000],
         "source": source,

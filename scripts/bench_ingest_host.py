@@ -16,6 +16,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from ingest.capacity_planner import plan_ingest_capacity, render_capacity_env  # noqa: E402
+from ingest.embedder import configured_embed_model  # noqa: E402
 from ingest.port_avoidance import (  # noqa: E402
     apply_config_env,
     embed_pool_stop_ports,
@@ -135,7 +136,7 @@ def _probe_embed(url: str, *, timeout: float = 5.0) -> bool:
         with httpx.Client(timeout=timeout) as client:
             response = client.post(
                 f"{url.rstrip('/')}/v1/embeddings",
-                json={"model": "nomic-embed-text-v1.5", "input": ["pool-health"]},
+                json={"model": configured_embed_model(), "input": ["pool-health"]},
             )
             response.raise_for_status()
             return "embedding" in response.text
