@@ -55,6 +55,9 @@ class Settings:
     similarity_threshold: float = field(
         default_factory=lambda: _env_float("SIMILARITY_THRESHOLD", 0.65)
     )
+    sparse_reserve_fraction: float = field(
+        default_factory=lambda: _env_float("SPARSE_RESERVE_FRACTION", 0.0)
+    )
     proxy_host: str = field(default_factory=lambda: os.getenv("PROXY_HOST", "0.0.0.0"))
     proxy_port: int = field(default_factory=lambda: _env_int("PROXY_PORT", 8088))
     proxy_graceful_shutdown_sec: int = field(

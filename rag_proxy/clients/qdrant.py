@@ -131,7 +131,12 @@ async def hybrid_search(
     sparse_only_ids = [
         doc_id for doc_id, _ in sparse_ranked if doc_id not in dense_ids
     ]
-    fused_ids = merge_fused_with_sparse_reserve(fused_ids, sparse_only_ids, limit)
+    fused_ids = merge_fused_with_sparse_reserve(
+        fused_ids,
+        sparse_only_ids,
+        limit,
+        reserve_fraction=settings.sparse_reserve_fraction,
+    )
 
     by_id = {c.id: c for c in dense_chunks}
     for h in sparse_raw:

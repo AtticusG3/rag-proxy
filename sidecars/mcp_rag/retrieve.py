@@ -56,6 +56,7 @@ class RetrieveSettings:
     dense_backend: str = "qdrant"
     turbovec_url: str = ""
     memgraphrag_db_path: str = ""
+    sparse_reserve_fraction: float = 0.0
 
     @classmethod
     def from_env(cls) -> RetrieveSettings:
@@ -69,6 +70,7 @@ class RetrieveSettings:
             reranker_url=os.getenv("RERANKER_URL", "http://127.0.0.1:8095"),
             hybrid_dense_weight=float(os.getenv("HYBRID_DENSE_WEIGHT", "0.7")),
             similarity_threshold=float(os.getenv("SIMILARITY_THRESHOLD", "0.65")),
+            sparse_reserve_fraction=float(os.getenv("SPARSE_RESERVE_FRACTION", "0")),
             enable_hybrid=_env_bool("ENABLE_HYBRID_RETRIEVAL", False),
             enable_rerank=_env_bool("ENABLE_RERANKER", False),
             embed_max_chars=int(os.getenv("EMBED_MAX_CHARS", "2000")),
@@ -110,6 +112,7 @@ def _to_retrieve_config(settings: RetrieveSettings) -> RetrieveConfig:
         reranker_url=settings.reranker_url,
         similarity_threshold=settings.similarity_threshold,
         hybrid_dense_weight=settings.hybrid_dense_weight,
+        sparse_reserve_fraction=settings.sparse_reserve_fraction,
         embed_max_chars=settings.embed_max_chars,
         enable_hybrid=settings.enable_hybrid,
         enable_rerank=settings.enable_rerank,

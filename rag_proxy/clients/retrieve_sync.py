@@ -45,6 +45,7 @@ class RetrieveConfig:
     user_agent: str = "rag-proxy-retrieve-sync/1.0"
     dense_backend: str = "qdrant"
     turbovec_url: str = ""
+    sparse_reserve_fraction: float = 0.0
 
 
 def rrf_merge(
@@ -80,12 +81,16 @@ def merge_fused_with_sparse_reserve(
     fused_ids: list[str],
     sparse_only_ids: list[str],
     limit: int,
+    reserve_fraction: float = 0.0,
 ) -> list[str]:
-    """Reserve slots for sparse-only docs, then fill from RRF order."""
-    if not sparse_only_ids:
+    """Reserve slots for sparse-only docs, then fill from RRF order.
+
+    reserve_fraction=0 disables the reserve (pure RRF ordering).
+    """
+    if not sparse_only_ids or reserve_fraction <= 0:
         return fused_ids[:limit]
 
-    reserve = min(len(sparse_only_ids), max(1, limit // 4))
+    reserve = min(len(sparse_only_ids), max(1, int(round(limit * reserve_fraction))))
     main_slots = max(0, limit - reserve)
     merged_ids: list[str] = []
     seen: set[str] = set()
@@ -313,9 +318,15 @@ def hybrid_retrieve_with_dense_ids(
             by_id[cid] = h
             sparse_only_ids.append(cid)
 
-    # Same reserve as the async proxy path: RRF alone lets dense sweep every
-    # slot, so lexical-only matches (exact terms, rare tokens) never surface.
-    fused_ids = merge_fused_with_sparse_reserve(fused_ids, sparse_only_ids, limit)
+    # Optional reserve for sparse-only docs; default off so lexical junk does
+    # not get guaranteed slots over relevant dense hits. RRF still lets strong
+    # lexical-only matches (exact terms, rare tokens) surface on their merits.
+    fused_ids = merge_fused_with_sparse_reserve(
+        fused_ids,
+        sparse_only_ids,
+        limit,
+        reserve_fraction=config.sparse_reserve_fraction,
+    )
 
     ordered: list[dict] = []
     for doc_id in fused_ids:

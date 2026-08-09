@@ -118,7 +118,6 @@ def test_hybrid_retrieve_reserves_slots_for_sparse_only_hits() -> None:
     exact-term matches that only BM25 found are dropped. MCP callers would then
     get different results than the proxy for the same query and config.
     """
-    cfg = _config(enable_hybrid=True, hybrid_dense_weight=0.9)
     dense_hits = [
         {"id": f"d{i}", "score": 0.9 - i / 100, "payload": {"text": f"dense {i}"}}
         for i in range(8)
@@ -128,19 +127,34 @@ def test_hybrid_retrieve_reserves_slots_for_sparse_only_hits() -> None:
         {"id": "s2", "score": 4.0, "payload": {"text": "another exact match"}},
     ]
 
-    with patch("rag_proxy.clients.retrieve_sync.embed_query", return_value=[0.1, 0.2]):
-        with patch(
-            "rag_proxy.clients.retrieve_sync.dense_search", return_value=dense_hits
-        ):
+    def run(cfg):
+        with patch("rag_proxy.clients.retrieve_sync.embed_query", return_value=[0.1, 0.2]):
             with patch(
-                "rag_proxy.clients.retrieve_sync.sparse_search",
-                return_value=sparse_hits,
+                "rag_proxy.clients.retrieve_sync.dense_search", return_value=dense_hits
             ):
-                hits, _ = hybrid_retrieve_with_dense_ids(cfg, "query", limit=8)
+                with patch(
+                    "rag_proxy.clients.retrieve_sync.sparse_search",
+                    return_value=sparse_hits,
+                ):
+                    hits, _ = hybrid_retrieve_with_dense_ids(cfg, "query", limit=8)
+        return [str(h["id"]) for h in hits]
 
-    ids = [str(h["id"]) for h in hits]
+    # Default reserve_fraction=0: pure RRF, dense sweeps — no guaranteed slot
+    # for lexical-only junk. The reserve is now opt-in via SPARSE_RESERVE_FRACTION.
+    ids = run(_config(enable_hybrid=True, hybrid_dense_weight=0.9))
     assert len(ids) == 8
-    assert "s1" in ids
+    assert "s1" not in ids
+
+    # Opt-in reserve: exact-term sparse hits earn slots again.
+    ids2 = run(
+        _config(
+            enable_hybrid=True,
+            hybrid_dense_weight=0.9,
+            sparse_reserve_fraction=0.25,
+        )
+    )
+    assert len(ids2) == 8
+    assert "s1" in ids2
 
 
 def test_rerank_pairs_returns_sidecar_order() -> None:
