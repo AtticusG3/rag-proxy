@@ -166,7 +166,12 @@ async def proxy(request: Request, path: str):
         upstream = await client.send(upstream_req, stream=True)
 
         resp_headers = dict(upstream.headers)
-        for h in ("content-encoding", "transfer-encoding", "content-length"):
+        # transfer-encoding/content-length are hop-by-hop; the ASGI server reframes
+        # them (computed length for buffered bodies, chunked for streams).
+        # content-encoding must survive: the upstream body is forwarded byte-for-byte,
+        # so dropping it leaves gzip-encoded bytes (e.g. llama-server web UI assets)
+        # undeclared and unreadable by the client.
+        for h in ("transfer-encoding", "content-length"):
             resp_headers.pop(h, None)
 
         content_type = upstream.headers.get("content-type", "")

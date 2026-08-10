@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -107,11 +108,49 @@ def test_proxy_closes_upstream_when_send_raises():
     close_mock.assert_awaited_once_with(None)
 
 
+def test_proxy_preserves_content_encoding_on_buffered_passthrough():
+    """gzip'd upstream bodies (llama.cpp UI) must keep Content-Encoding.
+
+    The proxy relays the body byte-for-byte; stripping content-encoding would leave
+    the client with undeclared gzip bytes (broken UI). transfer-encoding and
+    content-length are hop-by-hop and must still be dropped.
+    """
+
+    raw = gzip.compress(b"hello world")
+    mock_response = _buffered_upstream_response(body=raw)
+    mock_response.headers = {
+        "content-type": "application/javascript",
+        "content-encoding": "gzip",
+        "content-length": str(len(raw)),
+        "transfer-encoding": "chunked",
+    }
+    mock_client = _pooled_client_mock(mock_response)
+
+    with patch(
+        "rag_proxy.upstream_client.httpx.AsyncClient",
+        side_effect=pooled_ctor_side_effect(mock_client),
+    ):
+        with TestClient(app) as client:
+            resp = client.get("/index.js")
+
+    assert resp.status_code == 200
+    # Header kept so the client can decode the byte-for-byte relayed gzip body.
+    assert resp.headers.get("content-encoding") == "gzip"
+    assert resp.content == b"hello world"
+    assert "transfer-encoding" not in resp.headers
+
+
 def test_proxy_sse_streams_via_real_relay_upstream():
     """SSE must flow through production relay_upstream, not buffered aread."""
 
-    chunks = [b"data: ", b"hello\n\n"]
+    raw = gzip.compress(b"data: hello\n\n")
+    chunks = [raw[:6], raw[6:]]
     mock_response = _streaming_upstream_response(chunks)
+    mock_response.headers = {
+        "content-type": "text/event-stream; charset=utf-8",
+        "content-encoding": "gzip",
+        "transfer-encoding": "chunked",
+    }
     mock_client = _pooled_client_mock(mock_response)
 
     with patch(
@@ -124,7 +163,9 @@ def test_proxy_sse_streams_via_real_relay_upstream():
     assert ctor.call_count == 3
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
-    assert resp.content == b"".join(chunks)
+    assert resp.headers.get("content-encoding") == "gzip"
+    assert resp.content == b"data: hello\n\n"
+    assert "transfer-encoding" not in resp.headers
     mock_response.aread.assert_not_called()
     mock_response.aclose.assert_awaited()
     _assert_send_stream_true(mock_client)
