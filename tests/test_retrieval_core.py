@@ -1,7 +1,6 @@
 """Unit tests for shared retrieval request/response helpers."""
 
 from rag_proxy.clients.retrieval_core import (
-    EMBED_MODEL,
     dense_search_payload,
     embed_payload,
     parse_dense_hits,
@@ -9,11 +8,23 @@ from rag_proxy.clients.retrieval_core import (
     parse_sparse_hits,
     prepare_embed_text,
 )
+from rag_proxy.config import settings
 
 
-def test_embed_payload_uses_nomic_model() -> None:
+def test_embed_payload_uses_settings_embed_model() -> None:
+    """Embeddings must send settings.embed_model so cutover to embed-pool is env-driven."""
     payload = embed_payload("hello")
-    assert payload == {"model": EMBED_MODEL, "input": "hello"}
+    assert payload == {"model": settings.embed_model, "input": "hello"}
+
+
+def test_embed_payload_follows_monkeypatched_settings_model(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "embed_model", "embed-pool")
+    assert embed_payload("hello")["model"] == "embed-pool"
+
+
+def test_embed_payload_honors_explicit_model_override() -> None:
+    payload = embed_payload("hello", model="embed-pool")
+    assert payload == {"model": "embed-pool", "input": "hello"}
 
 
 def test_prepare_embed_text_tail_truncates() -> None:

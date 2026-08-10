@@ -63,7 +63,7 @@ def test_get_embedding_returns_vector_on_success():
 
     assert vector == [0.1, 0.2, 0.3]
     post.assert_awaited_once()
-    assert post.await_args.kwargs["json"]["model"] == "nomic-embed-text-v1.5"
+    assert post.await_args.kwargs["json"]["model"] == settings.embed_model
 
 
 def test_search_qdrant_passes_similarity_threshold(monkeypatch):

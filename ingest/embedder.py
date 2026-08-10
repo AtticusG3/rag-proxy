@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 
 import httpx
@@ -11,6 +12,12 @@ from ingest.embed_lifecycle import ensure_embed_urls, touch_embed_activity
 DEFAULT_EMBED_MODEL = "nomic-embed-text-v1.5"
 DEFAULT_MAX_CHARS = 2000
 _CONTEXT_SHRINK_LIMITS = (400, 300, 200, 100)
+
+
+def configured_embed_model() -> str:
+    """OpenAI-compatible model id for embeddings (EMBED_MODEL env)."""
+    raw = os.getenv("EMBED_MODEL", DEFAULT_EMBED_MODEL).strip()
+    return raw or DEFAULT_EMBED_MODEL
 
 
 def _exceed_context_size(response_text: str) -> bool:
@@ -95,12 +102,13 @@ def embed_texts(
     *,
     embed_url: str,
     embed_urls: list[str] | None = None,
-    model: str = DEFAULT_EMBED_MODEL,
+    model: str | None = None,
     max_chars: int = DEFAULT_MAX_CHARS,
     retries: int = 2,
     client: httpx.Client | None = None,
 ) -> list[list[float]]:
     """Batch-embed texts via OpenAI-compatible embeddings API."""
+    resolved_model = model if model is not None else configured_embed_model()
     candidates = [embed_url.rstrip("/")]
     if embed_urls:
         for url in embed_urls:
@@ -120,7 +128,7 @@ def embed_texts(
                     result = _embed_batch_resilient(
                         client,
                         embed_url=url,
-                        model=model,
+                        model=resolved_model,
                         texts=texts,
                         max_chars=max_chars,
                     )
@@ -131,7 +139,7 @@ def embed_texts(
                     result = _embed_batch_resilient(
                         owned,
                         embed_url=url,
-                        model=model,
+                        model=resolved_model,
                         texts=texts,
                         max_chars=max_chars,
                     )

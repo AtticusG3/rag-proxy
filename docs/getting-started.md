@@ -108,9 +108,14 @@ Replace host/ports with your `.env` values. Expect JSON responses; errors usuall
 
 ```bash
 # 1. Embed server (must return embedding vector)
+# Legacy nomic (:8089) or llama-swap embed-pool — match EMBED_URL / EMBED_MODEL in .env
 curl -s -X POST "http://127.0.0.1:8089/v1/embeddings" \
   -H "Content-Type: application/json" \
   -d '{"model":"nomic-embed-text-v1.5","input":"test query"}'
+# llama-swap cutover example:
+# curl -s -X POST "http://127.0.0.1:8081/v1/embeddings" \
+#   -H "Content-Type: application/json" \
+#   -d '{"model":"embed-pool","input":"test query"}'
 
 # 2. Qdrant collection exists
 curl -s "http://127.0.0.1:6333/collections/$QDRANT_COLLECTION"
@@ -143,14 +148,14 @@ On chat `POST` requests (when cognitive mode is off):
 
 ```mermaid
 flowchart LR
-  U["Last user message"] --> E["Embed via nomic-embed"]
+  U["Last user message"] --> E["Embed via EMBED_URL"]
   E --> Q["Qdrant search\nTOP_K + threshold"]
   Q --> P["Extract chunk text\nfrom payload fields"]
   P --> I["Prepend to system message"]
   I --> F["Forward to upstream API"]
 ```
 
-1. Last user message text is embedded via `nomic-embed-text-v1.5`.
+1. Last user message text is embedded via `EMBED_MODEL` (default `nomic-embed-text-v1.5`; cutover uses `embed-pool`).
 2. Qdrant vector search returns up to `TOP_K` hits above `SIMILARITY_THRESHOLD`.
 3. Chunk text from payload fields: `text`, `content`, `chunk`, `document`, `page_content`.
 4. Chunks prepended to the system message (or a new system message is inserted).

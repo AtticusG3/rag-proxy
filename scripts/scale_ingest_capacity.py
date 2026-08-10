@@ -28,6 +28,7 @@ from ingest.capacity_planner import (  # noqa: E402
     resolve_semantic_chunking,
 )
 from ingest.bench_fit import fit_from_report_paths  # noqa: E402
+from ingest.embedder import configured_embed_model  # noqa: E402
 from ingest.embed_pool import (  # noqa: E402
     EmbedPoolConfig,
     EmbedPoolPlan,
@@ -105,7 +106,7 @@ def _probe_embed(url: str, *, timeout: float = 5.0) -> bool:
         with httpx.Client(timeout=timeout) as client:
             response = client.post(
                 f"{url.rstrip('/')}/v1/embeddings",
-                json={"model": "nomic-embed-text-v1.5", "input": ["pool-health"]},
+                json={"model": configured_embed_model(), "input": ["pool-health"]},
             )
             response.raise_for_status()
             return "embedding" in response.text
