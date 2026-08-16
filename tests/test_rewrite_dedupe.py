@@ -65,12 +65,23 @@ def test_budget_keeps_constraint_lines():
 
 
 def test_merge_fused_with_sparse_reserve_keeps_sparse_slot():
-    """Sparse reserve keeps sparse-only docs in the merged id list."""
+    """Sparse reserve (opt-in via reserve_fraction) keeps sparse-only docs."""
+    fused = ["d0", "d1", "d2", "d3", "d4"]
+    sparse_only = ["sparse-only"]
+    merged = merge_fused_with_sparse_reserve(
+        fused, sparse_only, limit=5, reserve_fraction=0.2
+    )
+    assert "sparse-only" in merged
+    assert len(merged) == 5
+
+
+def test_merge_fused_sparse_reserve_disabled_by_default():
+    """Reserve is off by default: sparse-only docs keep RRF order only."""
     fused = ["d0", "d1", "d2", "d3", "d4"]
     sparse_only = ["sparse-only"]
     merged = merge_fused_with_sparse_reserve(fused, sparse_only, limit=5)
-    assert "sparse-only" in merged
-    assert len(merged) == 5
+    assert "sparse-only" not in merged
+    assert merged == fused
 
 
 def test_recency_boost_noop_without_timestamp():
@@ -129,11 +140,12 @@ def test_hybrid_search_dense_failure_returns_sparse(monkeypatch):
 
 
 def test_hybrid_rrf_includes_sparse_only_doc(monkeypatch):
-    """Hybrid RRF includes sparse-only documents in results."""
+    """Hybrid RRF includes sparse-only documents when the reserve is enabled."""
 
     monkeypatch.setattr(settings, "enable_hybrid_retrieval", True)
     monkeypatch.setattr(settings, "sparse_index_url", "http://sparse.test")
     monkeypatch.setattr(settings, "hybrid_dense_weight", 0.95)
+    monkeypatch.setattr(settings, "sparse_reserve_fraction", 0.2)
 
     dense = [
         ChunkHit(id=f"d{i}", text=f"dense {i}", score=0.9 - i * 0.01)
