@@ -98,8 +98,6 @@ def test_clear_override_reverts_to_schema_default(tmp_path: Path) -> None:
         AdminDatabase(str(tmp_path / "admin.sqlite")),
         admin_env_path=str(admin_env),
         proxy_env_path=str(tmp_path / "rag-proxy.env"),
-        pool_env_path=str(tmp_path / "pool.env"),
-        pool_scale_env_path=str(tmp_path / "pool-scale.env"),
     )
     field = next(f for f in SETTING_FIELDS if f.key == "INGEST_BATCH_SIZE")
     assert store.get_override_value(field.key, target=field.target) == "96"
@@ -114,8 +112,6 @@ def test_save_ingest_file_concurrency(tmp_path: Path) -> None:
         AdminDatabase(str(tmp_path / "admin.sqlite")),
         admin_env_path=str(tmp_path / "admin.env"),
         proxy_env_path=str(tmp_path / "proxy.env"),
-        pool_env_path=str(tmp_path / "pool.env"),
-        pool_scale_env_path=str(tmp_path / "pool-scale.env"),
     )
     store.save_group("ingest", {"INGEST_FILE_CONCURRENCY": "3"})
     config = store.build_ingest_config(zim_dir=str(tmp_path), upload_dir=str(tmp_path))
@@ -123,24 +119,6 @@ def test_save_ingest_file_concurrency(tmp_path: Path) -> None:
     store.save_group("ingest", {"INGEST_FILE_CONCURRENCY": ""})
     config = store.build_ingest_config(zim_dir=str(tmp_path), upload_dir=str(tmp_path))
     assert config.file_concurrency is None
-
-
-def test_save_pool_scale_fields_writes_scale_env(tmp_path: Path) -> None:
-    scale_env = tmp_path / "nomic-embed-scale.env"
-    store = SettingsStore(
-        AdminDatabase(str(tmp_path / "admin.sqlite")),
-        admin_env_path=str(tmp_path / "admin.env"),
-        proxy_env_path=str(tmp_path / "proxy.env"),
-        pool_scale_env_path=str(scale_env),
-        pool_env_path=str(tmp_path / "pool.env"),
-    )
-    store.save_group(
-        "ingest",
-        {"NOMIC_POOL_MAX_INSTANCES": "8", "NOMIC_POOL_PARALLEL_PER_INSTANCE": "12"},
-    )
-    written = read_env_file(str(scale_env))
-    assert written["NOMIC_POOL_MAX_INSTANCES"] == "8"
-    assert written["NOMIC_POOL_PARALLEL_PER_INSTANCE"] == "12"
 
 
 def test_save_ingest_chunk_settings_updates_config(tmp_path: Path) -> None:

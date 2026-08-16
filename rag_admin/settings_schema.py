@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-TargetEnv = Literal["admin", "proxy", "sqlite", "pool_scale"]
+TargetEnv = Literal["admin", "proxy", "sqlite"]
 
 
 @dataclass(frozen=True)
@@ -41,7 +41,7 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "admin",
         "4",
         hot=True,
-        help_text="Max concurrent embed batches across all files. Match GPU pool capacity (instances x --parallel).",
+        help_text="Max concurrent embed batches across all files.",
     ),
     SettingField(
         "INGEST_FILE_CONCURRENCY",
@@ -51,7 +51,7 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "admin",
         "",
         hot=True,
-        help_text="Worker threads, one file each. Leave empty for auto: max(1, min(4, pool URL count)).",
+        help_text="Worker threads, one file each. Leave empty for auto: max(1, min(4, embed URL count)).",
     ),
     SettingField(
         "INGEST_CHUNK_CONCURRENCY",
@@ -61,7 +61,7 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "admin",
         "",
         hot=True,
-        help_text="Concurrent chunking files (CPU-bound). Leave empty for auto: min(4, cores / 2). Set by the capacity planner.",
+        help_text="Concurrent chunking files (CPU-bound). Leave empty for auto: min(4, cores / 2).",
     ),
     SettingField(
         "INGEST_SPARSE_REINDEX",
@@ -116,82 +116,16 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
     ),
     SettingField(
         "INGEST_EMBED_URLS",
-        "Ingest embed pool URLs (legacy)",
+        "Ingest embed URLs",
         "ingest",
         "text",
         "admin",
         "",
         hot=True,
         help_text=(
-            "Legacy nomic multi-port pool (often written by scale_nomic_embed_pool.py). "
-            "Prefer a single EMBED_URL on llama-swap embed-pool; leave empty when EMBED_ON_DEMAND=false."
+            "Comma-separated embed endpoints for bulk ingest. Leave empty to use EMBED_URL "
+            "(llama-swap embed-pool with EMBED_MODEL=embed-pool, EMBED_ON_DEMAND=false)."
         ),
-    ),
-    SettingField(
-        "NOMIC_POOL_MAX_INSTANCES",
-        "Max llama-server instances (legacy)",
-        "ingest",
-        "int",
-        "pool_scale",
-        "12",
-        help_text="Legacy: hard cap on nomic-embed@PORT units. Unused when embeds go through llama-swap.",
-    ),
-    SettingField(
-        "NOMIC_POOL_MIN_INSTANCES",
-        "Min pool instances (legacy)",
-        "ingest",
-        "int",
-        "pool_scale",
-        "1",
-        help_text="Legacy: floor when nvidia-smi is unavailable (single-port fallback).",
-    ),
-    SettingField(
-        "NOMIC_POOL_PARALLEL_PER_INSTANCE",
-        "Parallel per instance (legacy)",
-        "ingest",
-        "int",
-        "pool_scale",
-        "16",
-        help_text=(
-            "Legacy planner input for llama-server --parallel (GPU-tier and context capped). "
-            "Scale capacity writes the effective value as NOMIC_POOL_PARALLEL."
-        ),
-    ),
-    SettingField(
-        "NOMIC_POOL_VRAM_PER_INSTANCE_MIB",
-        "VRAM per instance MiB (legacy)",
-        "ingest",
-        "int",
-        "pool_scale",
-        "1024",
-        help_text="Legacy: estimated VRAM per nomic embed instance for GPU sizing.",
-    ),
-    SettingField(
-        "NOMIC_POOL_VRAM_RESERVE_MIB",
-        "VRAM reserve MiB (legacy)",
-        "ingest",
-        "int",
-        "pool_scale",
-        "2048",
-        help_text="Legacy: VRAM left for chat/other GPU workloads when sizing the nomic pool.",
-    ),
-    SettingField(
-        "NOMIC_POOL_PORT_BASE",
-        "Pool port base (legacy)",
-        "ingest",
-        "int",
-        "pool_scale",
-        "18089",
-        help_text="Legacy: first port for nomic-embed@PORT (18089, 18090, ...).",
-    ),
-    SettingField(
-        "NOMIC_POOL_GPU_INDEX",
-        "GPU index (legacy)",
-        "ingest",
-        "int",
-        "pool_scale",
-        "0",
-        help_text="Legacy: nvidia-smi GPU index used for nomic pool VRAM sizing.",
     ),
     SettingField(
         "EMBED_URL",

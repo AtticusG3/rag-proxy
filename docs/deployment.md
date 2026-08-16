@@ -61,9 +61,7 @@ Repository ships example units:
 
 - `rag-proxy.service` — FastAPI proxy
 - `nomic-embed.service` — llama-server with nomic-embed on GPU (`-ngl 99`, ~1 GiB VRAM)
-- `nomic-embed@.service` — template for bulk-ingest pool (`nomic-embed@18089.service`, …)
-- `nomic-embed-scale.service` — oneshot capacity plan via `scripts/scale_ingest_capacity.py --apply` (legacy wrapper `scale_nomic_embed_pool.py`)
-- `nomic-embed.env.example` / `nomic-embed-scale.env.example` — copy to `/opt/ai/config/`
+- `nomic-embed.env.example` — copy to `/opt/ai/config/`
 
 **Edit paths before install** — `User`, `WorkingDirectory`, `LLAMA_SERVER_BIN`, model path, and `ExecStart` are placeholders.
 
@@ -157,29 +155,23 @@ Mitigations:
 
 ### GPU embed (recommended on CUDA hosts)
 
-Default units use **full GPU offload** (`NOMIC_GPU_LAYERS=99`). nomic-embed is small (~1 GiB VRAM per instance).
+Default units use **full GPU offload** (`NOMIC_GPU_LAYERS=99`). nomic-embed is small (~1 GiB VRAM).
 
 ```bash
 sudo cp nomic-embed.env.example /opt/ai/config/nomic-embed.env
-sudo cp nomic-embed-scale.env.example /opt/ai/config/nomic-embed-scale.env
 # edit LLAMA_SERVER_BIN and NOMIC_EMBED_MODEL for your host
-sudo cp nomic-embed.service nomic-embed@.service nomic-embed-scale.service /etc/systemd/system/
+sudo cp nomic-embed.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now nomic-embed
-# bulk ingest pool (optional):
-sudo systemctl enable --now nomic-embed-scale.service
-sudo systemctl restart rag-admin.service   # picks up INGEST_EMBED_URLS from pool env
 ```
 
-Query RAG uses `:8089` (`nomic-embed.service`). Bulk ingest uses the pool on `18089+` (`nomic-embed@PORT`). With `EMBED_ON_DEMAND=true` (default on Linux), both stop and disable when idle; ingest or a RAG query starts them again automatically.
+Query RAG uses `:8089` (`nomic-embed.service`). With `EMBED_ON_DEMAND=true` (default on Linux), the unit stops and disables when idle; a RAG query or ingest starts it again automatically.
 
-**Preferred path:** route embeddings through llama-swap (`EMBED_URL` → swap, `EMBED_MODEL=embed-pool`, `EMBED_ON_DEMAND=false`) and retire these nomic units after a parallel 2560-d reindex — see [Configuration — Llama-swap embed cutover](configuration.md#llama-swap-embed-cutover-preferred).
-
-On-demand start maps `EMBED_URL` to a unit by port: only a URL on `NOMIC_QUERY_EMBED_PORT` (`:8089`) starts `nomic-embed.service`; an `EMBED_URL` on a pool port starts the matching `nomic-embed@PORT` instead. When `EMBED_URL` is not on `:8089`, `scripts/run_ingest_capacity_scale.py` skips the query-embed restart so it does not spin up an unused unit.
+**Preferred path:** route embeddings through llama-swap (`EMBED_URL` → swap, `EMBED_MODEL=embed-pool`, `EMBED_ON_DEMAND=false`) and retire the nomic unit after a parallel 2560-d reindex — see [Configuration — Llama-swap embed cutover](configuration.md#llama-swap-embed-cutover-preferred).
 
 #### Pin embedding to a specific GPU
 
-By default llama-server lands on the first CUDA device. On a multi-GPU host you can keep a large card free for LLM inference and run the tiny embed model on a smaller one. Set `CUDA_VISIBLE_DEVICES` in `nomic-embed.env` — it is loaded by both `nomic-embed.service` (query) and `nomic-embed@.service` (pool), so it moves **all** embedding to that card.
+By default llama-server lands on the first CUDA device. On a multi-GPU host you can keep a large card free for LLM inference and run the tiny embed model on a smaller one. Set `CUDA_VISIBLE_DEVICES` in `nomic-embed.env` — loaded by `nomic-embed.service` — to move embedding to that card.
 
 **Two different indexes.** `CUDA_VISIBLE_DEVICES` uses the CUDA runtime order, which frequently does **not** match `nvidia-smi`. Check the mapping first:
 
@@ -195,11 +187,9 @@ NOMIC_GPU_LAYERS=99
 CUDA_VISIBLE_DEVICES=0
 ```
 
-Set `NOMIC_POOL_GPU_INDEX` in `nomic-embed-scale.env` to the **nvidia-smi** index of the same card (the capacity planner probes `nvidia-smi --id`, which ignores `CUDA_VISIBLE_DEVICES`). In the example above that card is `nvidia-smi` index 1, so `NOMIC_POOL_GPU_INDEX=1` while `CUDA_VISIBLE_DEVICES=0`. On a smaller card, also lower `NOMIC_POOL_VRAM_RESERVE_MIB` / `NOMIC_POOL_MAX_INSTANCES` to fit. Apply with `systemctl restart nomic-embed-scale.service nomic-embed.service`, then confirm placement with `nvidia-smi`.
+Apply with `systemctl restart nomic-embed.service`, then confirm placement with `nvidia-smi`.
 
 > **Binary must match the GPU architecture.** llama-server only runs on CUDA archs it was compiled for (`system_info: ... CUDA : ARCHS = ...`). A V100-only build (`sm_70`) aborts with `ggml-cuda.cu: CUDA error` on an Ada card like the RTX 4060 (`sm_89`). Rebuild with the target arch included, e.g. `cmake -B build -DCMAKE_CUDA_ARCHITECTURES="70;89"` (verify with `llama-server --list-devices`).
-
-On `/opt/ai` hosts, `scripts/update-buster-embed-gpu.sh` pulls the repo, installs nomic-embed units and scale env, starts the GPU pool, and smoke-checks `:8089` (override `REPO_ROOT` / `CONFIG_DIR` as needed).
 
 ## Optional admin / ingest
 

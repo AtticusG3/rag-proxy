@@ -13,11 +13,6 @@ ADVANCED_KEYS: frozenset[str] = frozenset(
         "INGEST_MAX_ARTICLES",
         "EMBED_MAX_CHARS",
         "INGEST_EMBED_URLS",
-        "NOMIC_POOL_MIN_INSTANCES",
-        "NOMIC_POOL_PARALLEL_PER_INSTANCE",
-        "NOMIC_POOL_VRAM_PER_INSTANCE_MIB",
-        "NOMIC_POOL_PORT_BASE",
-        "NOMIC_POOL_GPU_INDEX",
         "RAG_PROXY_URL",
         "INGEST_CHUNK_TOKENIZER",
         "INGEST_CHUNK_SEMANTIC_MODEL",
@@ -63,7 +58,6 @@ ADVANCED_KEYS: frozenset[str] = frozenset(
 GROUP_SECTIONS: dict[str, tuple[tuple[str, str], ...]] = {
     "ingest": (
         ("throughput", "Throughput"),
-        ("pool", "Pool planner"),
         ("connections", "Connections"),
         ("chunking", "Chunking"),
     ),
@@ -100,13 +94,6 @@ FIELD_SECTION: dict[str, str] = {
     "EMBED_MAX_CHARS": "throughput",
     "INGEST_EMBED_URLS": "throughput",
     "INGEST_TURBOVEC_REINDEX": "throughput",
-    "NOMIC_POOL_MAX_INSTANCES": "pool",
-    "NOMIC_POOL_MIN_INSTANCES": "pool",
-    "NOMIC_POOL_PARALLEL_PER_INSTANCE": "pool",
-    "NOMIC_POOL_VRAM_PER_INSTANCE_MIB": "pool",
-    "NOMIC_POOL_VRAM_RESERVE_MIB": "pool",
-    "NOMIC_POOL_PORT_BASE": "pool",
-    "NOMIC_POOL_GPU_INDEX": "pool",
     "EMBED_URL": "connections",
     "QDRANT_URL": "connections",
     "QDRANT_COLLECTION": "connections",
@@ -204,7 +191,7 @@ GROUP_NAV_LABELS: dict[str, str] = {
 }
 
 GROUP_NAV_HINTS: dict[str, str] = {
-    "ingest": "Capacity, pool, chunking",
+    "ingest": "Throughput, chunking",
     "proxy_rag": "TOP_K, hybrid, rerank",
     "cognitive": "Pipeline stages & budgets",
     "memgraphrag": "Runtime stage knobs",
@@ -224,28 +211,17 @@ class WorkflowStep:
 def workflow_steps_for(
     group: str,
     *,
-    pool_env_exists: bool,
-    pool_scale_job: bool,
-    pool_scale_starting: bool,
     build_job: bool,
     ingest_paused: bool,
 ) -> tuple[WorkflowStep, ...]:
     if group == "ingest":
-        scaling = pool_scale_job or pool_scale_starting
         return (
-            WorkflowStep("Edit plan", done=True, note="Pool planner fields"),
+            WorkflowStep("Configure", done=True, note="Throughput & chunking fields"),
             WorkflowStep("Save", done=True, note="Persist overrides"),
             WorkflowStep(
-                "Scale",
-                active=scaling or not pool_env_exists,
-                done=pool_env_exists and not scaling,
-                note="Runs capacity planner",
-            ),
-            WorkflowStep(
                 "Verify",
-                done=pool_env_exists and not scaling and not ingest_paused,
-                active=pool_env_exists and not scaling and ingest_paused,
-                note="Pool URLs + ingest running",
+                active=ingest_paused,
+                note="Ingest running with new settings",
             ),
         )
     if group == "memgraph_build":

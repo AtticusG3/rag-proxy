@@ -23,15 +23,6 @@ if env_file.is_file():
         key, _, value = line.partition('=')
         os.environ.setdefault(key.strip(), value.strip())
 
-pool = Path('/opt/ai/config/nomic-embed-pool.env')
-if pool.is_file():
-    for line in pool.read_text(encoding='utf-8').splitlines():
-        line = line.strip()
-        if not line or line.startswith('#') or '=' not in line:
-            continue
-        key, _, value = line.partition('=')
-        os.environ.setdefault(key.strip(), value.strip())
-
 os.chdir('$REPO')
 sys.exit(subprocess.call([sys.executable, '-m', 'rag_admin']))
 " >> "$LOG" 2>&1 &

@@ -18,18 +18,6 @@ from rag_admin.settings_schema import (
     SettingField,
 )
 
-# Keys the capacity planner writes to the pool env; synced into admin env on scale.
-POOL_OUTPUT_KEYS: frozenset[str] = frozenset(
-    {
-        "INGEST_EMBED_URLS",
-        "INGEST_EMBED_CONCURRENCY",
-        "INGEST_FILE_CONCURRENCY",
-        "INGEST_BATCH_SIZE",
-        "INGEST_CHUNK_CONCURRENCY",
-        "INGEST_CHUNK_SEMANTIC",
-        "INGEST_SPARSE_REINDEX",
-    }
-)
 from rag_proxy.env_parse import parse_bool
 
 
@@ -39,7 +27,6 @@ class SaveResult:
     updated: list[str]
     restart_proxy: bool
     restart_admin: bool
-    pool_scale_updated: bool = False
 
 
 def _field_by_key(key: str) -> SettingField | None:
@@ -75,30 +62,18 @@ class SettingsStore:
         *,
         admin_env_path: str,
         proxy_env_path: str,
-        pool_scale_env_path: str = "/opt/ai/config/nomic-embed-scale.env",
-        pool_env_path: str = "/opt/ai/config/nomic-embed-pool.env",
         env_example_path: str = "",
     ) -> None:
         self.db = db
         self.admin_env_path = admin_env_path
         self.proxy_env_path = proxy_env_path
-        self.pool_scale_env_path = pool_scale_env_path
-        self.pool_env_path = pool_env_path
         self.env_example_path = env_example_path
-
-    def _pool_scale_env(self) -> dict[str, str]:
-        return read_env_file(self.pool_scale_env_path)
 
     def get_override_value(self, key: str, *, target: str) -> str | None:
         """Return an explicit override from SQLite or env files, or None if unset."""
         stored = self.db.get_setting(key)
         if stored is not None:
             return stored
-        if target == "pool_scale":
-            scale_env = self._pool_scale_env()
-            if key in scale_env:
-                return scale_env[key]
-            return None
         if target in ("admin", "sqlite"):
             admin_env = read_env_file(self.admin_env_path)
             if key in admin_env:
@@ -134,15 +109,6 @@ class SettingsStore:
         proxy_env = read_env_file(self.proxy_env_path)
         if key in proxy_env:
             return proxy_env[key]
-        if key in POOL_OUTPUT_KEYS:
-            pool_env = read_env_file(self.pool_env_path)
-            if key in pool_env:
-                return pool_env[key]
-        field = _field_by_key(key)
-        if field is not None and field.target == "pool_scale":
-            scale_env = self._pool_scale_env()
-            if key in scale_env:
-                return scale_env[key]
         env_val = os.getenv(key)
         if env_val is not None and env_val != "":
             return env_val
@@ -218,10 +184,8 @@ class SettingsStore:
         admin_updates: dict[str, str] = {}
         proxy_updates: dict[str, str] = {}
         sqlite_updates: dict[str, str] = {}
-        pool_scale_updates: dict[str, str] = {}
         unset_admin: set[str] = set()
         unset_proxy: set[str] = set()
-        unset_pool_scale: set[str] = set()
         updated_keys: list[str] = []
 
         clearable_types = frozenset({"int", "float", "str", "text"})
@@ -237,8 +201,6 @@ class SettingsStore:
                     unset_admin.add(field.key)
                 elif field.target == "proxy":
                     unset_proxy.add(field.key)
-                elif field.target == "pool_scale":
-                    unset_pool_scale.add(field.key)
                 continue
             value = _coerce_value(field, raw)
             updated_keys.append(field.key)
@@ -246,15 +208,9 @@ class SettingsStore:
                 admin_updates[field.key] = value
             elif field.target == "proxy":
                 proxy_updates[field.key] = value
-            elif field.target == "pool_scale":
-                pool_scale_updates[field.key] = value
             else:
                 sqlite_updates[field.key] = value
 
-        if unset_pool_scale:
-            remove_env_file_keys(self.pool_scale_env_path, unset_pool_scale)
-        if pool_scale_updates:
-            write_env_file(self.pool_scale_env_path, pool_scale_updates)
         if unset_admin:
             remove_env_file_keys(self.admin_env_path, unset_admin)
             mirror_unset = unset_admin & set(INGEST_MIRROR_TO_PROXY)
@@ -289,53 +245,7 @@ class SettingsStore:
             updated=updated_keys,
             restart_proxy=restart_proxy,
             restart_admin=restart_admin,
-            pool_scale_updated=bool(pool_scale_updates or unset_pool_scale),
         )
-
-    def pool_env_snapshot(self) -> dict[str, Any]:
-        env = read_env_file(self.pool_env_path)
-        return {
-            "path": self.pool_env_path,
-            "scale_path": self.pool_scale_env_path,
-            "exists": os.path.isfile(self.pool_env_path),
-            "instance_count": env.get("NOMIC_POOL_INSTANCE_COUNT", ""),
-            "ports": env.get("NOMIC_POOL_PORTS", ""),
-            "embed_urls": env.get("INGEST_EMBED_URLS", ""),
-            "embed_concurrency": env.get("INGEST_EMBED_CONCURRENCY", ""),
-            "gpu_free_mib": env.get("NOMIC_POOL_GPU_FREE_MIB", ""),
-            "file_concurrency": env.get("INGEST_FILE_CONCURRENCY", ""),
-            "batch_size": env.get("INGEST_BATCH_SIZE", ""),
-            "chunk_concurrency": env.get("INGEST_CHUNK_CONCURRENCY", ""),
-            "chunk_semantic": env.get("INGEST_CHUNK_SEMANTIC", ""),
-            "sparse_reindex": env.get("INGEST_SPARSE_REINDEX", ""),
-            "cpu_cores": env.get("CAPACITY_CPU_CORES", ""),
-            "cpu_model": env.get("CAPACITY_CPU_MODEL", ""),
-            "ram_available_mib": env.get("CAPACITY_RAM_AVAILABLE_MIB", ""),
-            "gpu_name": env.get("CAPACITY_GPU_NAME", ""),
-            "probed_at": env.get("CAPACITY_PROBED_AT", ""),
-        }
-
-    def sync_pool_ingest_from_pool_env(self) -> list[str]:
-        """Persist pool planner outputs into admin env for hot reload."""
-        pool_env = read_env_file(self.pool_env_path)
-        updates = {
-            key: pool_env[key]
-            for key in POOL_OUTPUT_KEYS
-            if pool_env.get(key, "").strip()
-        }
-        if not updates:
-            return []
-        write_env_file(self.admin_env_path, updates)
-        for key, value in updates.items():
-            self.db.set_setting(key, value)
-        return list(updates.keys())
-
-    def embed_pool_scale_params(self) -> dict[str, str]:
-        return {
-            "pool_env_path": self.pool_env_path,
-            "scale_env_path": self.pool_scale_env_path,
-            "semantic_requested": self.get_value("INGEST_CHUNK_SEMANTIC", "true"),
-        }
 
     def memgraph_build_params(self) -> dict[str, Any]:
         values = self.get_group_values("memgraphrag")

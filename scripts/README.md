@@ -9,11 +9,6 @@ Helper scripts for operators and homelab dev. Run from repo root unless noted.
 | [`build_memgraphrag_index.py`](build_memgraphrag_index.py) | Offline MemGraphRAG index from Qdrant or text files |
 | [`catalog_weekly_update.py`](catalog_weekly_update.py) | Cron: check catalog subscriptions and download updates |
 | [`requeue_all_ingest.py`](requeue_all_ingest.py) | Re-chunk and re-embed all tracked ingest files |
-| [`scale_ingest_capacity.py`](scale_ingest_capacity.py) | Multi-resource ingest capacity planner (VRAM pool + CPU/RAM/disk caps) |
-| [`scale_nomic_embed_pool.py`](scale_nomic_embed_pool.py) | Legacy wrapper for `scale_ingest_capacity.py` (systemd compat) |
-| [`run_ingest_capacity_scale.py`](run_ingest_capacity_scale.py) | Admin background job: bench, apply plan, sync ingest env (Settings button) |
-| [`bench_ingest_capacity.py`](bench_ingest_capacity.py) | Benchmark chunk/embed throughput to tune planner coefficients |
-| [`bench_ingest_capacity_host.sh`](bench_ingest_capacity_host.sh) | Stop ingest, free GPU, run chunk+embed benches, apply planner, restart admin (`--skip-restart` to leave services down) |
 | [`export_finetune_dataset.py`](export_finetune_dataset.py) | Export transcript JSONL to fine-tuning message format |
 | [`promote_rag_corpus.py`](promote_rag_corpus.py) | Promote RAG improvement JSONL pairs to Qdrant |
 | [`install-systemd-units.sh`](install-systemd-units.sh) | Write `rag-proxy` / `rag-admin` units with correct repo + venv paths |

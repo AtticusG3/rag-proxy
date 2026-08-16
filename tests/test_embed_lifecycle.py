@@ -1,4 +1,4 @@
-"""Tests for on-demand nomic embed lifecycle."""
+"""Tests for on-demand nomic embed lifecycle (query embed unit only)."""
 
 from __future__ import annotations
 
@@ -16,50 +16,42 @@ from ingest.embed_lifecycle import (
 from rag_admin.embed_idle_guard import EmbedIdleGuard
 
 
-def test_unit_for_embed_url_maps_query_and_pool() -> None:
+def test_unit_for_embed_url_maps_only_the_query_embed() -> None:
     assert unit_for_embed_url("http://127.0.0.1:8089") == "nomic-embed.service"
-    assert unit_for_embed_url("http://127.0.0.1:18089") == "nomic-embed@18089.service"
-
-
-def test_embed_url_on_pool_port_uses_pool_unit_not_legacy(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """EMBED_URL on 18091 must start nomic-embed@18091, not nomic-embed.service (:8089)."""
-    monkeypatch.setenv("EMBED_URL", "http://127.0.0.1:18091")
-    assert unit_for_embed_url("http://127.0.0.1:18091") == "nomic-embed@18091.service"
-
-
-def test_query_embed_always_on_spares_only_the_query_unit(
-    monkeypatch: pytest.MonkeyPatch, tmp_path
-) -> None:
-    """Pinning :8089 must not pin the ingest pool with it. The pool is the VRAM-hungry
-    half, so if the flag exempted every unit an idle host would never release the GPU."""
-    pool_env = tmp_path / "pool.env"
-    pool_env.write_text("INGEST_EMBED_URLS=http://127.0.0.1:18089\n", encoding="utf-8")
-    monkeypatch.setenv("EMBED_URL", "http://127.0.0.1:8089")
-
-    monkeypatch.setenv("EMBED_QUERY_ALWAYS_ON", "false")
-    with patch("ingest.embed_lifecycle._discover_pool_ports", return_value={18089}):
-        default = collect_embed_stop_units(pool_env_path=str(pool_env))
-
-    monkeypatch.setenv("EMBED_QUERY_ALWAYS_ON", "true")
-    with patch("ingest.embed_lifecycle._discover_pool_ports", return_value={18089}):
-        pinned = collect_embed_stop_units(pool_env_path=str(pool_env))
-
-    assert "nomic-embed.service" in default
-    assert "nomic-embed.service" not in pinned
-    assert "nomic-embed@18089.service" in pinned
+    # Non-query embed URLs (e.g. llama-swap) have no dedicated unit to manage.
+    assert unit_for_embed_url("http://127.0.0.1:18089") is None
+    assert unit_for_embed_url("http://127.0.0.1:8081") is None
 
 
 def test_units_for_embed_urls_deduplicates() -> None:
     units = units_for_embed_urls(
         [
             "http://127.0.0.1:8089",
-            "http://127.0.0.1:18089",
+            "http://127.0.0.1:8089",
             "http://127.0.0.1:18089",
         ]
     )
-    assert units == ["nomic-embed.service", "nomic-embed@18089.service"]
+    assert units == ["nomic-embed.service"]
+
+
+def test_query_embed_always_on_spares_the_query_unit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMBED_URL", "http://127.0.0.1:8089")
+
+    monkeypatch.setenv("EMBED_QUERY_ALWAYS_ON", "false")
+    assert "nomic-embed.service" in collect_embed_stop_units()
+
+    monkeypatch.setenv("EMBED_QUERY_ALWAYS_ON", "true")
+    assert collect_embed_stop_units() == []
+
+
+def test_collect_embed_stop_units_ignores_non_query_embed_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMBED_URL", "http://127.0.0.1:18080")
+    monkeypatch.setenv("EMBED_QUERY_ALWAYS_ON", "false")
+    assert collect_embed_stop_units() == []
 
 
 def test_idle_stop_threshold_shorter_when_paused() -> None:
@@ -83,7 +75,7 @@ def test_idle_guard_stops_when_paused_and_idle(monkeypatch: pytest.MonkeyPatch) 
     job_runner = MagicMock()
     job_runner.active_job.return_value = None
 
-    guard = EmbedIdleGuard(worker, job_runner, pool_env_path="/tmp/pool.env", poll_sec=0.01)
+    guard = EmbedIdleGuard(worker, job_runner, poll_sec=0.01)
     with patch(
         "rag_admin.embed_idle_guard.seconds_since_embed_activity",
         return_value=999.0,
@@ -99,5 +91,5 @@ def test_idle_guard_keeps_warm_during_active_ingest(monkeypatch: pytest.MonkeyPa
     job_runner = MagicMock()
     job_runner.active_job.return_value = None
 
-    guard = EmbedIdleGuard(worker, job_runner, pool_env_path="/tmp/pool.env")
+    guard = EmbedIdleGuard(worker, job_runner)
     assert guard._should_stop_embed() is False

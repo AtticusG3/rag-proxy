@@ -36,11 +36,7 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag_admin/settings_schema.py` | Settings UI field groups and defaults |
 | `rag_admin/settings_store.py` | Persist Settings to env files + admin SQLite |
 | `ingest/worker.py` | Ingest queue worker (`IngestWorker`) |
-| `ingest/embed_pool.py` | VRAM-aware nomic-embed pool planner |
-| `ingest/capacity_planner.py` | Multi-resource ingest capacity planner (CPU/RAM/disk/GPU caps) |
-| `ingest/host_profile.py` | Host resource probing (CPU, RAM, disk, GPU via nvidia-smi) |
-| `scripts/scale_ingest_capacity.py` | Apply capacity plan (systemd pool + pool env); legacy wrapper `scale_nomic_embed_pool.py` |
-| `scripts/bench_ingest_capacity.py` | Chunk/embed throughput bench for planner coefficient tuning |
+
 | `docker/` | Compose profiles (proxy, cognitive sidecars) |
 | `ingest/` | ZIM/PDF/text ingest worker (Qdrant + sparse reindex) |
 | `ingest/chunking_strategy.py` | Per-document Chonkie strategy selection (recursive, sentence, semantic, token, code) |
@@ -85,7 +81,7 @@ Shared `httpx.AsyncClient` started in app lifespan (`startup_upstream_client` / 
 
 - `pytest tests/ -q` passes; no network in unit tests.
 - Fail-open: cognitive errors never break upstream request.
-- New env vars in `.env.example` plus the module that reads them (`rag_proxy/config.py`, `rag_admin/config.py`, `ingest/chunking.py`, `ingest/embed_pool.py`, or sidecar `app.py` as appropriate).
+- New env vars in `.env.example` plus the module that reads them (`rag_proxy/config.py`, `rag_admin/config.py`, `ingest/chunking.py`, or sidecar `app.py` as appropriate).
 
 ## User-facing docs
 
@@ -104,7 +100,6 @@ Operator guides: **docs/README.md** (index). Entry point: **README.md** (quick s
 | systemd / Docker | `docs/deployment.md` |
 | Troubleshooting | `docs/troubleshooting.md` |
 | Admin UI and ingest | `docs/ingest-and-admin.md` |
-| Ingest capacity planning | `docs/ingest-capacity-planning.md` |
 | MemGraphRAG | `docs/memgraphrag.md` |
 | Codemaps (module map) | `docs/CODEMAPS/INDEX.md` |
 

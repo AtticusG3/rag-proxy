@@ -20,9 +20,8 @@ from rag_admin.db import AdminDatabase
 log = logging.getLogger("rag-admin.jobs")
 
 JOB_MEMGRAPH_BUILD = "memgraph_build"
-JOB_EMBED_POOL_SCALE = "embed_pool_scale"
 JOB_SIDECAR_MIGRATE = "sidecar_migrate"
-KNOWN_JOB_TYPES = (JOB_MEMGRAPH_BUILD, JOB_EMBED_POOL_SCALE, JOB_SIDECAR_MIGRATE)
+KNOWN_JOB_TYPES = (JOB_MEMGRAPH_BUILD, JOB_SIDECAR_MIGRATE)
 
 
 def _utc_now() -> str:
@@ -44,7 +43,7 @@ def _pid_alive(pid: int) -> bool:
 
 
 class BackgroundJobRunner:
-    """Run MemGraphRAG builds, embed pool scaling, and track logs."""
+    """Run MemGraphRAG builds and sidecar migrations, and track logs."""
 
     def __init__(self, db: AdminDatabase, *, repo_root: str, log_dir: str) -> None:
         self.db = db
@@ -52,29 +51,7 @@ class BackgroundJobRunner:
         self.log_dir = log_dir
         self._lock = threading.Lock()
         self._running: dict[str, tuple[str, subprocess.Popen[bytes]]] = {}
-        # True while pause+drain runs before the scale subprocess starts.
-        self._scale_starting = False
         Path(log_dir).mkdir(parents=True, exist_ok=True)
-
-    def scale_starting(self) -> bool:
-        with self._lock:
-            return self._scale_starting
-
-    def try_begin_scale_prep(self) -> bool:
-        """Claim the scale slot for background drain; False if already busy."""
-        with self._lock:
-            if self._scale_starting:
-                return False
-            if self._running.get(JOB_EMBED_POOL_SCALE) is not None:
-                return False
-            if self.db.get_active_background_job(JOB_EMBED_POOL_SCALE) is not None:
-                return False
-            self._scale_starting = True
-            return True
-
-    def end_scale_prep(self) -> None:
-        with self._lock:
-            self._scale_starting = False
 
     def reconcile_orphans(self) -> int:
         """Mark DB 'running' jobs whose process is gone as failed.
@@ -234,39 +211,6 @@ class BackgroundJobRunner:
             cmd,
             params=params,
             message="MemGraphRAG index build started",
-        )
-
-    def start_embed_pool_scale(
-        self,
-        params: dict[str, Any],
-        *,
-        on_success: Callable[[], None] | None = None,
-        on_failure: Callable[[], None] | None = None,
-    ) -> str:
-        python = sys.executable
-        script = os.path.join(self.repo_root, "scripts", "run_ingest_capacity_scale.py")
-        out_dir = str(Path(self.log_dir) / f"capacity_scale_{uuid.uuid4().hex[:8]}")
-        cmd = [
-            python,
-            script,
-            "--pool-env",
-            str(params["pool_env_path"]),
-            "--scale-env",
-            str(params["scale_env_path"]),
-            "--out-dir",
-            out_dir,
-        ]
-        if params.get("semantic_requested") is not None:
-            cmd += ["--semantic-requested", str(params["semantic_requested"]).lower()]
-        if params.get("skip_bench"):
-            cmd.append("--skip-bench")
-        return self._start_job(
-            JOB_EMBED_POOL_SCALE,
-            cmd,
-            params={**params, "out_dir": out_dir},
-            message="Ingest capacity scale started (bench + apply)",
-            on_success=on_success,
-            on_failure=on_failure,
         )
 
     def start_sidecar_migrate(self, params: dict[str, Any]) -> str:

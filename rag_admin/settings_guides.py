@@ -23,34 +23,16 @@ class TuningSection:
 GROUP_TUNING: dict[str, tuple[TuningSection, ...]] = {
     "ingest": (
         TuningSection(
-            "GPU embed pool (planner inputs)",
-            "Edit max instances and VRAM below, save, then click Scale ingest capacity. That pauses ingest, runs chunk+embed benchmarks, applies the plan to the embed pool, and resumes ingest with updated settings.",
-            (
-                TuningItem(
-                    "NOMIC_POOL_MAX_INSTANCES",
-                    "Cap on nomic-embed@PORT systemd units (llama-server count).",
-                ),
-                TuningItem(
-                    "NOMIC_POOL_PARALLEL_PER_INSTANCE",
-                    "Planner input for --parallel; Scale writes effective NOMIC_POOL_PARALLEL for systemd.",
-                ),
-                TuningItem(
-                    "NOMIC_POOL_VRAM_RESERVE_MIB",
-                    "Leave headroom for chat models on the same GPU.",
-                ),
-            ),
-        ),
-        TuningSection(
             "Throughput pipeline",
-            "Files run in parallel; embed batches share one GPU pool cap.",
+            "Files run in parallel; embed batches share one embed endpoint cap.",
             (
                 TuningItem(
                     "INGEST_FILE_CONCURRENCY",
-                    "Parallel files (threads). Empty = auto max(1, min(4, pool URLs)).",
+                    "Parallel files (threads). Empty = auto max(1, min(4, embed URLs)).",
                 ),
                 TuningItem(
                     "INGEST_EMBED_CONCURRENCY",
-                    "Max in-flight embed batches across all files. Match pool: instances x --parallel.",
+                    "Max in-flight embed batches across all files.",
                 ),
                 TuningItem(
                     "INGEST_BATCH_SIZE",
@@ -58,11 +40,11 @@ GROUP_TUNING: dict[str, tuple[TuningSection, ...]] = {
                 ),
                 TuningItem(
                     "INGEST_EMBED_URLS",
-                    "GPU pool endpoints (ports 18089+). Usually written by scale_ingest_capacity.py.",
+                    "Comma-separated embed endpoints for bulk ingest; empty = EMBED_URL.",
                 ),
                 TuningItem(
                     "EMBED_URL",
-                    "Query-time embed (:8089). Bulk ingest uses the pool URLs above.",
+                    "Embed endpoint for RAG queries and ingest when INGEST_EMBED_URLS is empty.",
                 ),
             ),
         ),
@@ -160,7 +142,7 @@ GROUP_TUNING: dict[str, tuple[TuningSection, ...]] = {
 def field_placeholder(field: SettingField) -> str:
     """Placeholder text for empty inputs (schema default or auto sentinel)."""
     if field.key == "INGEST_FILE_CONCURRENCY":
-        return "auto (1-4 by pool size)"
+        return "auto (1-4 by embed URL count)"
     if field.default == "":
         return "(empty)"
     return field.default

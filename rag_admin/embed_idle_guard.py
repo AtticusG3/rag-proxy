@@ -20,8 +20,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("rag-admin.embed-idle")
 
-JOB_EMBED_POOL_SCALE = "embed_pool_scale"
-
 
 class EmbedIdleGuard:
     """Poll ingest/proxy embed activity and unload nomic workers when idle."""
@@ -31,12 +29,10 @@ class EmbedIdleGuard:
         worker: IngestWorker,
         job_runner: BackgroundJobRunner,
         *,
-        pool_env_path: str,
         poll_sec: float | None = None,
     ) -> None:
         self._worker = worker
         self._job_runner = job_runner
-        self._pool_env_path = pool_env_path
         if poll_sec is None:
             poll_sec = float(os.getenv("EMBED_IDLE_POLL_SEC", "15"))
         self._poll_sec = poll_sec
@@ -69,12 +65,7 @@ class EmbedIdleGuard:
         pending = self._worker.db.list_pending_files(limit=1)
         return not pending
 
-    def _scale_job_active(self) -> bool:
-        return self._job_runner.active_job(JOB_EMBED_POOL_SCALE) is not None
-
     def _should_stop_embed(self) -> bool:
-        if self._scale_job_active():
-            return False
         paused = self._worker.paused
         if not paused and not self._ingest_quiet():
             return False
@@ -88,6 +79,6 @@ class EmbedIdleGuard:
         while not self._stop.wait(self._poll_sec):
             try:
                 if self._should_stop_embed():
-                    stop_idle_embed_units(pool_env_path=self._pool_env_path)
+                    stop_idle_embed_units()
             except Exception:
                 log.warning("embed idle guard tick failed", exc_info=True)

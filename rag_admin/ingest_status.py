@@ -107,7 +107,7 @@ def sort_file_rows(
 
 def ingest_config_snapshot(worker: Any) -> dict[str, Any]:
     config = worker.config
-    pool_urls = config.embed_urls or []
+    embed_urls = config.embed_urls or []
     chunk = config.chunk_config
     return {
         "batch_size": config.batch_size,
@@ -115,7 +115,7 @@ def ingest_config_snapshot(worker: Any) -> dict[str, Any]:
         "file_concurrency": config.file_concurrency,
         "embed_max_chars": config.embed_max_chars,
         "embed_url": config.embed_url,
-        "embed_pool_count": len(pool_urls) if pool_urls else 1,
+        "embed_url_count": len(embed_urls) if embed_urls else 1,
         "sparse_reindex_mode": config.sparse_reindex_mode,
         "turbovec_reindex_mode": getattr(config, "turbovec_reindex_mode", "idle"),
         "turbovec_configured": bool(getattr(config, "turbovec_url", "").strip()),

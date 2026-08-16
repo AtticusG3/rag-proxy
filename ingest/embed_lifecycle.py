@@ -12,20 +12,14 @@ from urllib.parse import urlparse
 
 import httpx
 
-from ingest.embed_pool import EmbedPoolConfig, load_embed_pool_config
-from ingest.embed_urls import parse_ingest_embed_urls
-from ingest.port_avoidance import embed_pool_stop_ports, loopback_reserved_ports
 from rag_proxy.env_parse import parse_bool
 
 log = logging.getLogger("ingest.embed_lifecycle")
 
 QUERY_EMBED_UNIT = "nomic-embed.service"
-POOL_UNIT_PREFIX = "nomic-embed@"
 DEFAULT_QUERY_EMBED_PORT = 8089
 DEFAULT_QUERY_EMBED_URL = "http://127.0.0.1:8089"
 DEFAULT_ACTIVITY_PATH = "/var/lib/rag_proxy/embed_last_activity"
-DEFAULT_POOL_ENV = "/opt/ai/config/nomic-embed-pool.env"
-EXTRA_PORT_BUFFER = 4
 
 _MUTATING_SYSTEMCTL = frozenset({"start", "stop", "restart", "enable", "disable"})
 
@@ -105,27 +99,24 @@ def query_embed_url() -> str:
 
 
 def uses_dedicated_query_embed_unit() -> bool:
-    """True when EMBED_URL targets nomic-embed.service (:8089), not a pool port."""
+    """True when EMBED_URL targets nomic-embed.service (:8089)."""
     port = embed_port(query_embed_url())
     return port == dedicated_query_embed_port()
 
 
 def query_embed_always_on() -> bool:
-    """Keep the query embed resident while the ingest pool still idle-stops.
-
-    EMBED_ON_DEMAND is all-or-nothing, so trading first-query latency for VRAM
-    on :8089 would otherwise also pin every pool instance.
-    """
+    """Keep the query embed resident so RAG queries never wait for it to load."""
     return parse_bool(os.getenv("EMBED_QUERY_ALWAYS_ON"), False)
 
 
 def unit_for_embed_url(url: str) -> str | None:
+    """The systemd unit for an embed URL, or None when not the dedicated query embed."""
     port = embed_port(url)
     if port is None:
         return None
     if port == dedicated_query_embed_port():
         return QUERY_EMBED_UNIT
-    return f"{POOL_UNIT_PREFIX}{port}.service"
+    return None
 
 
 def units_for_embed_urls(urls: list[str]) -> list[str]:
@@ -151,9 +142,6 @@ def _systemctl_argv(*args: str) -> list[str]:
     if not args:
         return ["systemctl"]
     privileged = args[0] in _MUTATING_SYSTEMCTL
-    wrapper = Path("/opt/ai/bin/nomic-pool-systemctl")
-    if not _running_as_root() and privileged and wrapper.is_file():
-        return ["sudo", "-n", str(wrapper), *args]
     if not _running_as_root() and privileged:
         return ["sudo", "-n", "systemctl", *args]
     return ["systemctl", *args]
@@ -210,68 +198,13 @@ def wait_for_embed_health(
     return [url for url in urls if _probe_embed(url)]
 
 
-def _read_env_urls(pool_env_path: str) -> list[str]:
-    path = Path(pool_env_path)
-    if not path.is_file():
-        return []
-    embed_url = query_embed_url()
-    ingest_raw = ""
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.startswith("INGEST_EMBED_URLS="):
-            ingest_raw = line.split("=", 1)[1].strip()
-        elif line.startswith("EMBED_URL="):
-            embed_url = line.split("=", 1)[1].strip().rstrip("/")
-    return parse_ingest_embed_urls(embed_url=embed_url, ingest_embed_urls=ingest_raw or None)
-
-
-def _discover_pool_ports() -> set[int]:
-    result = _systemctl(
-        "list-units",
-        "--all",
-        "--no-legend",
-        f"{POOL_UNIT_PREFIX}*",
-        check=False,
-    )
-    ports: set[int] = set()
-    for line in result.stdout.splitlines():
-        token = line.split()[0] if line.split() else ""
-        if "@" not in token:
-            continue
-        port_raw = token.split("@", 1)[1].removesuffix(".service")
-        try:
-            ports.add(int(port_raw))
-        except ValueError:
-            continue
-    return ports
-
-
-def _pool_stop_ports(config: EmbedPoolConfig) -> set[int]:
-    return set(
-        embed_pool_stop_ports(
-            config.port_base,
-            config.max_instances,
-            extra=EXTRA_PORT_BUFFER,
-            reserved=loopback_reserved_ports(),
-        )
-    )
-
-
-def collect_embed_stop_units(*, pool_env_path: str | None = None) -> list[str]:
-    """All nomic embed systemd units that should be stopped when idle."""
-    pool_env_path = pool_env_path or os.getenv(
-        "NOMIC_EMBED_POOL_ENV_FILE", DEFAULT_POOL_ENV
-    )
-    config = load_embed_pool_config()
+def collect_embed_stop_units() -> list[str]:
+    """The nomic embed systemd units that should be stopped when idle."""
     units: set[str] = set()
     if uses_dedicated_query_embed_unit() and not query_embed_always_on():
         units.add(QUERY_EMBED_UNIT)
-    for url in _read_env_urls(pool_env_path):
-        unit = unit_for_embed_url(url)
-        if unit:
-            units.add(unit)
-    for port in _discover_pool_ports() | _pool_stop_ports(config):
-        units.add(f"{POOL_UNIT_PREFIX}{port}.service")
     return sorted(units)
+
 
 
 def ensure_embed_urls(
@@ -298,12 +231,12 @@ def ensure_embed_urls(
     return healthy or normalized
 
 
-def stop_idle_embed_units(*, pool_env_path: str | None = None) -> int:
-    """Stop and disable all nomic embed units so VRAM is released."""
+def stop_idle_embed_units() -> int:
+    """Stop and disable the nomic query embed unit so VRAM is released."""
     if not on_demand_enabled():
         return 0
     stopped = 0
-    for unit in collect_embed_stop_units(pool_env_path=pool_env_path):
+    for unit in collect_embed_stop_units():
         result = _systemctl("is-active", unit, check=False)
         if result.stdout.strip() not in ("active", "activating"):
             _systemctl("disable", unit, check=False)

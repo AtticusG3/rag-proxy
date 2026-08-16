@@ -137,7 +137,7 @@ journalctl -u rag-proxy -f | grep -E 'RAG:|trace=|WARNING'
 | End-of-run delay | `INGEST_SPARSE_REINDEX=idle` | Full BM25 rebuild when queue drains — set `off` during bulk |
 | Slow `systemctl stop rag-admin` | Shutdown used to run BM25 flush (up to 5 min) | Fixed in recent builds: shutdown skips flush; use **Rebuild BM25 now** if needed |
 | Pause seems ineffective | Pause only blocked new files; in-flight ZIM kept embedding | Pause now aborts at batch boundaries and re-queues the current file |
-| Restart proxy/admin does not reload nomic pool | Pool is separate systemd units (`nomic-embed@*`) | Use **Restart embed pool** on Settings → ingest, or `systemctl restart nomic-embed-scale` |
+
 | Nomic still on GPU after pause | `EMBED_ON_DEMAND=false` or idle timer not elapsed | Default: units unload after `EMBED_IDLE_PAUSED_SEC` (30s) when paused; set `EMBED_IDLE_PAUSED_SEC=5` for faster VRAM free |
 | First RAG query slow after idle | Cold-start loads nomic into VRAM | Expected with on-demand embed; subsequent queries are fast |
 | `systemctl stop` hangs on proxy | Uvicorn waited forever for open SSE streams | Set `PROXY_GRACEFUL_SHUTDOWN_SEC=15` (default); unit `TimeoutStopSec=30` |

@@ -25,7 +25,7 @@ def _worker(db: IngestDatabase, *, file_concurrency: int = 2) -> IngestWorker:
     return IngestWorker(config, db)
 
 
-def test_resolve_file_concurrency_defaults_to_embed_pool_cap() -> None:
+def test_resolve_file_concurrency_defaults_to_embed_url_count_cap() -> None:
     assert resolve_file_concurrency(["http://a", "http://b", "http://c", "http://d", "http://e"]) == 4
     assert resolve_file_concurrency(["http://a"]) == 1
     assert resolve_file_concurrency([], explicit=3) == 3

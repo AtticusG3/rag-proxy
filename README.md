@@ -139,7 +139,6 @@ Per-request overrides (`x-rag-mode`, `x-no-cache`, `x-conversation-id`): [Header
 | [Performance](docs/performance.md) | Latency trade-offs, caching, tuning |
 | [Troubleshooting](docs/troubleshooting.md) | Common issues |
 | [Ingest and admin](docs/ingest-and-admin.md) | Content indexing UI and worker |
-| [Ingest capacity planning](docs/ingest-capacity-planning.md) | Multi-resource ingest planner |
 | [MemGraphRAG](docs/memgraphrag.md) | Graph index build and rollout |
 
 ## Deployment

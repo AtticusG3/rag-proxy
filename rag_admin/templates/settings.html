@@ -70,56 +70,6 @@
 
   <div class="settings-main">
     {% if active_tab == 'ingest' %}
-    <section class="panel" data-settings-live="ingest">
-      <div class="section-head">
-        <h2 class="section-title">Capacity plan</h2>
-        <div class="page-header__actions">
-          <form method="post" action="/settings/embed-pool/scale?mode={{ qs_mode }}" class="inline" data-busy-label="Starting…">
-            <button type="submit" id="scale-capacity-btn" class="btn btn--small" {% if pool_scale_job or pool_scale_starting %}disabled title="A scale job is already running — use Stop scale first"{% endif %}>Scale capacity</button>
-          </form>
-          {% if can_restart_embed_pool %}
-          <form method="post" action="/settings/restart/embed-pool?mode={{ qs_mode }}" class="inline">
-            <button type="submit" class="btn btn--ghost btn--small">Restart pool</button>
-          </form>
-          {% endif %}
-          <form method="post" action="/settings/embed-pool/stop?mode={{ qs_mode }}" class="inline">
-            <button type="submit" id="stop-scale-btn" class="btn btn--ghost btn--small" {% if not pool_scale_job %}disabled{% endif %}>Stop scale</button>
-          </form>
-        </div>
-      </div>
-      {% if pool_scale_starting and not pool_scale_job %}
-      <p id="pool-scale-starting" class="muted">Yielding active ingest files, then capacity scale starts…</p>
-      {% elif pool_scale_job %}
-      <p id="pool-scale-status" class="muted">Scaling job <code>{{ pool_scale_job.id[:8] }}</code> since {{ pool_scale_job.started_at }} (pid {{ pool_scale_job.pid }}).</p>
-      <pre id="pool-scale-log" class="log-tail" aria-live="polite">{{ pool_scale_log_tail }}</pre>
-      {% elif pool_env.exists %}
-      <dl class="config-dl config-dl--compact">
-        <div><dt>Instances</dt><dd class="mono">{{ pool_env.instance_count or '?' }}</dd></div>
-        <div><dt>Ports</dt><dd class="mono">{{ pool_env.ports or '-' }}</dd></div>
-        <div><dt>Pool concurrency</dt><dd class="mono">{{ pool_env.embed_concurrency or '-' }}</dd></div>
-        {% if pool_env.file_concurrency %}<div><dt>Parallel files</dt><dd class="mono">{{ pool_env.file_concurrency }}</dd></div>{% endif %}
-        {% if pool_env.batch_size %}<div><dt>Batch size</dt><dd class="mono">{{ pool_env.batch_size }}</dd></div>{% endif %}
-        {% if pool_env.gpu_name %}<div><dt>GPU</dt><dd class="mono">{{ pool_env.gpu_name }}</dd></div>{% endif %}
-        {% if pool_env.gpu_free_mib %}<div><dt>GPU free</dt><dd class="mono">{{ pool_env.gpu_free_mib }} MiB</dd></div>{% endif %}
-        <div><dt>URLs</dt><dd class="mono">{{ pool_env.embed_urls or '-' }}</dd></div>
-      </dl>
-      {% else %}
-      <p class="muted">No capacity plan yet. Save pool planner fields, then Scale capacity.</p>
-      {% endif %}
-      {% if pool_scale_history and not pool_scale_job %}
-      <div class="table-wrap table-wrap--spaced">
-        <table>
-          <thead><tr><th>Started</th><th>Status</th><th>Message</th></tr></thead>
-          <tbody>
-            {% for job in pool_scale_history %}
-            <tr><td class="mono">{{ job.started_at }}</td><td>{{ job.status }}</td><td>{{ job.message or '-' }}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% endif %}
-    </section>
-
     <section class="panel panel--row" data-settings-live="ingest">
       <div class="panel__col">
         <div class="section-head">

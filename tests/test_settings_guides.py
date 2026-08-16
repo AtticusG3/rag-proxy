@@ -13,4 +13,4 @@ def test_group_tuning_covers_all_settings_tabs() -> None:
 
 def test_file_concurrency_placeholder_is_auto_sentinel() -> None:
     field = next(f for f in SETTING_FIELDS if f.key == "INGEST_FILE_CONCURRENCY")
-    assert field_placeholder(field) == "auto (1-4 by pool size)"
+    assert field_placeholder(field) == "auto (1-4 by embed URL count)"

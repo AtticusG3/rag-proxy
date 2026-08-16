@@ -9,7 +9,7 @@ Module maps for contributors and agents. Operator guides stay under [docs/README
 | Codemap | Scope |
 | --- | --- |
 | [proxy.md](proxy.md) | `rag_proxy/` FastAPI proxy, cognitive pipeline, retrieval clients |
-| [ingest.md](ingest.md) | `ingest/` worker, chunking, embed pool, capacity planner |
+| [ingest.md](ingest.md) | `ingest/` worker, chunking, embed, Qdrant write path |
 | [admin.md](admin.md) | `rag_admin/` UI, settings, catalog, ingest queue |
 | [sidecars.md](sidecars.md) | Rerank, sparse BM25, TurboVec, MCP RAG |
 
@@ -23,7 +23,7 @@ rag_proxy (:8088) -----> Qdrant (+ optional TurboVec / sparse / rerank)
     |                    |
     +---> LLAMA_SWAP_URL (OpenAI-compatible upstream)
 
-rag_admin (:8087) ---> ingest worker ---> embed pool + Qdrant (+ sidecars)
+rag_admin (:8087) ---> ingest worker ---> embed endpoint + Qdrant (+ sidecars)
 ```
 
 ## Related operator docs

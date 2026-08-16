@@ -21,7 +21,7 @@ flowchart TB
 
   subgraph shared["Shared infrastructure"]
     QD["Qdrant collection"]
-    EM["nomic-embed pool"]
+    EM["embed endpoint"]
     SP["Sparse index\noptional BM25"]
   end
 
@@ -38,7 +38,7 @@ flowchart TB
   RP --> LS
 ```
 
-This repository ships `rag-proxy.service`, `rag-admin.service`, `nomic-embed.service`, `nomic-embed@.service`, and `nomic-embed-scale.service` examples. Edit paths and `User=` before install. Cron helpers load admin env via `RAG_ADMIN_ENV_FILE` (default `/opt/ai/config/rag-admin.env`); `catalog_weekly_update.py` also accepts legacy alias `RAG_ADMIN_ENV`.
+This repository ships `rag-proxy.service`, `rag-admin.service`, and `nomic-embed.service` examples. Edit paths and `User=` before install. Cron helpers load admin env via `RAG_ADMIN_ENV_FILE` (default `/opt/ai/config/rag-admin.env`); `catalog_weekly_update.py` also accepts legacy alias `RAG_ADMIN_ENV`.
 
 ## Components
 
@@ -87,7 +87,7 @@ Paths default to `/opt/ai/config/rag-admin.env` and `/opt/ai/config/rag-proxy.en
 
 **Env-only (not in Settings UI):** `UPSTREAM_*`, model registry JSON, transcript capture (except `ENABLE_TRANSCRIPT_CAPTURE`), and most latency-budget knobs — set in env and restart. Chunk size changes require `python scripts/requeue_all_ingest.py` for existing files.
 
-**Port topology:** Settings defaults **Primary embed URL** to `http://127.0.0.1:8089` (query RAG; mirrored to `rag-proxy.env`). Bulk GPU ingest uses **Ingest embed pool URLs** on ports `18089+` (`INGEST_EMBED_URLS`); the capacity planner writes those via `scripts/scale_ingest_capacity.py` (legacy wrapper `scale_nomic_embed_pool.py`).
+**Port topology:** Settings defaults **Primary embed URL** to `http://127.0.0.1:8089` (query RAG; mirrored to `rag-proxy.env`). Bulk ingest uses `EMBED_URL` unless **Ingest embed URLs** (`INGEST_EMBED_URLS`) is set (comma-separated round-robin; empty = `EMBED_URL`).
 
 Status API: `GET /api/settings/status` (service reachability for the Settings page).
 
@@ -95,7 +95,7 @@ Status API: `GET /api/settings/status` (service reachability for the Settings pa
 
 Startup **refuses** default `ADMIN_SESSION_SECRET` and `ADMIN_PASSWORD` unless `ADMIN_ALLOW_INSECURE_DEFAULTS=true` (local dev only). Set strong secrets before exposing beyond localhost.
 
-Default bind: `127.0.0.1:8087`. Primary embed defaults to `:8089`; set **Ingest embed pool URLs** for bulk pool hosts (`18089+`).
+Default bind: `127.0.0.1:8087`. Primary embed defaults to `:8089`; set **Ingest embed URLs** to override the embed endpoint used by bulk ingest.
 
 ## Environment variables
 
@@ -197,30 +197,7 @@ Bulk ZIM ingest uses `ingest/pipeline.py`: multiple embed batches run concurrent
 
 Chunking defaults to **512 tokens** with **64-token overlap** so each chunk fits nomic-embed-text-v1.5's effective range without diluting the vector. The embedder still bisects batches on `exceed_context_size` responses.
 
-### Ingest capacity planner (multi-resource auto-scale)
-
-For bulk ingest on a GPU host, run several `llama-server` embed instances (systemd template `nomic-embed@PORT.service`) and round-robin across them via `INGEST_EMBED_URLS`.
-
-`scripts/scale_ingest_capacity.py` (legacy entry point `scale_nomic_embed_pool.py`) probes the host — free VRAM plus CPU cores, available RAM, and disk speed — and plans the whole ingest stack. GPU pool sizing is unchanged:
-
-```text
-instances = clamp((gpu_free_mib - NOMIC_POOL_VRAM_RESERVE_MIB) / NOMIC_POOL_VRAM_PER_INSTANCE_MIB)
-```
-
-On top of that it computes `INGEST_FILE_CONCURRENCY`, `INGEST_BATCH_SIZE`, `INGEST_CHUNK_CONCURRENCY`, semantic chunking on/off, and `NOMIC_POOL_PARALLEL` (capped for low-bandwidth GPUs and so `-c / --parallel` still fits ingest chunk size). It writes the plan to `/opt/ai/config/nomic-embed-pool.env` **before** starting pool units (so `nomic-embed@.service` loads the planned `--parallel`), syncs that parallel into the scale env, and records a rationale comment per decision. The post-bench `--write-env-only` pass **freezes** pool URLs/ports/`--parallel` from the running env so occupied VRAM cannot shrink the pool. Tune via `/opt/ai/config/nomic-embed-scale.env` (see `nomic-embed-scale.env.example`) and `INGEST_CAPACITY_*` caps ([Configuration](configuration.md)). Full reference: [Ingest capacity planning](ingest-capacity-planning.md).
-
-```bash
-# Dry-run plan
-python scripts/scale_ingest_capacity.py
-
-# Apply via systemd (recommended on boot)
-sudo systemctl restart nomic-embed-scale.service
-systemctl restart rag-admin.service
-```
-
-The **Scale ingest capacity** button on the Settings ingest tab pauses ingest, waits for in-flight files to finish, then runs `scripts/run_ingest_capacity_scale.py` as a background job (chunk + embed benchmarks, apply pool plan, restore query embed on `:8089`). Measured `chunks/min` from bench JSON drives chunk concurrency, embed concurrency, and batch size; VRAM probes still size the pool. On success it syncs the resulting `INGEST_*` keys into the admin env, hot-reloads the worker, restores the prior pause state, and re-queues all files only if the plan changed semantic chunking.
-
-Without `nvidia-smi`, the planner falls back to a single port (`NOMIC_POOL_PORT_BASE`) and skips systemd changes; missing CPU/RAM/disk probes simply skip those caps. The embedder fails over to alternate pool URLs on HTTP 404/5xx.
+For bulk ingest on a GPU host, serve embeddings from an OpenAI-compatible endpoint (`EMBED_URL`, or comma-separated `INGEST_EMBED_URLS` for round-robin — e.g. a llama-swap `embed-pool` selector). Set `llama-server --parallel` / selector concurrency high enough for `INGEST_EMBED_CONCURRENCY`. The embedder fails over to alternate URLs on HTTP 404/5xx.
 
 Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `document`, `page_content` (proxy checks in that order).
 
@@ -242,7 +219,7 @@ Priority changes post to `POST /api/ingest/priority-form`. The added **size** co
 
 | Lever | Variable | Notes |
 | --- | --- | --- |
-| Parallel files | `INGEST_FILE_CONCURRENCY` | Default `max(1, min(4, embed pool size))`; hot-reloads when the worker is running |
+| Parallel files | `INGEST_FILE_CONCURRENCY` | Default `max(1, min(4, embed URL count))`; hot-reloads when the worker is running |
 | Parallel chunking | `INGEST_CHUNK_CONCURRENCY` | Default `min(4, cores / 2)`; concurrent chunk executions |
 | Batch size | `INGEST_BATCH_SIZE` | Raise (e.g. `256`) when embed server supports large batches |
 | Parallel embeds | `INGEST_EMBED_CONCURRENCY` | Default `4`; raise if embed server keeps up |
