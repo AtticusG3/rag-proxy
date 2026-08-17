@@ -2,7 +2,7 @@
 # Clear all dense vectors from the ingest Qdrant collection and re-queue ingest.
 set -euo pipefail
 
-REPO="${REPO_ROOT:-/home/kevyn/rag-proxy}"
+REPO="${REPO_ROOT:-/home/kevyn/projects/rag-proxy}"
 ENV_FILE="${RAG_ADMIN_ENV_FILE:-/opt/ai/config/rag-admin.env}"
 PYTHON=/opt/ai/venv/bin/python
 

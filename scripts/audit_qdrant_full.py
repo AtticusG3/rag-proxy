@@ -167,7 +167,7 @@ def main() -> int:
 
     # Live sanitiser check against one NHS point title if available
     try:
-        sys.path.insert(0, "/home/kevyn/rag-proxy")
+        sys.path.insert(0, "/home/kevyn/projects/rag-proxy")
         from ingest.zim_sanitize import sanitize_zim_html
         from libzim.reader import Archive
 

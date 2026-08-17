@@ -9,7 +9,7 @@ import sqlite3
 import sys
 import urllib.request
 
-sys.path.insert(0, "/home/kevyn/rag-proxy")
+sys.path.insert(0, "/home/kevyn/projects/rag-proxy")
 
 
 def load_env(path: str) -> dict[str, str]:

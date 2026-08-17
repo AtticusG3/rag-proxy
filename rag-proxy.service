@@ -7,7 +7,7 @@ Before=llama-swap.service
 [Service]
 Type=simple
 User=kevyn
-WorkingDirectory=/home/kevyn/rag-proxy
+WorkingDirectory=/home/kevyn/projects/rag-proxy
 EnvironmentFile=-/opt/ai/config/rag-proxy.env
 ExecStart=/opt/ai/venv/bin/python rag_proxy.py
 Restart=always

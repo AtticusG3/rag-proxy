@@ -68,7 +68,7 @@ Repository ships example units:
 `rag-proxy.service` essentials — **run `bash scripts/install-systemd-units.sh`** on the host (detects repo path and venv). Example output:
 
 ```ini
-WorkingDirectory=/home/kevyn/rag-proxy
+WorkingDirectory=/home/kevyn/projects/rag-proxy
 EnvironmentFile=-/opt/ai/config/rag-proxy.env
 ExecStart=/opt/ai/venv/bin/python rag_proxy.py
 ```

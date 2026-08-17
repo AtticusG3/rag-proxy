@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Deploy rag_proxy on buster and run smoke checks.
-# Canonical checkout is /home/kevyn/rag-proxy (rag-admin / rag-proxy WorkingDirectory).
-# Do not use a second clone under /opt/ai/repo — that path should be a symlink if present.
+# Canonical checkout is /home/kevyn/projects/rag-proxy (all systemd units use this path).
+# The old /opt/ai/repo/rag_proxy symlink was removed 2026-08-17 — don't recreate it.
 set -euo pipefail
 
-REPO="${REPO_ROOT:-/home/kevyn/rag-proxy}"
+REPO="${REPO_ROOT:-/home/kevyn/projects/rag-proxy}"
 VENV="${VENV_PYTHON:-/opt/ai/venv/bin/python}"
 PIP="${VENV_PIP:-/opt/ai/venv/bin/pip}"
 PROXY_ENV="${PROXY_ENV_FILE:-/opt/ai/config/rag-proxy.env}"
