@@ -168,10 +168,11 @@ async def proxy(request: Request, path: str):
         resp_headers = dict(upstream.headers)
         # transfer-encoding/content-length are hop-by-hop; the ASGI server reframes
         # them (computed length for buffered bodies, chunked for streams).
-        # content-encoding must survive: the upstream body is forwarded byte-for-byte,
-        # so dropping it leaves gzip-encoded bytes (e.g. llama-server web UI assets)
-        # undeclared and unreadable by the client.
-        for h in ("transfer-encoding", "content-length"):
+        # content-encoding must NOT survive: httpx auto-decodes the upstream body
+        # (gzip/deflate/br/zstd) before we relay it (aread/aiter_bytes), so keeping
+        # the header makes the client try to decompress already-plaintext bytes
+        # (net::ERR_CONTENT_DECODING_FAILED, e.g. llama-server web UI assets).
+        for h in ("transfer-encoding", "content-length", "content-encoding"):
             resp_headers.pop(h, None)
 
         content_type = upstream.headers.get("content-type", "")

@@ -108,20 +108,23 @@ def test_proxy_closes_upstream_when_send_raises():
     close_mock.assert_awaited_once_with(None)
 
 
-def test_proxy_preserves_content_encoding_on_buffered_passthrough():
-    """gzip'd upstream bodies (llama.cpp UI) must keep Content-Encoding.
+def test_proxy_strips_content_encoding_on_buffered_passthrough():
+    """gzip'd upstream bodies (llama.cpp UI) must drop Content-Encoding.
 
-    The proxy relays the body byte-for-byte; stripping content-encoding would leave
-    the client with undeclared gzip bytes (broken UI). transfer-encoding and
-    content-length are hop-by-hop and must still be dropped.
+    httpx auto-decodes the upstream body before aread() returns, so the relayed
+    body is always plaintext; keeping the header makes the client decompress
+    plaintext bytes (net::ERR_CONTENT_DECODING_FAILED in the llama-swap web UI).
+    transfer-encoding and content-length are hop-by-hop and must still be dropped.
     """
 
-    raw = gzip.compress(b"hello world")
-    mock_response = _buffered_upstream_response(body=raw)
+    # aread() returns the DECODED body (httpx decodes gzip before returning),
+    # while the upstream headers still carry content-encoding.
+    decoded = b"hello world"
+    mock_response = _buffered_upstream_response(body=decoded)
     mock_response.headers = {
         "content-type": "application/javascript",
         "content-encoding": "gzip",
-        "content-length": str(len(raw)),
+        "content-length": str(len(gzip.compress(decoded))),
         "transfer-encoding": "chunked",
     }
     mock_client = _pooled_client_mock(mock_response)
@@ -134,8 +137,8 @@ def test_proxy_preserves_content_encoding_on_buffered_passthrough():
             resp = client.get("/index.js")
 
     assert resp.status_code == 200
-    # Header kept so the client can decode the byte-for-byte relayed gzip body.
-    assert resp.headers.get("content-encoding") == "gzip"
+    # Header dropped because the relayed body is already decoded plaintext.
+    assert resp.headers.get("content-encoding") is None
     assert resp.content == b"hello world"
     assert "transfer-encoding" not in resp.headers
 
@@ -143,8 +146,10 @@ def test_proxy_preserves_content_encoding_on_buffered_passthrough():
 def test_proxy_sse_streams_via_real_relay_upstream():
     """SSE must flow through production relay_upstream, not buffered aread."""
 
-    raw = gzip.compress(b"data: hello\n\n")
-    chunks = [raw[:6], raw[6:]]
+    # aiter_bytes() yields DECODED chunks (httpx decodes gzip before relaying),
+    # while the upstream headers still carry content-encoding.
+    decoded = b"data: hello\n\n"
+    chunks = [decoded[:6], decoded[6:]]
     mock_response = _streaming_upstream_response(chunks)
     mock_response.headers = {
         "content-type": "text/event-stream; charset=utf-8",
@@ -163,7 +168,7 @@ def test_proxy_sse_streams_via_real_relay_upstream():
     assert ctor.call_count == 3
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
-    assert resp.headers.get("content-encoding") == "gzip"
+    assert resp.headers.get("content-encoding") is None
     assert resp.content == b"data: hello\n\n"
     assert "transfer-encoding" not in resp.headers
     mock_response.aread.assert_not_called()
