@@ -28,6 +28,10 @@ log = logging.getLogger("sparse-sidecar")
 QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333").rstrip("/")
 DEFAULT_COLLECTION = os.getenv("QDRANT_COLLECTION", _DEFAULT_COLLECTION)
 REFRESH_SEC = float(os.getenv("SPARSE_REFRESH_SEC", "3600"))
+# Backoff for failed syncs (e.g. Qdrant still booting): start short, double up
+# to a cap, so the sidecar keeps retrying instead of waiting a full REFRESH_SEC.
+INITIAL_RETRY_SEC = float(os.getenv("SPARSE_INITIAL_RETRY_SEC", "5"))
+RETRY_MAX_SEC = float(os.getenv("SPARSE_RETRY_MAX_SEC", "300"))
 SCROLL_BATCH = int(os.getenv("SPARSE_SCROLL_BATCH", "256"))
 HOST = os.getenv("SPARSE_HOST", "0.0.0.0")
 PORT = int(os.getenv("SPARSE_PORT", "8096"))
@@ -148,7 +152,7 @@ async def lifespan(_app: FastAPI):
 
     refresh_task: asyncio.Task | None = None
     if REFRESH_SEC > 0:
-        initial_delay = 5.0 if initial_sync_failed else REFRESH_SEC
+        initial_delay = INITIAL_RETRY_SEC if initial_sync_failed else REFRESH_SEC
         refresh_task = asyncio.create_task(_refresh_loop(initial_delay))
 
     yield
@@ -166,12 +170,18 @@ async def _refresh_loop(initial_delay: float) -> None:
     delay = initial_delay
     while True:
         await asyncio.sleep(delay)
-        delay = REFRESH_SEC
         collection = registry.loaded_collection() or DEFAULT_COLLECTION
         try:
             await sync_collection(collection)
+            delay = REFRESH_SEC
         except Exception as exc:
             log.warning("Periodic sparse sync failed: %s", exc)
+            # Capped exponential backoff so a Qdrant outage self-heals quickly.
+            delay = (
+                INITIAL_RETRY_SEC
+                if delay >= REFRESH_SEC
+                else min(delay * 2, RETRY_MAX_SEC)
+            )
 
 
 @app.get("/health")
