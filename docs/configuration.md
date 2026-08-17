@@ -135,7 +135,7 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 | `DEFAULT_COMPLETION_RESERVE` | `1024` | Reserved tokens for model reply |
 | `TIER0_MAX_CHARS` | `80` | Max query length for tier0 heuristic bypass |
 
-`STAGE_BUDGET_*` is only an entrance gate. `STAGE_TIMEOUT_*` / `RERANK_TIMEOUT_MS` / `TOOL_BUDGET_MS` are hard `asyncio.wait_for` caps. Rerank and tools also use `RERANK_TIMEOUT_MS` and `TOOL_BUDGET_MS` as their entrance minimums.
+`STAGE_BUDGET_*` is only an entrance gate. `STAGE_TIMEOUT_*` / `RERANK_STAGE_TIMEOUT_MS` / `TOOL_BUDGET_MS` are hard `asyncio.wait_for` caps. Rerank uses `RERANK_TIMEOUT_MS` as its entrance minimum.
 
 ## Intent
 
@@ -161,7 +161,8 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 | `RERANK_API` | `sidecar` | `sidecar` = `POST /rerank` pairs/indices; `openai` = `POST /v1/rerank` (llama-swap / llama-server) |
 | `RERANK_MODEL` | `reranker-pool` | Model id for `RERANK_API=openai` (e.g. `reranker-pool` → jina-reranker-v3.5). Unused in sidecar POST body |
 | `RERANK_TOP_K` | `5` | Chunks after rerank |
-| `RERANK_TIMEOUT_MS` | `200` | Rerank stage budget/timeout |
+| `RERANK_TIMEOUT_MS` | `200` | Rerank entrance-gate minimum (ms of cognitive budget that must remain) |
+| `RERANK_STAGE_TIMEOUT_MS` | `5000` | Rerank stage hard exec cap |
 
 ### TurboVec rollout (cut Qdrant RAM)
 

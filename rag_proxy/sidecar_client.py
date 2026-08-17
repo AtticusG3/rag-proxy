@@ -82,7 +82,7 @@ async def startup_sidecar_clients() -> None:
         )
         log.info("turbovec sidecar pool started url=%s", settings.turbovec_url)
     if settings.enable_reranker and _reranker_client is None:
-        timeout_sec = settings.rerank_timeout_ms / 1000.0 + 0.5
+        timeout_sec = settings.rerank_stage_timeout_ms / 1000.0 + 0.5
         _reranker_client = httpx.AsyncClient(
             timeout=httpx.Timeout(timeout_sec),
             limits=_build_limits(),

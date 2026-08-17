@@ -137,7 +137,7 @@ class MemGraphRetriever:
 
         pairs = [{"query": query, "document": text} for text in fact_texts]
         try:
-            timeout = settings.rerank_timeout_ms / 1000.0 + 0.5
+            timeout = settings.rerank_stage_timeout_ms / 1000.0 + 0.5
             url = rerank_request_url(self.reranker_url)
             payload = rerank_request_payload(pairs, len(fact_indices))
             resp = None

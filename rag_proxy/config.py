@@ -231,7 +231,15 @@ class Settings:
         )
     )
     rerank_top_k: int = field(default_factory=lambda: _env_int("RERANK_TOP_K", 5))
+    # Entrance-gate minimum (ms) for the rerank stage: how much cognitive budget
+    # must remain before rerank runs at all.
     rerank_timeout_ms: int = field(default_factory=lambda: _env_int("RERANK_TIMEOUT_MS", 200))
+    # Hard exec cap (ms) for the rerank stage. Generous so a cold reranker (first
+    # hit after an eviction) is not cut off at a few hundred ms. Mirrors the
+    # other STAGE_TIMEOUT_* caps (retrieve/memgraphrag are 5000).
+    rerank_stage_timeout_ms: int = field(
+        default_factory=lambda: _env_int("RERANK_STAGE_TIMEOUT_MS", 5000)
+    )
 
     # Graph / tools / memory
     graph_db_path: str = field(

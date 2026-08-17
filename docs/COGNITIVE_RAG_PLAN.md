@@ -198,7 +198,7 @@ Full reference: [Configuration — Transcript capture](configuration.md#transcri
   - `STAGE_BUDGET_RETRIEVE_MS` (50) — embed + Qdrant/hybrid
   - `STAGE_BUDGET_GRAPH_MS` (100) — graph lookup
   - `STAGE_BUDGET_MEMGRAPHRAG_MS` (200) — MemGraphRAG stage
-  - Rerank/tools use `RERANK_TIMEOUT_MS` / `TOOL_BUDGET_MS` as their min budgets.
+  - Rerank uses `RERANK_TIMEOUT_MS` as its min budget and `RERANK_STAGE_TIMEOUT_MS` as its exec cap; tools use `TOOL_BUDGET_MS`.
 - Hard exec timeouts (separate from budgets): `STAGE_TIMEOUT_REWRITE_MS` (2000), `STAGE_TIMEOUT_RETRIEVE_MS` (5000), `STAGE_TIMEOUT_GRAPH_MS` (2000), `STAGE_TIMEOUT_MEMGRAPHRAG_MS` (5000); fallback `STAGE_EXEC_TIMEOUT_MS` (30000).
 - Stages run in registration order; when budget is exhausted later stages are skipped (no reordering).
 - `TIER0_MAX_CHARS` (80): max query length for tier0 heuristic bypass.
@@ -227,7 +227,7 @@ Full reference: [Configuration — Transcript capture](configuration.md#transcri
 |---------|------------|
 | Always slow | Tier 0/gating off — every request embeds + searches Qdrant; enable `ENABLE_TIER0_HEURISTICS` and `ENABLE_RETRIEVAL_GATING` |
 | Never retrieves | Gating too aggressive — set `GATING_LOG_ONLY=true` and inspect traces; lower `INTENT_CONFIDENCE_THRESHOLD`; try `X-RAG-Mode: force` |
-| Rerank stalls | Increase `RERANK_TIMEOUT_MS` or set `ENABLE_RERANKER=false` |
+| Rerank stalls | Increase `RERANK_STAGE_TIMEOUT_MS` or set `ENABLE_RERANKER=false` |
 | Tools leak paths | Narrow `TOOL_ALLOWED_ROOTS` to comma-separated absolute paths |
 | Stage skipped unexpectedly | Compare `latency_ms` total to `COGNITIVE_LATENCY_BUDGET_MS`; raise `STAGE_BUDGET_*` or global budget |
 | No trace logs | Set `ENABLE_REQUEST_TRACE=true`; ensure `LOG_LEVEL=INFO` |

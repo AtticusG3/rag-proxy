@@ -34,7 +34,7 @@ Approximate relative cost (depends on hardware and corpus size):
 | --- | --- | --- |
 | `ENABLE_HYBRID_RETRIEVAL` | +sparse HTTP call (parallel with dense) | Better recall; needs `SPARSE_INDEX_URL` sidecar |
 | `DENSE_BACKEND=turbovec` | Dense ANN via TurboVec; Qdrant payload fetch | Cuts Qdrant RAM; retune `SIMILARITY_THRESHOLD` — [TurboVec rollout](configuration.md#turbovec-rollout-cut-qdrant-ram) |
-| `ENABLE_RERANKER` | +rerank HTTP call | CPU sidecar; set `RERANK_TIMEOUT_MS` |
+| `ENABLE_RERANKER` | +rerank HTTP call | CPU sidecar; set `RERANK_STAGE_TIMEOUT_MS` |
 | `ENABLE_QUERY_REWRITE` / `ENABLE_QUERY_REWRITE_LLM` | Regex and/or LLM rewrite | LLM path adds tens–hundreds of ms |
 | `ENABLE_INTENT_ROUTER` | Rules + optional tiny LLM | `INTENT_TIMEOUT_MS` caps model call |
 | `ENABLE_GRAPH_LOOKUP` | SQLite graph walk (off event loop) | Infra intents only |
@@ -77,7 +77,7 @@ Embed input uses **tail** truncation (`prepare_embed_text`) so the latest user t
 | `STAGE_TIMEOUT_RETRIEVE_MS` | `5000` | retrieve |
 | `STAGE_TIMEOUT_GRAPH_MS` | `2000` | graph |
 | `STAGE_TIMEOUT_MEMGRAPHRAG_MS` | `5000` | memgraphrag |
-| `RERANK_TIMEOUT_MS` | `200` | rerank |
+| `RERANK_STAGE_TIMEOUT_MS` | `5000` | rerank |
 | `TOOL_BUDGET_MS` | `300` | tools |
 | `STAGE_EXEC_TIMEOUT_MS` | `30000` | fallback when a stage has no dedicated timeout |
 

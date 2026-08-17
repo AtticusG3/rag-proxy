@@ -172,7 +172,7 @@ def build_pipeline_stages() -> list[PipelineStage]:
             enabled=lambda: settings.enable_reranker,
             should_run=lambda ctx: _retrieval_active(ctx) and bool(ctx.hits),
             run=lambda ctx, _registry: tier2_rerank.run_rerank(ctx),
-            timeout_ms=float(settings.rerank_timeout_ms),
+            timeout_ms=float(settings.rerank_stage_timeout_ms),
         ),
         PipelineStage(
             name="graph",
