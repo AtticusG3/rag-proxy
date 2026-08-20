@@ -12,6 +12,7 @@
   var velocityEl = document.getElementById("ingest-velocity");
   var liveBadge = document.getElementById("ingest-live-badge");
   var sidecarGrid = document.getElementById("sidecar-status-grid");
+  var endpointHealthEl = document.getElementById("ingest-endpoint-health");
   var timerId = null;
 
   var PHASE_LABELS = {
@@ -329,6 +330,21 @@
     return parts.join(" · ");
   }
 
+  function updateEndpointHealth(health) {
+    if (!endpointHealthEl) {
+      return;
+    }
+    var waiting = health && health.ok === false;
+    endpointHealthEl.hidden = !waiting;
+    if (waiting) {
+      var name = health.waiting_on || "endpoints";
+      endpointHealthEl.textContent =
+        "Ingest is waiting for " +
+        name +
+        ". Already-embedded chunks are kept; work resumes from the last chunk when the endpoint is back.";
+    }
+  }
+
   function updateVelocity(stats, sidecarsLive) {
     if (!velocityEl) {
       return;
@@ -365,10 +381,12 @@
         var stats = payload.stats || {};
         var sidecars = payload.sidecars || {};
         var sidecarsLive = !!payload.sidecars_live;
+        var endpointHealth = payload.endpoint_health || {};
         renderRows(files);
         renderSidecars(sidecars);
         updateVelocity(stats, sidecarsLive);
-        scheduleNext((stats.active || 0) > 0 || sidecarsLive);
+        updateEndpointHealth(endpointHealth);
+        scheduleNext((stats.active || 0) > 0 || sidecarsLive || endpointHealth.ok === false);
       })
       .catch(function () {
         scheduleNext(1);

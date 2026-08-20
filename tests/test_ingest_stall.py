@@ -54,9 +54,10 @@ class TestStallRecovery(unittest.TestCase):
 
             row = db.get_file_state("/zim/stuck.zim")
             assert row is not None
-            self.assertEqual(row["status"], "failed")
+            self.assertEqual(row["status"], "pending")
             self.assertIn("interrupted", row["last_error"] or "")
             self.assertIn("99 chunks", row["last_error"] or "")
+            self.assertEqual(row["chunks_embedded"], 99)
 
     def test_fail_stalled_running(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -80,7 +81,7 @@ class TestStallRecovery(unittest.TestCase):
             self.assertEqual(row["status"], "failed")
             self.assertIn("stalled", row["last_error"] or "")
 
-    def test_restart_stalled_requeues_and_clears_chunks(self) -> None:
+    def test_restart_stalled_requeues_and_keeps_chunks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             db_path = os.path.join(tmp, "admin.sqlite")
             db = IngestDatabase(db_path)
@@ -95,10 +96,56 @@ class TestStallRecovery(unittest.TestCase):
             conn.close()
 
             worker = _worker(db)
-            with patch("ingest.worker.delete_source_points"):
+            with patch("ingest.worker.delete_source_points") as delete_mock:
                 worker.restart_stalled_files()
 
+            delete_mock.assert_not_called()
             row = db.get_file_state("/zim/stuck.zim")
+            assert row is not None
+            self.assertEqual(row["status"], "pending")
+            self.assertEqual(row["chunks_embedded"], 12)
+
+    def test_retry_file_keeps_chunks_and_points(self) -> None:
+        """Retry after an embed outage must not delete 14000 already-upserted chunks."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "admin.sqlite")
+            db = IngestDatabase(db_path)
+            db.upsert_file_state(
+                "/zim/big.zim",
+                status="failed",
+                chunks_embedded=14000,
+                last_error="embed batch failed",
+            )
+            worker = _worker(db)
+            with patch("ingest.worker.delete_source_points") as delete_mock:
+                worker.retry_file("/zim/big.zim")
+            delete_mock.assert_not_called()
+            row = db.get_file_state("/zim/big.zim")
+            assert row is not None
+            self.assertEqual(row["status"], "pending")
+            self.assertEqual(row["chunks_embedded"], 14000)
+
+    def test_requeue_all_still_wipes_when_rechunk_is_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "admin.sqlite")
+            db = IngestDatabase(db_path)
+            path = os.path.join(tmp, "doc.txt")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("hello")
+            db.upsert_file_state(path, status="indexed", chunks_embedded=12)
+            worker = _worker(db)
+            worker.config = IngestConfig(
+                zim_dir=tmp,
+                upload_dir=tmp,
+                embed_url="http://127.0.0.1:1",
+                qdrant_url="http://127.0.0.1:1",
+                qdrant_collection="test",
+                sparse_index_url="",
+            )
+            with patch("ingest.worker.delete_source_points") as delete_mock:
+                worker.requeue_all_files()
+            delete_mock.assert_called()
+            row = db.get_file_state(path)
             assert row is not None
             self.assertEqual(row["status"], "pending")
             self.assertEqual(row["chunks_embedded"], 0)

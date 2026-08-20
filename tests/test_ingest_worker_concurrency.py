@@ -8,8 +8,17 @@ import threading
 import time
 from unittest.mock import patch
 
+import pytest
+
 from ingest.db import IngestDatabase
 from ingest.worker import IngestConfig, IngestWorker, resolve_file_concurrency
+
+
+@pytest.fixture(autouse=True)
+def _healthy_endpoints():
+    """Worker loop tests are about claiming/processing, not HTTP health probes."""
+    with patch.object(IngestWorker, "_endpoints_ready", return_value=True):
+        yield
 
 
 def _worker(db: IngestDatabase, *, file_concurrency: int = 2) -> IngestWorker:
@@ -44,6 +53,7 @@ def test_worker_processes_multiple_files_in_parallel() -> None:
         on_progress=None,
         embed_limiter=None,
         should_abort=None,
+        **_kwargs,
     ) -> int:
         nonlocal active, peak_active
         with lock:
@@ -92,6 +102,7 @@ def test_pause_aborts_in_flight_file_and_requeues() -> None:
         on_progress=None,
         embed_limiter=None,
         should_abort=None,
+        **_kwargs,
     ) -> int:
         started.set()
         while should_abort is None or not should_abort():
@@ -160,6 +171,7 @@ def test_preempt_switches_worker_to_top_of_queue() -> None:
         on_progress=None,
         embed_limiter=None,
         should_abort=None,
+        **_kwargs,
     ) -> int:
         started_paths.append(file_path)
         started.set()

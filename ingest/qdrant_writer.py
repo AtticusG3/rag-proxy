@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 
+from ingest.types import EndpointUnavailable
+
 log = logging.getLogger("ingest.qdrant")
 
 DEFAULT_VECTOR_SIZE = 768
@@ -137,7 +139,7 @@ def _upsert_points_resilient(
             client, url, points[mid:], retries=retries, backoff_sec=backoff_sec
         )
         return
-    raise RuntimeError(
+    raise EndpointUnavailable(
         f"qdrant upsert failed after {retries + 1} attempts: {last_err}"
     ) from last_err
 

@@ -191,17 +191,21 @@ def run_ingest_pipeline(
     on_progress: UpdateStateFn | None = None,
     should_abort: Callable[[], bool] | None = None,
     turbovec_url: str = "",
+    start_chunk_idx: int = 0,
 ) -> int:
-    """Embed batches concurrently and upsert to Qdrant in chunk order."""
+    """Embed batches concurrently and upsert to Qdrant in chunk order.
+
+    start_chunk_idx resumes after already-upserted chunks (progress + point IDs).
+    """
     urls = embed_urls or ([embed_url] if embed_url else [])
     if not urls:
         raise ValueError("embed_urls or embed_url is required")
     batch_size = max(1, batch_size)
     concurrency = max(1, embed_concurrency)
-    total = 0
+    total = max(0, start_chunk_idx)
     next_seq = 0
     next_upsert = 0
-    chunk_start = 0
+    chunk_start = total
     pending: dict[int, PendingBatch] = {}
 
     limits = httpx.Limits(

@@ -131,7 +131,7 @@ journalctl -u rag-proxy -f | grep -E 'RAG:|trace=|WARNING'
 | Symptom | Check | Action |
 | --- | --- | --- |
 | `status=203/EXEC` on rag-proxy/rag-admin | `ExecStart` python path or `WorkingDirectory` wrong | Run `bash scripts/install-systemd-units.sh` from repo root; verify `ls -l /opt/ai/venv/bin/python` or `$REPO/.venv/bin/python` |
-| Chunks not increasing | Open **Jobs** (live refresh) | Confirm file status is `running`; if `stalled`, click Restart |
+| Chunks not increasing | Open **Jobs** (live refresh) | If the page says it is waiting for embed/Qdrant, fix that endpoint — ingest will resume from the last chunk. If the file is `stalled` while endpoints are healthy, click Restart (this keeps existing chunks). |
 | Very slow embed | Dashboard tuning panel | Raise `INGEST_EMBED_CONCURRENCY` and `INGEST_BATCH_SIZE`; use GPU embed for bulk |
 | Wrong embed host | `EMBED_URL` on admin host | Admin defaults differ from proxy if unset — set explicitly (often `:8089`) |
 | Remote Qdrant latency | Upsert RTT to `QDRANT_URL` | Run admin near Qdrant or accept slower upserts |

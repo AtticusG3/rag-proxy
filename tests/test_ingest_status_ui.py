@@ -347,6 +347,23 @@ def test_ingest_velocity_text_idle_queue() -> None:
     assert "15m" not in text
 
 
+def test_ingest_velocity_text_waits_on_embed_outage() -> None:
+    text = ingest_velocity_text(
+        {
+            "active": 7,
+            "total_chunks": 14000,
+            "running": 1,
+            "pending": 6,
+            "embed_rate_now": None,
+            "embed_rate_5m": None,
+            "embed_rate_15m": None,
+        },
+        endpoint_health={"ok": False, "waiting_on": "embed"},
+    )
+    assert "Waiting for embed" in text
+    assert "already-embedded chunks are kept" in text
+
+
 def test_ingest_velocity_text_includes_5m_avg_when_present() -> None:
     text = ingest_velocity_text(
         {

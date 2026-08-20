@@ -149,6 +149,34 @@ def test_pipeline_reports_progress_before_concurrency_window_fills() -> None:
     assert progress == [1, 2, 3, 4]
 
 
+def test_pipeline_resumes_chunk_ids_after_existing_progress() -> None:
+    """After an outage, upserts must continue from the last written chunk_idx."""
+    FakeHttpClient = _make_fake_http_client()
+    progress: list[int] = []
+
+    def chunks():
+        for i in range(4, 6):
+            yield ("Title", "/tmp/doc.txt", f"chunk-{i}")
+
+    with patch("ingest.pipeline.httpx.Client", FakeHttpClient):
+        total = run_ingest_pipeline(
+            chunks(),
+            embed_url="http://127.0.0.1:8089",
+            qdrant_url="http://127.0.0.1:6333",
+            qdrant_collection="test_collection",
+            batch_size=1,
+            embed_max_chars=2000,
+            embed_concurrency=1,
+            start_chunk_idx=4,
+            on_progress=lambda **kwargs: progress.append(int(kwargs["chunks_embedded"])),
+        )
+
+    assert total == 6
+    assert progress == [5, 6]
+    points = FakeHttpClient.all_points()
+    assert [p["payload"]["chunk_idx"] for p in points] == [4, 5]
+
+
 def test_process_file_uses_pipeline_clients() -> None:
     """process_file must still write text/source/title payload fields via the pipeline."""
     FakeHttpClient = _make_fake_http_client()
@@ -180,6 +208,41 @@ def test_process_file_uses_pipeline_clients() -> None:
             assert payload["source"] == file_path
             assert payload["title"] == "Notes"
             assert payload["text"].strip()
+
+
+def test_process_file_skips_already_embedded_chunks() -> None:
+    """Resume after an outage must not re-upsert chunk 0."""
+    FakeHttpClient = _make_fake_http_client()
+    rows = [
+        ("Title", "/tmp/doc.txt", "chunk-0"),
+        ("Title", "/tmp/doc.txt", "chunk-1"),
+        ("Title", "/tmp/doc.txt", "chunk-2"),
+    ]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        file_path = os.path.join(tmp, "notes.txt")
+        with open(file_path, "w", encoding="utf-8") as handle:
+            handle.write("placeholder")
+
+        config = IngestConfig(
+            zim_dir=tmp,
+            upload_dir=tmp,
+            embed_url="http://127.0.0.1:8089",
+            qdrant_url="http://127.0.0.1:6333",
+            qdrant_collection="test_collection",
+            sparse_index_url="",
+            batch_size=32,
+            embed_concurrency=1,
+        )
+
+        with patch("ingest.worker._iter_chunks_for_file", return_value=iter(rows)):
+            with patch("ingest.pipeline.httpx.Client", FakeHttpClient):
+                count = process_file(file_path, config, start_chunk_idx=1)
+
+    points = FakeHttpClient.all_points()
+    assert [point["payload"]["text"] for point in points] == ["chunk-1", "chunk-2"]
+    assert [point["payload"]["chunk_idx"] for point in points] == [1, 2]
+    assert count == 3
 
 
 def test_pipeline_reuses_single_embed_client() -> None:

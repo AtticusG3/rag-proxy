@@ -6,9 +6,18 @@ import os
 import tempfile
 import time
 from dataclasses import replace
+from unittest.mock import patch
+
+import pytest
 
 from ingest.db import IngestDatabase
 from ingest.worker import IngestConfig, IngestWorker
+
+
+@pytest.fixture(autouse=True)
+def _healthy_endpoints():
+    with patch.object(IngestWorker, "_endpoints_ready", return_value=True):
+        yield
 
 
 def _config(file_concurrency: int) -> IngestConfig:

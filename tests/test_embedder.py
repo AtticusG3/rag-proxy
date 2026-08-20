@@ -93,3 +93,19 @@ def test_embed_texts_truncates_single_oversized_input():
     assert result == [[9.0]]
     second_payload = client.post.call_args_list[1].kwargs["json"]["input"]
     assert len(second_payload[0]) == 400
+
+
+def test_embed_texts_raises_endpoint_unavailable_when_server_is_down():
+    """Connection failures are infrastructure, not a ruined ingest file."""
+    from ingest.types import EndpointUnavailable
+
+    client = MagicMock()
+    client.post.side_effect = httpx.ConnectError("connection refused")
+
+    with pytest.raises(EndpointUnavailable, match="embed batch failed"):
+        embed_texts(
+            ["hello"],
+            embed_url="http://embed",
+            client=client,
+            retries=0,
+        )

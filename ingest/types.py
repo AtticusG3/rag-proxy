@@ -9,6 +9,10 @@ class IngestAborted(Exception):
     """Ingest stopped cooperatively (pause or shutdown)."""
 
 
+class EndpointUnavailable(Exception):
+    """Embed or Qdrant is down. Re-queue the file; do not wipe chunks."""
+
+
 EMBEDDABLE_SUFFIXES = {
     ".zim": "zim",
     ".txt": "text",

@@ -24,6 +24,7 @@ Admin queue (SQLite)
 | Module | Purpose |
 | --- | --- |
 | `ingest/worker.py` | Queue consumer, file concurrency, reindex schedulers |
+| `ingest/endpoint_health.py` | Probe embed + Qdrant; wait/resume instead of failing files |
 | `ingest/pipeline.py` | Per-file embed + upsert orchestration |
 | `ingest/chunking.py` | Chonkie execution, `INGEST_CHUNK_*` |
 | `ingest/chunking_strategy.py` | Per-document strategy selection |

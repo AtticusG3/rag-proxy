@@ -64,7 +64,10 @@ async def ingest_status(request: Request) -> JSONResponse:
     sidecars = await load_sidecars_payload(
         worker, queue_active=int(stats["active"] or 0)
     )
-    stats = ingest_queue_stats(files, sidecars=sidecars)
+    endpoint_health = worker.endpoint_health_snapshot()
+    stats = ingest_queue_stats(
+        files, sidecars=sidecars, endpoint_health=endpoint_health
+    )
     files, hidden_indexed = filter_visible_file_rows(
         files,
         hide_indexed_seconds=settings.hide_indexed_seconds,
@@ -78,6 +81,7 @@ async def ingest_status(request: Request) -> JSONResponse:
             "stats": stats,
             "sidecars": sidecars,
             "sidecars_live": sidecars_activity_active(sidecars),
+            "endpoint_health": endpoint_health,
             "hidden_indexed": hidden_indexed,
             "show_indexed": show_indexed,
             "config": ingest_config_snapshot(worker),

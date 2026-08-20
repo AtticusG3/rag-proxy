@@ -213,7 +213,9 @@ Priority changes post to `POST /api/ingest/priority-form`. The added **size** co
 
 ### Stall detection
 
-`ingest/stall.py` marks long-idle jobs using `INGEST_STALL_MINUTES`. The Jobs page auto-refreshes while files are pending or running and shows embed rate (chunks/min).
+`ingest/stall.py` marks long-idle jobs using `INGEST_STALL_MINUTES` **only while embed and Qdrant are healthy**. If the embed model is down, ingest waits and keeps already-upserted chunks; Retry / Restart stalled resume from `chunks_embedded` instead of deleting Qdrant points and starting at zero. Use `python scripts/requeue_all_ingest.py` only when you intend to re-chunk.
+
+The Jobs page auto-refreshes while files are pending or running and shows embed rate (chunks/min). A waiting banner appears when an ingest endpoint is down.
 
 ### Tuning bulk ingest throughput
 

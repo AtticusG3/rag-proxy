@@ -8,6 +8,7 @@ import time
 import httpx
 
 from ingest.embed_lifecycle import ensure_embed_urls, touch_embed_activity
+from ingest.types import EndpointUnavailable
 
 DEFAULT_EMBED_MODEL = "nomic-embed-text-v1.5"
 DEFAULT_MAX_CHARS = 2000
@@ -171,4 +172,6 @@ def embed_texts(
                     )
                 if not retryable:
                     raise
-    raise RuntimeError(f"embed batch failed after {retries + 1} attempts: {last_err}") from last_err
+    raise EndpointUnavailable(
+        f"embed batch failed after {retries + 1} attempts: {last_err}"
+    ) from last_err

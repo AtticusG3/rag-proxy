@@ -11,6 +11,7 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from itertools import islice
 from pathlib import Path
 from typing import Callable
 
@@ -22,6 +23,7 @@ from ingest.chunking import chunk_text, set_chunk_concurrency
 from ingest.chunking_strategy import ChunkContext
 from ingest.embed_lifecycle import ensure_embed_urls
 from ingest.embed_urls import parse_ingest_embed_urls
+from ingest.endpoint_health import EndpointHealth, check_ingest_endpoints
 from ingest.pdf_reader import iter_pdf_pages
 from ingest.pipeline import make_embed_semaphore, run_ingest_pipeline
 from ingest.dual_write import delete_source_points
@@ -31,10 +33,12 @@ from ingest.scanner import scan_storage
 from ingest.sidecar_lifecycle import ensure_sparse_sidecar, ensure_turbovec_sidecar
 from ingest.stall import interrupt_error_message, is_stalled, stall_error_message
 from ingest.turbovec_client import trigger_reindex
-from ingest.types import determine_file_type, IngestAborted
+from ingest.types import determine_file_type, EndpointUnavailable, IngestAborted
 from ingest.zim_reader import iter_zim_articles
 
 log = logging.getLogger("ingest.worker")
+
+_ENDPOINT_WAIT_SEC = 5.0
 
 
 def _utc_now() -> str:
@@ -270,13 +274,21 @@ def process_file(
     on_progress: UpdateStateFn | None = None,
     embed_limiter: threading.Semaphore | None = None,
     should_abort: Callable[[], bool] | None = None,
+    start_chunk_idx: int = 0,
 ) -> int:
-    """Embed one file into Qdrant. Returns total chunks embedded."""
-    chunk_iter = _iter_chunks_for_file(
+    """Embed one file into Qdrant. Returns total chunks embedded.
+
+    start_chunk_idx skips already-upserted chunks so a retry can resume.
+    """
+    chunk_iter: Iterator[tuple] = _iter_chunks_for_file(
         file_path,
         max_articles=config.max_articles,
         chunk_config=config.chunk_config,
     )
+    start = max(0, int(start_chunk_idx))
+    # ponytail: skip by re-chunking; add a persisted cursor if ZIM skip is hot
+    if start:
+        chunk_iter = islice(chunk_iter, start, None)
     return run_ingest_pipeline(
         chunk_iter,
         embed_url=config.embed_url,
@@ -291,6 +303,7 @@ def process_file(
         on_progress=on_progress,
         should_abort=should_abort,
         turbovec_url=config.turbovec_url,
+        start_chunk_idx=start,
     )
 
 
@@ -478,6 +491,8 @@ class IngestWorker:
         self._workers: list[tuple[threading.Thread, threading.Event]] = []
         self._worker_seq = 0
         self._embed_limiter = make_embed_semaphore(config.embed_concurrency)
+        self._endpoint_health: EndpointHealth | None = None
+        self._waiting_on = ""
         if config.chunk_concurrency:
             set_chunk_concurrency(config.chunk_concurrency)
 
@@ -506,6 +521,52 @@ class IngestWorker:
                 **turbovec,
             },
         }
+
+    def _ingest_embed_urls(self) -> list[str]:
+        return self.config.embed_urls or parse_ingest_embed_urls(
+            embed_url=self.config.embed_url
+        )
+
+    def endpoint_health_snapshot(self) -> dict[str, object]:
+        """Latest embed/Qdrant probe for the Jobs UI (cached ~5s)."""
+        with self._lock:
+            health = self._endpoint_health
+        if health is None:
+            health = check_ingest_endpoints(
+                embed_urls=self._ingest_embed_urls(),
+                qdrant_url=self.config.qdrant_url,
+            )
+            with self._lock:
+                self._endpoint_health = health
+        return health.as_dict()
+
+    def _endpoints_ready(self) -> bool:
+        urls = self._ingest_embed_urls()
+        health = check_ingest_endpoints(
+            embed_urls=urls, qdrant_url=self.config.qdrant_url
+        )
+        if not health.ok:
+            ensure_embed_urls(urls)
+            health = check_ingest_endpoints(
+                embed_urls=urls,
+                qdrant_url=self.config.qdrant_url,
+                use_cache=False,
+            )
+        with self._lock:
+            self._endpoint_health = health
+        waiting = health.waiting_on
+        if not health.ok:
+            if waiting != self._waiting_on:
+                log.warning(
+                    "ingest waiting for endpoints (%s); keeping in-progress chunks",
+                    waiting,
+                )
+                self._waiting_on = waiting
+            return False
+        if self._waiting_on:
+            log.info("ingest endpoints healthy, resuming")
+            self._waiting_on = ""
+        return True
 
     def set_paused(self, paused: bool) -> None:
         self._paused = paused
@@ -604,7 +665,7 @@ class IngestWorker:
     def retry_file(self, file_path: str) -> str:
         job_id = str(uuid.uuid4())
         self.db.create_job(job_id, job_type="retry", message=file_path)
-        self._prepare_file_restart(file_path)
+        self._prepare_file_restart(file_path, wipe=False)
         return job_id
 
     def restart_stalled_files(self) -> str:
@@ -614,7 +675,7 @@ class IngestWorker:
         restarted: list[str] = []
         for row in stalled:
             path = row["file_path"]
-            self._prepare_file_restart(path)
+            self._prepare_file_restart(path, wipe=False)
             restarted.append(Path(path).name)
         message = (
             f"restarted {len(restarted)} stalled file(s)"
@@ -625,7 +686,7 @@ class IngestWorker:
         self.db.update_job(job_id, status="done", message=message)
         return job_id
 
-    def _prepare_file_restart(self, file_path: str) -> None:
+    def _prepare_file_restart(self, file_path: str, *, wipe: bool = False) -> None:
         row = self.db.get_file_state(file_path)
         if row is None:
             self.db.upsert_file_state(
@@ -634,13 +695,14 @@ class IngestWorker:
                 file_type=determine_file_type(file_path),
             )
             return
-        _delete_file_points(file_path, self.config)
-        if not self.db.retry_file_state(file_path, reset_chunks=True):
+        if wipe:
+            _delete_file_points(file_path, self.config)
+        if not self.db.retry_file_state(file_path, reset_chunks=wipe):
             self.db.upsert_file_state(
                 file_path,
                 status="pending",
                 file_type=determine_file_type(file_path),
-                chunks_embedded=0,
+                chunks_embedded=0 if wipe else int(row.get("chunks_embedded") or 0),
             )
 
     def retry_all_failed(self) -> str:
@@ -668,7 +730,7 @@ class IngestWorker:
             if not os.path.isfile(file_path):
                 skipped += 1
                 continue
-            self._prepare_file_restart(file_path)
+            self._prepare_file_restart(file_path, wipe=True)
             requeued += 1
         message = f"{requeued} file(s) re-queued"
         if skipped:
@@ -772,6 +834,13 @@ class IngestWorker:
             if self._paused:
                 time.sleep(1.0)
                 continue
+            if not self._endpoints_ready():
+                deadline = time.time() + _ENDPOINT_WAIT_SEC
+                while time.time() < deadline:
+                    if self._stop.is_set() or local_stop.is_set():
+                        return
+                    time.sleep(0.2)
+                continue
             self._fail_stalled_running()
             claimed = self._claim_next_pending()
             if claimed is None:
@@ -802,6 +871,19 @@ class IngestWorker:
                 with self._lock:
                     self._preempt_paths.discard(file_path)
                 log.info("ingest aborted mid-file (%s), re-queued: %s", reason, file_path)
+            except EndpointUnavailable as exc:
+                with self._lock:
+                    self._preempt_paths.discard(file_path)
+                self.db.update_file_state(
+                    file_path,
+                    status="pending",
+                    last_error=str(exc),
+                )
+                log.warning(
+                    "ingest re-queued %s after endpoint outage (chunks kept): %s",
+                    file_path,
+                    exc,
+                )
             except Exception as exc:
                 log.exception("ingest failed for %s", file_path)
                 with self._lock:
@@ -818,6 +900,8 @@ class IngestWorker:
             embed_url=self.config.embed_url
         )
         ensure_embed_urls(urls)
+        row = self.db.get_file_state(file_path)
+        start_chunk_idx = int((row or {}).get("chunks_embedded") or 0)
 
         def on_progress(**kwargs: object) -> None:
             chunks = kwargs.get("chunks_embedded")
@@ -836,6 +920,7 @@ class IngestWorker:
             on_progress=on_progress,
             embed_limiter=self._embed_limiter,
             should_abort=should_abort,
+            start_chunk_idx=start_chunk_idx,
         )
 
         with self._lock:
@@ -851,12 +936,12 @@ class IngestWorker:
 
     def _recover_interrupted_running(self) -> None:
         for row in self.db.list_running_files():
-            message = interrupt_error_message(int(row.get("chunks_embedded") or 0))
+            chunks = int(row.get("chunks_embedded") or 0)
+            message = interrupt_error_message(chunks)
             self.db.update_file_state(
                 row["file_path"],
-                status="failed",
+                status="pending",
                 last_error=message,
-                finished_at=_utc_now(),
             )
             log.warning(
                 "recovered interrupted ingest: %s (%s)",

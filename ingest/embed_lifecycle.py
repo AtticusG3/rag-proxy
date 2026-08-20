@@ -166,7 +166,8 @@ def _enable_start_unit(unit: str) -> None:
     _systemctl("start", unit, check=False)
 
 
-def _probe_embed(url: str, *, timeout: float = 5.0) -> bool:
+def probe_embed_url(url: str, *, timeout: float = 5.0) -> bool:
+    """True when the embed server can actually produce a vector."""
     model = os.getenv("EMBED_MODEL", "nomic-embed-text-v1.5").strip() or "nomic-embed-text-v1.5"
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -191,11 +192,11 @@ def wait_for_embed_health(
         timeout_s = _env_float("EMBED_STARTUP_TIMEOUT_SEC", 120.0)
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        healthy = [url for url in urls if _probe_embed(url)]
+        healthy = [url for url in urls if probe_embed_url(url)]
         if len(healthy) == len(urls):
             return healthy
         time.sleep(1.0)
-    return [url for url in urls if _probe_embed(url)]
+    return [url for url in urls if probe_embed_url(url)]
 
 
 def collect_embed_stop_units() -> list[str]:

@@ -36,7 +36,7 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag_admin/settings_schema.py` | Settings UI field groups and defaults |
 | `rag_admin/settings_store.py` | Persist Settings to env files + admin SQLite |
 | `ingest/worker.py` | Ingest queue worker (`IngestWorker`) |
-
+| `ingest/endpoint_health.py` | Embed + Qdrant probes; ingest waits instead of wiping chunks |
 | `docker/` | Compose profiles (proxy, cognitive sidecars) |
 | `ingest/` | ZIM/PDF/text ingest worker (Qdrant + sparse reindex) |
 | `ingest/chunking_strategy.py` | Per-document Chonkie strategy selection (recursive, sentence, semantic, token, code) |

@@ -124,7 +124,10 @@ async def jobs_page(request: Request) -> HTMLResponse:
     sidecars = await load_sidecars_payload(
         worker, queue_active=int(queue["active"] or 0)
     )
-    queue = ingest_queue_stats(files, sidecars=sidecars)
+    endpoint_health = worker.endpoint_health_snapshot()
+    queue = ingest_queue_stats(
+        files, sidecars=sidecars, endpoint_health=endpoint_health
+    )
     files, hidden_indexed = filter_visible_file_rows(
         files,
         hide_indexed_seconds=settings.hide_indexed_seconds,
@@ -148,6 +151,7 @@ async def jobs_page(request: Request) -> HTMLResponse:
             "ingest_config": ingest_config,
             "sidecars": sidecars,
             "sidecars_live": sidecars_activity_active(sidecars),
+            "endpoint_health": endpoint_health,
             "show_indexed": show_indexed,
             "hidden_indexed": hidden_indexed,
             "hide_indexed_minutes": hide_indexed_minutes,

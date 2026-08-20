@@ -20,6 +20,9 @@
     <span id="ingest-live-badge" class="live-badge" {% if ingest_queue.active == 0 and not sidecars_live %}hidden{% endif %} aria-live="polite">Live</span>
   </div>
   <p id="ingest-velocity" class="ingest-velocity" aria-live="polite">{{ ingest_queue.velocity_text }}</p>
+  <p id="ingest-endpoint-health" class="muted card-note" role="status"{% if not endpoint_health or endpoint_health.ok %} hidden{% endif %}>
+    Ingest is waiting for {{ endpoint_health.waiting_on if endpoint_health else 'endpoints' }}. Already-embedded chunks are kept; work resumes from the last chunk when the endpoint is back.
+  </p>
   <div class="actions-row">
     <form method="post" action="/api/ingest/sync-form">
       <button type="submit">Scan for new files</button>
@@ -47,7 +50,7 @@
   </div>
   <p class="muted card-note">
     Uploads and subscriptions queue ingest automatically. Scan only registers files added outside Admin, or re-queues failed ingests.
-    Already indexed files are left unchanged. Running jobs with no progress for {{ stall_minutes }}+ minutes are marked <strong>stalled</strong>.
+    Already indexed files are left unchanged. If embed or Qdrant is down, ingest waits and keeps already-written chunks; Retry resumes from the last chunk instead of deleting progress. Running jobs with no progress for {{ stall_minutes }}+ minutes while endpoints are healthy are marked <strong>stalled</strong>.
     {% if hide_indexed_minutes > 0 %}
     Indexed files older than {{ hide_indexed_minutes }} minutes are hidden from the table below
     {% if show_indexed %}(currently showing all).{% else %}so active work is easier to sort.{% endif %}

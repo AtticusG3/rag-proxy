@@ -291,8 +291,12 @@ def ingest_velocity_text(
     stats: dict[str, int | None],
     *,
     sidecars: dict[str, Any] | None = None,
+    endpoint_health: dict[str, Any] | None = None,
 ) -> str:
     """Single-line ingest velocity summary for Jobs page."""
+    if endpoint_health and not endpoint_health.get("ok", True):
+        waiting = str(endpoint_health.get("waiting_on") or "endpoints").strip()
+        return f"Waiting for {waiting} — already-embedded chunks are kept"
     if int(stats.get("active") or 0) <= 0:
         indexed = int(stats.get("indexed") or 0)
         total = int(stats.get("total_chunks") or 0)
@@ -328,6 +332,7 @@ def ingest_queue_stats(
     files: list[dict[str, Any]],
     *,
     sidecars: dict[str, Any] | None = None,
+    endpoint_health: dict[str, Any] | None = None,
 ) -> dict[str, int | None]:
     pending = 0
     running = 0
@@ -367,5 +372,7 @@ def ingest_queue_stats(
         "queue_chunks": queue_chunks,
     }
     stats.update(embed_throughput_rates())
-    stats["velocity_text"] = ingest_velocity_text(stats, sidecars=sidecars)
+    stats["velocity_text"] = ingest_velocity_text(
+        stats, sidecars=sidecars, endpoint_health=endpoint_health
+    )
     return stats
