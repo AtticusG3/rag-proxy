@@ -18,11 +18,18 @@ ENV SPARSE_HOST=0.0.0.0 \
     QDRANT_URL=http://qdrant:6333 \
     QDRANT_COLLECTION=nomad_knowledge_base \
     SPARSE_REFRESH_SEC=3600 \
+    SPARSE_INDEX_PATH=/var/lib/rag_proxy/sparse \
+    SPARSE_MMAP=true \
+    SPARSE_N_THREADS=0 \
     PYTHONUNBUFFERED=1
+
+RUN mkdir -p /var/lib/rag_proxy/sparse && chown -R appuser:appuser /var/lib/rag_proxy
 
 EXPOSE 8096
 
 USER appuser
+
+VOLUME ["/var/lib/rag_proxy/sparse"]
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8096/health', timeout=5)"

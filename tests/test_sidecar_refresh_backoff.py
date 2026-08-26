@@ -9,7 +9,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
+import threading
 from pathlib import Path
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
 SPARSE_DIR = ROOT / "sidecars" / "sparse"
@@ -82,3 +86,31 @@ def test_healthy_loop_recovers_quickly_after_late_outage() -> None:
     assert sleeps[1] == sparse_app.INITIAL_RETRY_SEC
     assert sleeps[2] == sparse_app.INITIAL_RETRY_SEC * 2
     assert sleeps[3] == min(sparse_app.INITIAL_RETRY_SEC * 4, sparse_app.RETRY_MAX_SEC)
+
+
+def test_health_listens_while_initial_sync_is_blocked() -> None:
+    """A first-boot Qdrant rebuild must not take the HTTP port down.
+
+    Hybrid retrieval fail-opens on an empty sparse index. A refused connection
+    is treated as sidecar-down and looks like a broken deploy.
+    """
+    started = threading.Event()
+    release = threading.Event()
+
+    async def hung_sync(_collection: str) -> int:
+        started.set()
+        while not release.is_set():
+            await asyncio.sleep(0.01)
+        return 0
+
+    with (
+        patch.object(sparse_app, "sync_collection", hung_sync),
+        patch.object(sparse_app, "INDEX_PATH", None),
+        patch.object(sparse_app, "REFRESH_SEC", 0.0),
+    ):
+        with TestClient(sparse_app.app) as client:
+            assert started.wait(timeout=2.0), "bootstrap never started"
+            resp = client.get("/health")
+            assert resp.status_code == 200
+            assert resp.json()["status"] in {"ok", "starting"}
+            release.set()

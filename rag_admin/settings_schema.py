@@ -322,7 +322,7 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "bool",
         "admin",
         "false",
-        help_text="When true, new collections store float32 vectors on disk (mmap). Apply on ensure/recreate after TurboVec is primary.",
+        help_text="When true, new collections store float32 vectors on disk (mmap). Existing collections: PATCH vectors on_disk + hnsw on_disk (no recreate) after TurboVec is primary.",
     ),
     SettingField(
         "ENABLE_HYBRID_RETRIEVAL",

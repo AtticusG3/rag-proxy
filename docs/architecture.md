@@ -113,7 +113,7 @@ Retrieval skip/light/full decisions: `retrieval_policy.py`. Rollout: [Cognitive 
 | nomic-embed | `EMBED_URL` | Always (for RAG) |
 | Qdrant | `QDRANT_URL`, `QDRANT_COLLECTION` | Always (for RAG) — payloads always; ANN when `DENSE_BACKEND=qdrant` |
 | TurboVec dense | `TURBOVEC_URL`, `DENSE_BACKEND=turbovec` | Optional dense ANN to cut Qdrant RAM — [Configuration — TurboVec](configuration.md#turbovec-rollout-cut-qdrant-ram) |
-| Sparse BM25 | `SPARSE_INDEX_URL` | `ENABLE_HYBRID_RETRIEVAL=true` |
+| Sparse BM25 | `SPARSE_INDEX_URL` | `ENABLE_HYBRID_RETRIEVAL=true` — sidecar mmaps the index from `SPARSE_INDEX_PATH` when set |
 | Reranker | `RERANKER_URL` | `ENABLE_RERANKER=true` |
 | Graph SQLite | `GRAPH_DB_PATH` | `ENABLE_GRAPH_LOOKUP=true` |
 | MemGraphRAG SQLite | `MEMGRAPHRAG_DB_PATH` | `ENABLE_MEMGRAPHRAG=true` — [build guide](memgraphrag.md) |

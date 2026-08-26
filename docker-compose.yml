@@ -125,7 +125,12 @@ services:
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-nomad_knowledge_base}
       SPARSE_REFRESH_SEC: ${SPARSE_REFRESH_SEC:-3600}
+      SPARSE_INDEX_PATH: /var/lib/rag_proxy/sparse
+      SPARSE_MMAP: ${SPARSE_MMAP:-true}
+      SPARSE_N_THREADS: ${SPARSE_N_THREADS:-0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - rag_proxy_state:/var/lib/rag_proxy
     depends_on:
       qdrant:
         condition: service_started

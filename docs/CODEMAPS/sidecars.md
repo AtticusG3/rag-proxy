@@ -1,6 +1,6 @@
 # Sidecars Codemap
 
-**Last Updated:** 2026-07-27
+**Last Updated:** 2026-08-26
 **Entry Points:** each `sidecars/*/app.py` (Docker compose profiles / systemd units)
 
 ## Architecture
@@ -19,7 +19,7 @@ rag_proxy / ingest / MCP
 | Service | Path | Purpose | Typical port |
 | --- | --- | --- | --- |
 | Rerank | `sidecars/rerank/` | Cross-encoder reorder | `8095` |
-| Sparse BM25 | `sidecars/sparse/` | Sparse index + search; Qdrant scroll rebuild | `8096` |
+| Sparse BM25 | `sidecars/sparse/` | Sparse index + search; NVMe mmap snapshot, Qdrant scroll rebuild | `8096` |
 | TurboVec | `sidecars/turbovec/` | TurboQuant dense ANN (`/search`, `/add`, `/reindex`, `/save`) | `8097` |
 | MCP RAG | `sidecars/mcp_rag/` | MCP tools: KB search modes + personal `memory_*` | `9001` |
 

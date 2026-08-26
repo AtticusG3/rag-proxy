@@ -7,7 +7,9 @@ import asyncio
 import contextlib
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -16,7 +18,13 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from core import DEFAULT_COLLECTION as _DEFAULT_COLLECTION
-from core import PROVENANCE_KEYS, IndexRegistry, SparseIndex
+from core import (
+    PROVENANCE_KEYS,
+    IndexRegistry,
+    SparseIndex,
+    resolve_n_threads,
+    split_text_batch,
+)
 
 try:
     from rag_proxy.chunk_text import PAYLOAD_TEXT_KEYS
@@ -37,6 +45,22 @@ HOST = os.getenv("SPARSE_HOST", "0.0.0.0")
 PORT = int(os.getenv("SPARSE_PORT", "8096"))
 # 0 = index everything. Otherwise stop after N points (BM25 sampling for large collections).
 MAX_POINTS = int(os.getenv("SPARSE_MAX_POINTS", "0"))
+# NVMe snapshot of the BM25 CSC + jsonl corpus. Empty disables persist/mmap and
+# keeps the index on the heap (tests, tiny corpora). After a Qdrant sync the
+# sidecar writes here and reopens with numpy mmap so RSS is the working set,
+# not the full inverted index + document text.
+_INDEX_PATH_RAW = os.getenv("SPARSE_INDEX_PATH", "").strip()
+INDEX_PATH = Path(_INDEX_PATH_RAW) if _INDEX_PATH_RAW else None
+MMAP = os.getenv("SPARSE_MMAP", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+# 0 = all CPUs. Tokenize (regex split) and per-batch split during Qdrant
+# scroll run on this many threads. Search is a single query; extra threads
+# do not help retrieve().
+N_THREADS = resolve_n_threads(int(os.getenv("SPARSE_N_THREADS", "0") or "0"))
 
 # Payload keys fetched from Qdrant (text + provenance + recency metadata only).
 _SCROLL_PAYLOAD_KEYS = tuple(
@@ -45,7 +69,7 @@ _SCROLL_PAYLOAD_KEYS = tuple(
     )
 )
 
-registry = IndexRegistry()
+registry = IndexRegistry(persist_root=INDEX_PATH, mmap=MMAP, n_threads=N_THREADS)
 
 # A full sync holds a second copy of the corpus in RAM; never build two at once.
 # Created lazily so the lock binds to the running loop (Python < 3.10).
@@ -88,32 +112,47 @@ async def sync_collection(collection: str) -> int:
 
 
 async def _sync_collection_locked(collection: str) -> int:
-    index = SparseIndex()
+    index = SparseIndex(n_threads=N_THREADS)
     indexed = 0
     truncated = False
     offset: str | int | None = None
+    # Split each scroll batch on the thread pool while the next Qdrant page
+    # is in flight, so tokenize is not a serial tail after the scroll.
+    split_pool = ThreadPoolExecutor(max_workers=N_THREADS)
+    split_futs: list[Any] = []
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        while True:
-            remaining = SCROLL_BATCH
-            if MAX_POINTS > 0:
-                remaining = min(SCROLL_BATCH, MAX_POINTS - indexed)
-                if remaining <= 0:
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            while True:
+                remaining = SCROLL_BATCH
+                if MAX_POINTS > 0:
+                    remaining = min(SCROLL_BATCH, MAX_POINTS - indexed)
+                    if remaining <= 0:
+                        truncated = True
+                        break
+
+                batch, offset = await _scroll_page(client, collection, offset, remaining)
+                if batch:
+                    texts = await asyncio.to_thread(index.add_points, batch)
+                    indexed += len(batch)
+                    if texts:
+                        split_futs.append(split_pool.submit(split_text_batch, texts))
+
+                if offset is None:
+                    break
+                if MAX_POINTS > 0 and indexed >= MAX_POINTS:
                     truncated = True
                     break
 
-            batch, offset = await _scroll_page(client, collection, offset, remaining)
-            if batch:
-                await asyncio.to_thread(index.add_points, batch)
-                indexed += len(batch)
+        token_lists: list[list[str]] = []
+        for fut in split_futs:
+            token_lists.extend(fut.result())
+    finally:
+        split_pool.shutdown(wait=True)
 
-            if offset is None:
-                break
-            if MAX_POINTS > 0 and indexed >= MAX_POINTS:
-                truncated = True
-                break
-
-    count = await asyncio.to_thread(_finalize_and_install, collection, index)
+    count = await asyncio.to_thread(
+        _finalize_and_install, collection, index, token_lists
+    )
     if truncated:
         log.info(
             "Sparse index synced collection=%s docs=%d (truncated at MAX_POINTS=%d)",
@@ -126,8 +165,17 @@ async def _sync_collection_locked(collection: str) -> int:
     return count
 
 
-def _finalize_and_install(collection: str, index: SparseIndex) -> int:
-    index.finalize(collection)
+def _finalize_and_install(
+    collection: str,
+    index: SparseIndex,
+    token_lists: list[list[str]] | None = None,
+) -> int:
+    index.finalize(
+        collection,
+        persist_dir=registry.persist_dir_for(collection),
+        mmap=registry.mmap,
+        token_lists=token_lists or None,
+    )
     return registry.install(collection, index)
 
 
@@ -141,26 +189,48 @@ class ReindexRequest(BaseModel):
     collection: str = Field(default_factory=lambda: DEFAULT_COLLECTION)
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    initial_sync_failed = False
+async def _bootstrap() -> bool:
+    """Load an NVMe snapshot or rebuild from Qdrant. Never runs on the HTTP loop."""
+    if INDEX_PATH is not None:
+        try:
+            loaded = await asyncio.to_thread(
+                registry.load_persisted, DEFAULT_COLLECTION
+            )
+        except Exception as exc:
+            log.warning("Persisted sparse index load failed (will sync): %s", exc)
+            loaded = 0
+        if loaded:
+            log.info(
+                "Loaded mmap sparse index collection=%s docs=%d path=%s",
+                DEFAULT_COLLECTION,
+                loaded,
+                registry.persist_path(DEFAULT_COLLECTION),
+            )
+            return True
     try:
         await sync_collection(DEFAULT_COLLECTION)
+        return True
     except Exception as exc:
-        initial_sync_failed = True
         log.warning("Initial sparse sync failed (will retry): %s", exc)
+        return False
 
-    refresh_task: asyncio.Task | None = None
-    if REFRESH_SEC > 0:
-        initial_delay = INITIAL_RETRY_SEC if initial_sync_failed else REFRESH_SEC
-        refresh_task = asyncio.create_task(_refresh_loop(initial_delay))
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Bind the port before the Qdrant rebuild. A refused connection makes hybrid
+    # RAG look down; an empty index fail-opens. Snapshot load + sync run as a
+    # background task so /health answers throughout.
+    async def _run() -> None:
+        ok = await _bootstrap()
+        if REFRESH_SEC > 0:
+            delay = REFRESH_SEC if ok else INITIAL_RETRY_SEC
+            await _refresh_loop(delay)
+
+    boot_task = asyncio.create_task(_run())
     yield
-
-    if refresh_task is not None:
-        refresh_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await refresh_task
+    boot_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await boot_task
 
 
 app = FastAPI(title="RAG Sparse Index Sidecar", docs_url=None, redoc_url=None, lifespan=lifespan)
@@ -187,13 +257,17 @@ async def _refresh_loop(initial_delay: float) -> None:
 @app.get("/health")
 def health() -> dict[str, Any]:
     collection = registry.loaded_collection() or DEFAULT_COLLECTION
+    docs = registry.doc_count(collection)
     return {
-        "status": "ok",
+        "status": "ok" if docs else "starting",
         "collection": collection,
-        "docs": registry.doc_count(collection),
+        "docs": docs,
         "last_sync": registry.last_sync(collection),
         "max_points": MAX_POINTS,
-        "truncated": bool(MAX_POINTS) and registry.doc_count(collection) >= MAX_POINTS,
+        "truncated": bool(MAX_POINTS) and docs >= MAX_POINTS,
+        "mmap": registry.mmap_enabled(collection),
+        "persist_dir": registry.persist_path(collection) or None,
+        "n_threads": N_THREADS,
     }
 
 
@@ -218,7 +292,15 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(message)s",
         datefmt="%H:%M:%S",
     )
-    log.info("Sparse sidecar listening on %s:%s qdrant=%s", HOST, PORT, QDRANT_URL)
+    log.info(
+        "Sparse sidecar listening on %s:%s qdrant=%s persist=%s mmap=%s n_threads=%s",
+        HOST,
+        PORT,
+        QDRANT_URL,
+        INDEX_PATH or "(heap)",
+        MMAP,
+        N_THREADS,
+    )
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
 
 

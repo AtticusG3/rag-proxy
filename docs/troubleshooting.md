@@ -90,7 +90,7 @@ Set `ENABLE_METRICS=true`. Hit `http://<proxy_host>:<PROXY_PORT>/metrics` — no
 | Symptom | Action |
 | --- | --- |
 | Hybrid no sparse hits | `SPARSE_INDEX_URL` set; sparse sidecar healthy (`:18096/health`); reindex after Qdrant changes |
-| Sparse index empty (`docs: 0`, `last_sync: 0.0` in `/api/settings/status`) | Sidecar has no disk persistence — restart `sparse-sidecar.service` to trigger a full rebuild from Qdrant. ~600k points take ~2–3 min, and `/health` only answers after the initial sync finishes |
+| Sparse index empty (`docs: 0`, `last_sync: 0.0` in `/api/settings/status`) | If `SPARSE_INDEX_PATH` has a snapshot, restart loads it via mmap (seconds). Otherwise the sidecar rebuilds from Qdrant; `/health` only answers after that initial sync finishes. `POST /reindex` forces a Qdrant rebuild and rewrites the snapshot |
 | Rerank stalls | Increase `RERANK_STAGE_TIMEOUT_MS` or `ENABLE_RERANKER=false` |
 | First rerank start slow | Downloads `BAAI/bge-reranker-base` (~400MB) |
 

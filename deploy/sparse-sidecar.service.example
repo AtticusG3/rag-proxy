@@ -23,9 +23,14 @@ Environment=LOG_LEVEL=INFO
 # (INGEST_SPARSE_REINDEX) -- so keep it infrequent. Hourly costs a 20% duty cycle.
 Environment=SPARSE_REFRESH_SEC=21600
 Environment=SPARSE_SCROLL_BATCH=256
-# 0 = full corpus. Measured ~6.3 KB/doc: 1.5M docs settles near 9.4 GB with a
-# 12.8 GB build peak, and a rebuild briefly holds the old index too.
+# 0 = full corpus. Build still materialises the BM25 CSC on the heap; after
+# finalize the sidecar writes the snapshot and reopens it with numpy mmap so
+# steady-state RSS is the working set, not the full inverted index + texts.
 Environment=SPARSE_MAX_POINTS=0
+Environment=SPARSE_INDEX_PATH=/var/lib/rag_proxy/sparse
+Environment=SPARSE_MMAP=true
+# 0 = all CPUs. Tokenize overlaps the Qdrant scroll on this many threads.
+Environment=SPARSE_N_THREADS=0
 
 [Install]
 WantedBy=multi-user.target

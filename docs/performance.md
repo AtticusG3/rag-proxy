@@ -32,8 +32,8 @@ Approximate relative cost (depends on hardware and corpus size):
 
 | Flag | Extra work | Notes |
 | --- | --- | --- |
-| `ENABLE_HYBRID_RETRIEVAL` | +sparse HTTP call (parallel with dense) | Better recall; needs `SPARSE_INDEX_URL` sidecar |
-| `DENSE_BACKEND=turbovec` | Dense ANN via TurboVec; Qdrant payload fetch | Cuts Qdrant RAM; retune `SIMILARITY_THRESHOLD` — [TurboVec rollout](configuration.md#turbovec-rollout-cut-qdrant-ram) |
+| `ENABLE_HYBRID_RETRIEVAL` | +sparse HTTP call (parallel with dense) | Better recall; needs `SPARSE_INDEX_URL` sidecar. Set sidecar `SPARSE_INDEX_PATH` so BM25 mmaps from NVMe instead of holding the corpus in RAM |
+| `DENSE_BACKEND=turbovec` | Dense ANN via TurboVec; Qdrant payload fetch | Cuts Qdrant RAM; retune `SIMILARITY_THRESHOLD` — [TurboVec rollout](configuration.md#turbovec-rollout-cut-qdrant-ram). The `.tvim` file is a snapshot the process still loads into RAM; turbovec 0.8 has no mmap view |
 | `ENABLE_RERANKER` | +rerank HTTP call | CPU sidecar; set `RERANK_STAGE_TIMEOUT_MS` |
 | `ENABLE_QUERY_REWRITE` / `ENABLE_QUERY_REWRITE_LLM` | Regex and/or LLM rewrite | LLM path adds tens–hundreds of ms |
 | `ENABLE_INTENT_ROUTER` | Rules + optional tiny LLM | `INTENT_TIMEOUT_MS` caps model call |

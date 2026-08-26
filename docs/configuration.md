@@ -169,7 +169,15 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 1. Run `turbovec-sidecar` / Docker `turbovec-index`; set `TURBOVEC_URL` (ingest dual-writes vectors).
 2. Keep `DENSE_BACKEND=qdrant` until the sidecar is healthy; `POST /reindex` to rebuild from Qdrant if needed.
 3. Flip `DENSE_BACKEND=turbovec`. Retune `SIMILARITY_THRESHOLD` — TurboQuant scores are not identical to Qdrant cosine.
-4. Recreate the collection with `QDRANT_VECTORS_ON_DISK=true` (operator-driven drop/recreate + re-ingest or restore) so float32 leaves RAM; TurboVec remains the live ANN index.
+4. Set `QDRANT_VECTORS_ON_DISK=true` so new collections mmap float32. For an existing collection, PATCH without recreate (Qdrant rebuilds segments in the background; status goes `yellow` until green):
+
+```bash
+curl -X PATCH "$QDRANT_URL/collections/$QDRANT_COLLECTION" \
+  -H 'Content-Type: application/json' \
+  -d '{"vectors":{"":{"on_disk":true}},"hnsw_config":{"on_disk":true}}'
+```
+
+TurboVec remains the live ANN index; Qdrant is then payload (+ vector source for `/reindex`).
 
 **Sidecar search:** `POST /search` runs top-k ANN first; `score_threshold` (and proxy `SIMILARITY_THRESHOLD`) filter hits *after* that shortlist — you may get fewer than `limit` results.
 
@@ -325,13 +333,15 @@ Not loaded by `rag_proxy/config.py`. Set in Docker compose or sidecar unit env.
 | Service | Key vars | Default bind |
 | --- | --- | --- |
 | Rerank (`sidecars/rerank/`) | `RERANK_MODEL`, `RERANK_HOST`, `RERANK_PORT` | `8095` |
-| Sparse BM25 (`sidecars/sparse/`) | `SPARSE_HOST`, `SPARSE_PORT`, `SPARSE_REFRESH_SEC`, `SPARSE_SCROLL_BATCH`, `SPARSE_MAX_POINTS` | `8096` |
+| Sparse BM25 (`sidecars/sparse/`) | `SPARSE_HOST`, `SPARSE_PORT`, `SPARSE_REFRESH_SEC`, `SPARSE_SCROLL_BATCH`, `SPARSE_MAX_POINTS`, `SPARSE_INDEX_PATH`, `SPARSE_MMAP`, `SPARSE_N_THREADS` | `8096` |
 | MCP RAG (`sidecars/mcp_rag/`) | `MCP_HOST`, `MCP_PORT`, `MCP_TRANSPORT`, `MCP_RAG_USER_AGENT`, `MCP_PERSONAL_STORE_PATH` | `9001` |
 | TurboVec dense (`sidecars/turbovec/`) | `TURBOVEC_HOST`, `TURBOVEC_PORT`, `TURBOVEC_DIM`, `TURBOVEC_BIT_WIDTH`, `TURBOVEC_INDEX_PATH`, `TURBOVEC_SCROLL_BATCH`, `TURBOVEC_AUTO_SAVE` | `8097` |
 
 TurboVec `TURBOVEC_AUTO_SAVE` defaults to `true` (save after each mutating request). Set `false` during bulk ingest dual-write; finish with `POST /save`. See [TurboVec rollout](#turbovec-rollout-cut-qdrant-ram).
 
-Sparse `SPARSE_MAX_POINTS` defaults to `0` (index the whole collection). The BM25 index costs roughly **6.3 KB per document** — 1.5M docs settle near 9.4 GB with a 12.8 GB build peak, and a rebuild transiently holds the old index alongside the new one. Cap it only on memory-constrained hosts; `GET /health` reports `truncated: true` when the cap is hiding part of the corpus. Every `SPARSE_REFRESH_SEC` tick rebuilds from scratch (~12 min at 1.5M docs), so keep that interval long — the shipped unit uses 6 h. It is only a safety net, because the ingest worker already reindexes on idle via `INGEST_SPARSE_REINDEX`.
+Sparse `SPARSE_N_THREADS` defaults to `0` (all CPUs). Regex tokenize fans out on that pool and runs while Qdrant pages are still scrolling, so a rebuild is not a single-thread tail after the fetch. Search is one query at a time and does not use the pool. Set a lower number if a rebuild should leave cores for llama-server.
+
+Sparse `SPARSE_MAX_POINTS` defaults to `0` (index the whole collection). A full rebuild still materialises the BM25 CSC on the heap (measured ~6.3 KB/doc: 1.5M docs peak near 12.8 GB). Set `SPARSE_INDEX_PATH` (default in the shipped unit: `/var/lib/rag_proxy/sparse`) so that after finalize the sidecar writes the CSC + jsonl corpus to NVMe and reopens both with `numpy`/`jsonl` mmap (`SPARSE_MMAP=true`). Steady-state RSS then tracks the working set rather than the whole inverted index plus document text, and a restart loads the snapshot instead of scrolling Qdrant. Empty `SPARSE_INDEX_PATH` keeps the old heap-only behaviour. Cap `SPARSE_MAX_POINTS` only on memory-constrained hosts; `GET /health` reports `truncated: true` when the cap is hiding part of the corpus, plus `mmap` / `persist_dir` when a snapshot is live. Every `SPARSE_REFRESH_SEC` tick rebuilds from scratch (~12 min at 1.5M docs), so keep that interval long — the shipped unit uses 6 h. It is only a safety net, because the ingest worker already reindexes on idle via `INGEST_SPARSE_REINDEX`.
 
 Proxy references rerank/sparse/turbovec via `RERANKER_URL`, `SPARSE_INDEX_URL`, and `TURBOVEC_URL` only.
 

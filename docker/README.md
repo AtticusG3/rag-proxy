@@ -31,7 +31,7 @@ cp docker/config.yaml.example docker/config.yaml
 docker compose --profile qdrant --profile cognitive up -d --build
 ```
 
-First **reranker** start downloads `BAAI/bge-reranker-base` (~400MB). **sparse-index** scrolls Qdrant on startup (may take a minute on large collections).
+First **reranker** start downloads `BAAI/bge-reranker-base` (~400MB). **sparse-index** scrolls Qdrant on the first start (may take minutes on large collections), then writes an mmap snapshot under `SPARSE_INDEX_PATH` so later restarts skip the scroll.
 
 ## Smoke tests
 
