@@ -11,7 +11,7 @@ from pathlib import Path
 
 ADMIN_DB = "/opt/ai/rag/admin.sqlite"
 QDRANT = "http://127.0.0.1:6333"
-COLLECTION = "nomad_knowledge_base"
+COLLECTION = "nomad_knowledge_base_qwen3"
 ADMIN_ENV = Path("/opt/ai/config/rag-admin.env")
 
 

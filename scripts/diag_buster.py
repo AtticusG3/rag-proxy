@@ -27,7 +27,7 @@ def main() -> None:
     ).fetchall())
     try:
         r = urllib.request.urlopen(
-            "http://127.0.0.1:6333/collections/nomad_knowledge_base", timeout=10
+            "http://127.0.0.1:6333/collections/nomad_knowledge_base_qwen3", timeout=10
         )
         print("qdrant:", r.status, r.read()[:120])
     except Exception as exc:
