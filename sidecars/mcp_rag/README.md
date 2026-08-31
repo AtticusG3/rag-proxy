@@ -23,6 +23,7 @@ export QDRANT_URL=http://127.0.0.1:6333
 # optional hybrid:
 # export SPARSE_INDEX_URL=http://127.0.0.1:8096
 # export ENABLE_HYBRID_RETRIEVAL=true
+# export SPARSE_RESERVE_FRACTION=0   # default; pure RRF (opt-in reserve for sparse-only hits)
 # export RERANKER_URL=http://127.0.0.1:8095
 # export ENABLE_RERANKER=true
 python app.py
@@ -31,6 +32,8 @@ python app.py
 Default transport: streamable HTTP at `http://127.0.0.1:9001/mcp`. Set `MCP_TRANSPORT=stdio` for stdio mode.
 
 Personal store path: `MCP_PERSONAL_STORE_PATH` (default `~/.local/share/rag_proxy/mcp_personal.sqlite`).
+
+Hybrid `passages` mode uses the same RRF merge as the proxy. `SPARSE_RESERVE_FRACTION` defaults to `0` (no guaranteed sparse-only slots).
 
 ## Production (systemd)
 

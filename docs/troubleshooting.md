@@ -44,6 +44,10 @@ Usually an upstream or model issue. Test the same `stream: true` request against
 
 Abandoned upstream streams are closed after `UPSTREAM_STREAM_ABANDON_SEC` with no relayed bytes — increase if clients pause consumption for long periods.
 
+## Browser / UI: `ERR_CONTENT_DECODING_FAILED`
+
+If the llama-swap or llama-server web UI fails to load static assets through the proxy with `net::ERR_CONTENT_DECODING_FAILED`, the proxy must strip `content-encoding` on relay (httpx already decompresses the body). Current `rag_proxy/app.py` drops that header with other hop-by-hop fields — upgrade if you are on a build that still forwards it. See [Architecture — Auth and passthrough](architecture.md#auth-and-passthrough).
+
 ## Cognitive mode feels random
 
 | Check | Action |
@@ -91,6 +95,8 @@ Set `ENABLE_METRICS=true`. Hit `http://<proxy_host>:<PROXY_PORT>/metrics` — no
 | --- | --- |
 | Hybrid no sparse hits | `SPARSE_INDEX_URL` set; sparse sidecar healthy (`:18096/health`); reindex after Qdrant changes |
 | Sparse index empty (`docs: 0`, `last_sync: 0.0` in `/api/settings/status`) | If `SPARSE_INDEX_PATH` has a snapshot, restart loads it via mmap (seconds). Otherwise the sidecar rebuilds from Qdrant; `/health` only answers after that initial sync finishes. `POST /reindex` forces a Qdrant rebuild and rewrites the snapshot |
+| Sparse sync keeps failing while Qdrant boots | Expected: retries use capped exponential backoff (`SPARSE_INITIAL_RETRY_SEC` → `SPARSE_RETRY_MAX_SEC`), not a full `SPARSE_REFRESH_SEC` wait. Check Qdrant reachability; successful sync resets to the long refresh interval |
+| Hybrid returns lexical junk over dense hits | Default is pure RRF (`SPARSE_RESERVE_FRACTION=0`). Only raise the fraction if you intentionally want sparse-only slots; otherwise leave at `0` |
 | Rerank stalls | Increase `RERANK_STAGE_TIMEOUT_MS` or `ENABLE_RERANKER=false` |
 | First rerank start slow | Downloads `BAAI/bge-reranker-base` (~400MB) |
 

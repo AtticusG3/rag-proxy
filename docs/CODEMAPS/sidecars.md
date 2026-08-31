@@ -1,6 +1,6 @@
 # Sidecars Codemap
 
-**Last Updated:** 2026-08-26
+**Last Updated:** 2026-08-31
 **Entry Points:** each `sidecars/*/app.py` (Docker compose profiles / systemd units)
 
 ## Architecture
@@ -19,7 +19,7 @@ rag_proxy / ingest / MCP
 | Service | Path | Purpose | Typical port |
 | --- | --- | --- | --- |
 | Rerank | `sidecars/rerank/` | Cross-encoder reorder | `8095` |
-| Sparse BM25 | `sidecars/sparse/` | Sparse index + search; NVMe mmap snapshot, Qdrant scroll rebuild | `8096` |
+| Sparse BM25 | `sidecars/sparse/` | Sparse index + search; NVMe mmap snapshot, Qdrant scroll rebuild, capped retry backoff on failed sync | `8096` |
 | TurboVec | `sidecars/turbovec/` | TurboQuant dense ANN (`/search`, `/add`, `/reindex`, `/save`) | `8097` |
 | MCP RAG | `sidecars/mcp_rag/` | MCP tools: KB search modes + personal `memory_*` | `9001` |
 
@@ -33,11 +33,14 @@ Each HTTP sidecar follows `app.py` + `core.py` (+ `Dockerfile` / `requirements.t
 | `knowledge_base_status` | Health of Qdrant / sparse / embed / MemGraph |
 | `memory_store` / `memory_recall` / `memory_forget` | Personal SQLite notes (not KB ingest) |
 
+`search_knowledge_base` hybrid fusion honors `SPARSE_RESERVE_FRACTION` (default `0` = pure RRF), same as the proxy.
+
 See [`sidecars/mcp_rag/README.md`](../../sidecars/mcp_rag/README.md).
 
 ## Data Flow
 
 - Proxy retrieve/rerank stages call sidecars over HTTP; failures fail-open.
+- Sparse sidecar `/health` answers while boot sync runs (`status=starting` until docs load). Failed Qdrant syncs retry with capped exponential backoff (`SPARSE_INITIAL_RETRY_SEC` / `SPARSE_RETRY_MAX_SEC`), not a full `SPARSE_REFRESH_SEC` wait.
 - Ingest dual-writes TurboVec when `TURBOVEC_URL` is set; sparse/TurboVec reindex modes are operator-controlled.
 - Admin can start/stop sidecars on demand (Linux + systemd) around ingest work.
 
