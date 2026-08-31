@@ -153,6 +153,7 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 | --- | --- | --- |
 | `HYBRID_DENSE_WEIGHT` | `0.7` | Dense weight in RRF merge |
 | `SPARSE_INDEX_URL` | *(empty)* | BM25 sidecar base URL |
+| `SPARSE_RESERVE_FRACTION` | `0.0` | After RRF, fraction of `limit` slots reserved for sparse-only hits (0 = pure RRF; opt-in) |
 | `DENSE_BACKEND` | `qdrant` | Dense ANN: `qdrant` or `turbovec` |
 | `TURBOVEC_URL` | *(empty)* | TurboVec dense sidecar (`sidecars/turbovec`, port 8097 typical) |
 | `QDRANT_VECTORS_ON_DISK` | `false` | New collections store float32 vectors on disk (mmap); use after TurboVec is primary |
@@ -163,6 +164,8 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 | `RERANK_TOP_K` | `5` | Chunks after rerank |
 | `RERANK_TIMEOUT_MS` | `200` | Rerank entrance-gate minimum (ms of cognitive budget that must remain) |
 | `RERANK_STAGE_TIMEOUT_MS` | `5000` | Rerank stage hard exec cap |
+
+**Sparse reserve:** Hybrid fusion is pure RRF by default (`SPARSE_RESERVE_FRACTION=0`). Set a small fraction (e.g. `0.2`) only when lexical-only matches must keep guaranteed slots over dense hits — otherwise sparse-only junk can crowd out relevant dense results. Same knob applies to the async proxy path (`rag_proxy/clients/qdrant.py`), sync helpers, and `sidecars/mcp_rag`.
 
 ### TurboVec rollout (cut Qdrant RAM)
 
@@ -333,7 +336,7 @@ Not loaded by `rag_proxy/config.py`. Set in Docker compose or sidecar unit env.
 | Service | Key vars | Default bind |
 | --- | --- | --- |
 | Rerank (`sidecars/rerank/`) | `RERANK_MODEL`, `RERANK_HOST`, `RERANK_PORT` | `8095` |
-| Sparse BM25 (`sidecars/sparse/`) | `SPARSE_HOST`, `SPARSE_PORT`, `SPARSE_REFRESH_SEC`, `SPARSE_SCROLL_BATCH`, `SPARSE_MAX_POINTS`, `SPARSE_INDEX_PATH`, `SPARSE_MMAP`, `SPARSE_N_THREADS` | `8096` |
+| Sparse BM25 (`sidecars/sparse/`) | `SPARSE_HOST`, `SPARSE_PORT`, `SPARSE_REFRESH_SEC`, `SPARSE_INITIAL_RETRY_SEC`, `SPARSE_RETRY_MAX_SEC`, `SPARSE_SCROLL_BATCH`, `SPARSE_MAX_POINTS`, `SPARSE_INDEX_PATH`, `SPARSE_MMAP`, `SPARSE_N_THREADS` | `8096` |
 | MCP RAG (`sidecars/mcp_rag/`) | `MCP_HOST`, `MCP_PORT`, `MCP_TRANSPORT`, `MCP_RAG_USER_AGENT`, `MCP_PERSONAL_STORE_PATH` | `9001` |
 | TurboVec dense (`sidecars/turbovec/`) | `TURBOVEC_HOST`, `TURBOVEC_PORT`, `TURBOVEC_DIM`, `TURBOVEC_BIT_WIDTH`, `TURBOVEC_INDEX_PATH`, `TURBOVEC_SCROLL_BATCH`, `TURBOVEC_AUTO_SAVE` | `8097` |
 
@@ -342,6 +345,8 @@ TurboVec `TURBOVEC_AUTO_SAVE` defaults to `true` (save after each mutating reque
 Sparse `SPARSE_N_THREADS` defaults to `0` (all CPUs). Regex tokenize fans out on that pool and runs while Qdrant pages are still scrolling, so a rebuild is not a single-thread tail after the fetch. Search is one query at a time and does not use the pool. Set a lower number if a rebuild should leave cores for llama-server.
 
 Sparse `SPARSE_MAX_POINTS` defaults to `0` (index the whole collection). A full rebuild still materialises the BM25 CSC on the heap (measured ~6.3 KB/doc: 1.5M docs peak near 12.8 GB). Set `SPARSE_INDEX_PATH` (default in the shipped unit: `/var/lib/rag_proxy/sparse`) so that after finalize the sidecar writes the CSC + jsonl corpus to NVMe and reopens both with `numpy`/`jsonl` mmap (`SPARSE_MMAP=true`). Steady-state RSS then tracks the working set rather than the whole inverted index plus document text, and a restart loads the snapshot instead of scrolling Qdrant. Empty `SPARSE_INDEX_PATH` keeps the old heap-only behaviour. Cap `SPARSE_MAX_POINTS` only on memory-constrained hosts; `GET /health` reports `truncated: true` when the cap is hiding part of the corpus, plus `mmap` / `persist_dir` when a snapshot is live. Every `SPARSE_REFRESH_SEC` tick rebuilds from scratch (~12 min at 1.5M docs), so keep that interval long — the shipped unit uses 6 h. It is only a safety net, because the ingest worker already reindexes on idle via `INGEST_SPARSE_REINDEX`.
+
+**Failed sync backoff:** When a Qdrant scroll/sync fails (e.g. Qdrant still booting), the sidecar does **not** wait a full `SPARSE_REFRESH_SEC`. It retries from `SPARSE_INITIAL_RETRY_SEC` (default `5`) with exponential doubling, capped at `SPARSE_RETRY_MAX_SEC` (default `300`). A successful sync resets the delay to `SPARSE_REFRESH_SEC`.
 
 Proxy references rerank/sparse/turbovec via `RERANKER_URL`, `SPARSE_INDEX_URL`, and `TURBOVEC_URL` only.
 
