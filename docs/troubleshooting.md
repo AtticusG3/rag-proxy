@@ -44,6 +44,10 @@ Usually an upstream or model issue. Test the same `stream: true` request against
 
 Abandoned upstream streams are closed after `UPSTREAM_STREAM_ABANDON_SEC` with no relayed bytes — increase if clients pause consumption for long periods.
 
+## Browser UI shows `ERR_CONTENT_DECODING_FAILED`
+
+The proxy strips `content-encoding` on relayed upstream responses because httpx already decoded the body. If you see this error on llama-server / Open WebUI assets served through the proxy, confirm you are on a build that includes that strip (`rag_proxy/app.py`). Do not re-add `content-encoding` to passthrough headers.
+
 ## Cognitive mode feels random
 
 | Check | Action |
@@ -90,7 +94,9 @@ Set `ENABLE_METRICS=true`. Hit `http://<proxy_host>:<PROXY_PORT>/metrics` — no
 | Symptom | Action |
 | --- | --- |
 | Hybrid no sparse hits | `SPARSE_INDEX_URL` set; sparse sidecar healthy (`:18096/health`); reindex after Qdrant changes |
-| Sparse index empty (`docs: 0`, `last_sync: 0.0` in `/api/settings/status`) | If `SPARSE_INDEX_PATH` has a snapshot, restart loads it via mmap (seconds). Otherwise the sidecar rebuilds from Qdrant; `/health` only answers after that initial sync finishes. `POST /reindex` forces a Qdrant rebuild and rewrites the snapshot |
+| Sparse index empty (`docs: 0`, `last_sync: 0.0` in `/api/settings/status`) | If `SPARSE_INDEX_PATH` has a snapshot, restart loads it via mmap (seconds). Otherwise the sidecar rebuilds from Qdrant; `/health` answers with `status=starting` until docs load. `POST /reindex` forces a Qdrant rebuild and rewrites the snapshot |
+| Sparse sync keeps failing while Qdrant boots | Expected: backoff from `SPARSE_INITIAL_RETRY_SEC` (5s) up to `SPARSE_RETRY_MAX_SEC` (300s), then normal `SPARSE_REFRESH_SEC` after success. Check Qdrant URL/collection in the sidecar unit env |
+| Lexical-only junk crowding hybrid results | Keep `SPARSE_RESERVE_FRACTION=0` (default). Raise only if you intentionally want reserved sparse-only slots |
 | Rerank stalls | Increase `RERANK_STAGE_TIMEOUT_MS` or `ENABLE_RERANKER=false` |
 | First rerank start slow | Downloads `BAAI/bge-reranker-base` (~400MB) |
 
