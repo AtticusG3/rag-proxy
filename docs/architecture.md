@@ -140,6 +140,7 @@ If you do not own the Qdrant collection, coordinate schema and payload fields wi
 - **Auth-transparent**: API keys and `Authorization` headers pass through unchanged. The upstream validates credentials.
 - **Chat paths only**: RAG runs on `POST` to `v1/chat/completions` or `api/chat` (`CHAT_PATHS` in `config.py`).
 - **Proxy-native routes**: `GET /metrics` (when `ENABLE_METRICS=true`) and `GET /debug` are handled by rag_proxy, not forwarded. Both honor `PROXY_INTERNAL_TOKEN` when set.
+- **Hop-by-hop / decoded bodies**: Relayed responses drop `transfer-encoding`, `content-length`, and `content-encoding`. httpx auto-decodes gzip/deflate/br/zstd before relay; keeping `content-encoding` would make browsers try to decompress already-plaintext bytes (`net::ERR_CONTENT_DECODING_FAILED`, e.g. llama-server web UI assets).
 - **Streaming**: SSE from the upstream is relayed as-is. Upstream streams with no relay activity for `UPSTREAM_STREAM_ABANDON_SEC` are closed by a background janitor.
 
 ## Fail-open
