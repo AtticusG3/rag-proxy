@@ -217,7 +217,12 @@ def ensure_embed_urls(
     if not on_demand_enabled() or not urls:
         return urls
     normalized = [url.rstrip("/") for url in urls if url.strip()]
-    for unit in units_for_embed_urls(normalized):
+    units = units_for_embed_urls(normalized)
+    # llama-swap / embed-pool URLs have no nomic unit. Probing them here does a
+    # blocking dummy embed (and sleeps while it is down) on every caller.
+    if not units:
+        return normalized
+    for unit in units:
         log.info("embed on-demand: starting %s", unit)
         _enable_start_unit(unit)
     if not wait_health:

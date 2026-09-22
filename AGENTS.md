@@ -71,9 +71,10 @@ Stack profiles for all `C:\Cursor IDE\*` projects: `WORKSPACE-STACKS.md` inside 
 Shared `httpx.AsyncClient` started in app lifespan (`startup_upstream_client` / `shutdown_upstream_client`). Tune via `.env.example`:
 
 - `UPSTREAM_MAX_CONNECTIONS` — pool size cap
-- `UPSTREAM_MAX_KEEPALIVE` / `UPSTREAM_KEEPALIVE_EXPIRY_SEC` — keepalive sockets (0 = close after one-shot polls)
+- `UPSTREAM_MAX_KEEPALIVE` / `UPSTREAM_KEEPALIVE_EXPIRY_SEC` — upstream keepalive (0 = close after one-shot polls). Sidecar pools use `SIDECAR_MAX_KEEPALIVE` (default 20)
 - `UPSTREAM_IDLE_SWEEP_SEC` — janitor interval for abandoned streams
-- `UPSTREAM_STREAM_ABANDON_SEC` — close upstream SSE when no bytes relayed for this long (not total stream age)
+- `UPSTREAM_STREAM_ABANDON_SEC` — after the first SSE byte, close when nothing is relayed for this long (not total stream age)
+- `UPSTREAM_FIRST_BYTE_SEC` — before the first byte, wait this long (default: `UPSTREAM_TIMEOUT_SEC`) so a cold model load is not reaped
 
 `close_upstream_response` closes the Response only; `relay_upstream` handles streaming relay and registration for the janitor.
 

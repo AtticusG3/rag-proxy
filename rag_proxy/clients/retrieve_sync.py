@@ -17,6 +17,7 @@ from rag_proxy.clients.rerank_adapter import (
 from rag_proxy.clients.retrieval_core import (
     dense_search_payload,
     embed_payload,
+    hit_doc_id,
     parse_dense_hits,
     parse_embedding,
     parse_sparse_hits,
@@ -268,6 +269,14 @@ def _hit_has_text(hit: dict) -> bool:
     return bool(extract_chunk_text(hit))
 
 
+def _with_canonical_id(hit: dict) -> dict:
+    """Return hit with id folded to the TurboVec/Qdrant hex form when it is a UUID."""
+    cid = hit_doc_id(hit)
+    if not cid or hit.get("id") == cid:
+        return hit
+    return {**hit, "id": cid}
+
+
 def hybrid_retrieve_with_dense_ids(
     config: RetrieveConfig,
     query: str,
@@ -283,7 +292,7 @@ def hybrid_retrieve_with_dense_ids(
         hits = dense_search(
             config, vector, limit=limit, score_threshold=score_threshold
         )
-        hits = [h for h in hits if _hit_has_text(h)]
+        hits = [_with_canonical_id(h) for h in hits if _hit_has_text(h)]
         dense_ids = {str(h.get("id", "")) for h in hits if h.get("id")}
         return hits, dense_ids
 
@@ -294,10 +303,12 @@ def hybrid_retrieve_with_dense_ids(
         dense_hits = dense_search(
             config, vector, limit=limit, score_threshold=score_threshold
         )
-        dense_hits = [h for h in dense_hits if _hit_has_text(h)]
+        dense_hits = [_with_canonical_id(h) for h in dense_hits if _hit_has_text(h)]
         dense_ids = {str(h.get("id", "")) for h in dense_hits if h.get("id")}
 
-    sparse_raw = sparse_search(config, query, limit=limit)
+    sparse_raw = [
+        _with_canonical_id(h) for h in sparse_search(config, query, limit=limit)
+    ]
     if not sparse_raw:
         return dense_hits, dense_ids
 

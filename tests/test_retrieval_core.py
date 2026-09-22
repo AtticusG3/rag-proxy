@@ -1,7 +1,9 @@
 """Unit tests for shared retrieval request/response helpers."""
 
 from rag_proxy.clients.retrieval_core import (
+    canonical_point_id,
     dense_search_payload,
+    embed_input_too_large,
     embed_payload,
     parse_dense_hits,
     parse_embedding,
@@ -25,6 +27,27 @@ def test_embed_payload_follows_monkeypatched_settings_model(monkeypatch) -> None
 def test_embed_payload_honors_explicit_model_override() -> None:
     payload = embed_payload("hello", model="embed-pool")
     assert payload == {"model": "embed-pool", "input": "hello"}
+
+
+def test_embed_input_too_large_matches_llama_server_and_nomic() -> None:
+    """Query embed must shrink on llama-server 400s, not only the old nomic phrase.
+
+    A context overflow that is not retried fail-opens the whole RAG turn.
+    """
+    assert embed_input_too_large('{"error":"exceed_context_size"}')
+    assert embed_input_too_large("request exceeds the available max context size")
+    assert embed_input_too_large("input too large to process")
+    assert not embed_input_too_large("model not found")
+
+
+def test_canonical_point_id_folds_dashed_uuid_to_bare_hex() -> None:
+    """Qdrant echoes dashed UUIDs for the bare hex ids TurboVec search returns."""
+    bare = "00000468c899c290e5c51718ca7521d3"
+    dashed = "00000468-c899-c290-e5c5-1718ca7521d3"
+    assert canonical_point_id(dashed) == bare
+    assert canonical_point_id(bare) == bare
+    assert canonical_point_id("sparse-only") == "sparse-only"
+    assert canonical_point_id(42) == "42"
 
 
 def test_prepare_embed_text_tail_truncates() -> None:

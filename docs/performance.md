@@ -52,7 +52,7 @@ Approximate relative cost (depends on hardware and corpus size):
 - Bypass per request with `X-No-Cache: true`.
 - Check `embed_cache` in `GET /debug` and `rag_embed_cache_*` metrics.
 
-HTTP connection pools for embed, Qdrant, and sparse start at app lifespan — no per-request client creation on the retrieval path.
+HTTP connection pools for embed, Qdrant, and sparse start at app lifespan — no per-request client creation on the retrieval path. Sidecar keepalive is `SIDECAR_MAX_KEEPALIVE` (default 20). `UPSTREAM_MAX_KEEPALIVE=0` applies only to the chat upstream.
 
 ## Context budget
 

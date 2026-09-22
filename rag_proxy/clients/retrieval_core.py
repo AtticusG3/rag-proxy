@@ -25,7 +25,40 @@ def prepare_embed_text(text: str, max_chars: int) -> str:
 
 
 def embed_input_too_large(response_text: str) -> bool:
-    return "too large to process" in response_text
+    """True when the embed server rejected the input for context size.
+
+    llama-server reports this as HTTP 400 ``exceed_context_size`` / ``max context
+    size``. Older nomic builds say ``too large to process``. Callers shrink and
+    retry; treating only one phrasing as fatal drops RAG for the turn.
+    """
+    lower = response_text.lower()
+    return (
+        "too large to process" in lower
+        or "exceed_context_size" in lower
+        or "max context size" in lower
+    )
+
+
+def canonical_point_id(raw: object) -> str:
+    """Fold Qdrant dashed UUIDs onto TurboVec's 32-char hex point ids.
+
+    Ingest dual-writes bare MD5 hex. Qdrant scroll/retrieve often echoes the
+    same point as a dashed UUID. Fusion and payload merge must treat them as one.
+    Non-hex ids (integers, sparse labels) are returned unchanged.
+    """
+    text = str(raw).strip()
+    compact = text.replace("-", "").lower()
+    if len(compact) == 32 and all(c in "0123456789abcdef" for c in compact):
+        return compact
+    return text
+
+
+def hit_doc_id(hit: dict) -> str:
+    """Canonical document id for a dense or sparse hit."""
+    raw = hit.get("id", hit.get("point_id", ""))
+    if raw is None or raw == "":
+        return ""
+    return canonical_point_id(raw)
 
 
 def embed_payload(text: str, *, model: str | None = None) -> dict[str, Any]:
@@ -115,10 +148,10 @@ def merge_dense_scores_with_payloads(
         point_id = point.get("id")
         if point_id is None:
             continue
-        by_id[str(point_id)] = point.get("payload") or {}
+        by_id[canonical_point_id(point_id)] = point.get("payload") or {}
     merged: list[dict] = []
     for row in scored:
-        hit_id = str(row.get("id", ""))
+        hit_id = canonical_point_id(row.get("id", ""))
         if not hit_id:
             continue
         merged.append(

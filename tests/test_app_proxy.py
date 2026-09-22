@@ -8,10 +8,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from conftest import pooled_ctor_side_effect
 from rag_proxy import upstream_client as uc
-from rag_proxy.app import app
+from rag_proxy.app import app, proxy
 
 
 def _buffered_upstream_response(body: bytes = b'{"ok":true}') -> AsyncMock:
@@ -87,6 +88,46 @@ def test_proxy_buffered_returns_body_and_closes_response():
     assert resp.json() == {"ok": True}
     mock_response.aread.assert_awaited_once()
     mock_response.aclose.assert_awaited_once()
+
+
+def test_proxy_closes_buffered_upstream_when_read_is_cancelled():
+    """Cancel during a non-SSE body read must release the upstream socket.
+
+    asyncio.CancelledError is a BaseException. An except Exception handler
+    skips it, and leaked responses fill UPSTREAM_MAX_CONNECTIONS.
+    """
+
+    async def _run() -> None:
+        mock_response = _buffered_upstream_response()
+        mock_response.aread = AsyncMock(side_effect=asyncio.CancelledError())
+        mock_client = _pooled_client_mock(mock_response)
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/v1/models",
+            "raw_path": b"/v1/models",
+            "query_string": b"",
+            "headers": [],
+            "client": ("127.0.0.1", 1234),
+            "server": ("127.0.0.1", 8088),
+        }
+        request = Request(scope, receive)
+        with patch(
+            "rag_proxy.app.ensure_upstream_client",
+            AsyncMock(return_value=mock_client),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await proxy(request, "v1/models")
+        mock_response.aclose.assert_awaited()
+
+    asyncio.run(_run())
 
 
 def test_proxy_closes_upstream_when_send_raises():

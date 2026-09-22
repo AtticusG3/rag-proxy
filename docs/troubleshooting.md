@@ -42,7 +42,7 @@ Open WebUI "follow-up" / `### Task:` prompts may be skipped by design. Send a no
 
 Usually an upstream or model issue. Test the same `stream: true` request against `LLAMA_SWAP_URL` directly. Proxy relays SSE as-is.
 
-Abandoned upstream streams are closed after `UPSTREAM_STREAM_ABANDON_SEC` with no relayed bytes — increase if clients pause consumption for long periods.
+After the first SSE byte, upstream streams are closed after `UPSTREAM_STREAM_ABANDON_SEC` with no relayed bytes — increase if clients pause consumption for long periods. Before the first byte the wait is `UPSTREAM_FIRST_BYTE_SEC` (default: `UPSTREAM_TIMEOUT_SEC`) so a cold llama-swap load is not cut off.
 
 ## Cognitive mode feels random
 

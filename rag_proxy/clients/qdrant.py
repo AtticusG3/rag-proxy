@@ -12,6 +12,7 @@ import time
 from datetime import datetime
 
 from rag_proxy.clients.retrieval_async import embed_text, search_qdrant_dense, sparse_search
+from rag_proxy.clients.retrieval_core import hit_doc_id
 from rag_proxy.clients.retrieve_sync import merge_fused_with_sparse_reserve, rrf_merge
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit
@@ -56,7 +57,7 @@ def _apply_recency_boost(score: float, payload: dict) -> float:
 def _hit_to_chunk(hit: dict, source: str) -> ChunkHit:
     """Convert a Qdrant hit dict to ChunkHit."""
     text = extract_chunk_text(hit)
-    hit_id = str(hit.get("id", hit.get("point_id", "")))
+    hit_id = hit_doc_id(hit)
     payload = hit.get("payload", {})
     score = _apply_recency_boost(float(hit.get("score", 0.0)), payload)
     return ChunkHit(id=hit_id, text=text, score=score, source=source, metadata=payload)
@@ -68,9 +69,11 @@ async def _dense_chunks(
     score_threshold: float | None,
     no_cache: bool,
     cache_hits: list[str] | None = None,
+    vector: list[float] | None = None,
 ) -> list[ChunkHit]:
     """Embed query and return dense ChunkHit list."""
-    vector = await embed_text(query, no_cache=no_cache, cache_hits=cache_hits)
+    if vector is None:
+        vector = await embed_text(query, no_cache=no_cache, cache_hits=cache_hits)
     if vector is None:
         return []
     dense_hits = await search_qdrant_dense(
@@ -85,14 +88,22 @@ async def hybrid_search(
     score_threshold: float | None = None,
     no_cache: bool = False,
     cache_hits: list[str] | None = None,
+    *,
+    vector: list[float] | None = None,
 ) -> list[ChunkHit]:
-    """Dense-only or RRF hybrid dense+sparse retrieval."""
+    """Dense-only or RRF hybrid dense+sparse retrieval.
+
+    vector, when set, is the query embedding already computed by the caller
+    so MemGraphRAG can reuse it instead of embedding again.
+    """
     if not settings.enable_hybrid_retrieval or not settings.sparse_index_url:
-        return await _dense_chunks(query, limit, score_threshold, no_cache, cache_hits)
+        return await _dense_chunks(
+            query, limit, score_threshold, no_cache, cache_hits, vector
+        )
 
     sparse_result, dense_result = await asyncio.gather(
         sparse_search(query, limit),
-        _dense_chunks(query, limit, score_threshold, no_cache, cache_hits),
+        _dense_chunks(query, limit, score_threshold, no_cache, cache_hits, vector),
         return_exceptions=True,
     )
     if isinstance(sparse_result, asyncio.CancelledError):
@@ -114,7 +125,7 @@ async def hybrid_search(
 
     dense_ranked = [(c.id, c.score) for c in dense_chunks]
     sparse_ranked = [
-        (str(h.get("id", i)), float(h.get("score", 0.0)))
+        (hit_doc_id(h) or str(i), float(h.get("score", 0.0)))
         for i, h in enumerate(sparse_raw)
     ]
     dense_w = settings.hybrid_dense_weight
@@ -140,7 +151,7 @@ async def hybrid_search(
 
     by_id = {c.id: c for c in dense_chunks}
     for h in sparse_raw:
-        cid = str(h.get("id", ""))
+        cid = hit_doc_id(h)
         if cid and cid not in by_id:
             by_id[cid] = _hit_to_chunk(h, "sparse")
 

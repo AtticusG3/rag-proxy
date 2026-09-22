@@ -53,6 +53,24 @@ def test_dashed_uuid_from_qdrant_maps_to_the_dual_write_id():
     assert turbovec_core.hex_id_to_u64(dashed) == turbovec_core.hex_id_to_u64(bare)
 
 
+def test_merge_dense_scores_attaches_payload_when_qdrant_id_is_dashed():
+    """TurboVec hits are bare hex; Qdrant retrieve echoes dashed UUIDs.
+
+    A string mismatch drops the payload, and extract_chunk_text then drops the hit.
+    """
+    from rag_proxy.clients.retrieval_core import merge_dense_scores_with_payloads
+
+    bare = "00000468c899c290e5c51718ca7521d3"
+    dashed = "00000468-c899-c290-e5c5-1718ca7521d3"
+    merged = merge_dense_scores_with_payloads(
+        [{"id": bare, "score": 0.8}],
+        [{"id": dashed, "payload": {"text": "chunk body"}}],
+    )
+    assert merged[0]["id"] == bare
+    assert merged[0]["payload"]["text"] == "chunk body"
+    assert merged[0]["score"] == 0.8
+
+
 def test_merge_dense_scores_with_payloads_preserves_order():
     from rag_proxy.clients.retrieval_core import merge_dense_scores_with_payloads
 

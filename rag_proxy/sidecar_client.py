@@ -18,9 +18,12 @@ _reranker_client: httpx.AsyncClient | None = None
 
 
 def _build_limits() -> httpx.Limits:
+    """Sidecar pool limits. Keepalive is not the upstream one-shot setting."""
+    cap = max(1, settings.upstream_max_connections)
+    keepalive = min(cap, max(0, settings.sidecar_max_keepalive))
     return httpx.Limits(
-        max_connections=settings.upstream_max_connections,
-        max_keepalive_connections=settings.upstream_max_keepalive,
+        max_connections=cap,
+        max_keepalive_connections=keepalive,
         keepalive_expiry=settings.upstream_keepalive_expiry_sec,
     )
 

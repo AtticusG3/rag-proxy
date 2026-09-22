@@ -89,6 +89,31 @@ def test_hybrid_retrieve_dense_only_when_hybrid_disabled() -> None:
     assert hits[0]["id"] == "d1"
 
 
+def test_hybrid_retrieve_collapses_dashed_qdrant_id_onto_turbovec_hex() -> None:
+    """MCP tagging uses hit id membership in the dense id set.
+
+    A dashed Qdrant echo of a bare TurboVec hex must stay one point and stay dense.
+    """
+    bare = "00000468c899c290e5c51718ca7521d3"
+    dashed = "00000468-c899-c290-e5c5-1718ca7521d3"
+    cfg = _config(enable_hybrid=True)
+    dense_hit = {"id": bare, "score": 0.9, "payload": {"text": "same"}}
+    sparse_hit = {"id": dashed, "score": 0.2, "payload": {"text": "same"}}
+
+    with patch("rag_proxy.clients.retrieve_sync.embed_query", return_value=[0.1]):
+        with patch(
+            "rag_proxy.clients.retrieve_sync.dense_search", return_value=[dense_hit]
+        ):
+            with patch(
+                "rag_proxy.clients.retrieve_sync.sparse_search",
+                return_value=[sparse_hit],
+            ):
+                hits, dense_ids = hybrid_retrieve_with_dense_ids(cfg, "query", limit=5)
+
+    assert dense_ids == {bare}
+    assert [h["id"] for h in hits] == [bare]
+
+
 def test_hybrid_retrieve_with_dense_ids_tags_dense_sources() -> None:
     """Hybrid fusion returns dense id set for downstream retrieval tagging."""
     cfg = _config(enable_hybrid=True)

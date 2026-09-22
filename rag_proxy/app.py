@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import logging
@@ -78,7 +79,7 @@ async def _app_lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if settings.enable_graph_lookup:
         ensure_graph_schema(Path(settings.graph_db_path))
     if settings.enable_memgraphrag:
-        _warm_memgraph_cache()
+        await asyncio.to_thread(_warm_memgraph_cache)
     await startup_capture_writer()
     try:
         yield
@@ -155,6 +156,8 @@ async def proxy(request: Request, path: str):
 
     client = await ensure_upstream_client()
     upstream: httpx.Response | None = None
+    # StreamingResponse owns the socket via relay_upstream; do not close it here.
+    stream_owned = False
     try:
         upstream_req = client.build_request(
             method=request.method,
@@ -200,12 +203,14 @@ async def proxy(request: Request, path: str):
                 finally:
                     observe_proxy_request_duration(time.perf_counter() - request_t0)
 
-            return StreamingResponse(
+            stream_response = StreamingResponse(
                 _timed_stream(),
                 status_code=upstream.status_code,
                 headers=resp_headers,
                 media_type="text/event-stream",
             )
+            stream_owned = True
+            return stream_response
 
         content = await upstream.aread()
         status_code = upstream.status_code
@@ -226,8 +231,11 @@ async def proxy(request: Request, path: str):
             headers=resp_headers,
             media_type=content_type or "application/json",
         )
-    except Exception:
-        await close_upstream_response(upstream)
+    except BaseException:
+        # CancelledError is a BaseException. except Exception leaks the buffered
+        # upstream response and can exhaust the shared pool.
+        if not stream_owned:
+            await close_upstream_response(upstream)
         raise
 
 

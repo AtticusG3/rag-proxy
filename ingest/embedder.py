@@ -9,6 +9,7 @@ import httpx
 
 from ingest.embed_lifecycle import ensure_embed_urls, touch_embed_activity
 from ingest.types import EndpointUnavailable
+from rag_proxy.clients.retrieval_core import embed_input_too_large
 
 DEFAULT_EMBED_MODEL = "nomic-embed-text-v1.5"
 DEFAULT_MAX_CHARS = 2000
@@ -22,8 +23,7 @@ def configured_embed_model() -> str:
 
 
 def _exceed_context_size(response_text: str) -> bool:
-    lower = response_text.lower()
-    return "exceed_context_size" in lower or "max context size" in lower
+    return embed_input_too_large(response_text)
 
 
 def _post_embeddings(

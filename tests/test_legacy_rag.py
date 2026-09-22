@@ -50,6 +50,74 @@ def test_get_embedding_returns_none_on_http_500(monkeypatch):
     assert post.await_count == 1
 
 
+def test_get_embedding_shrinks_after_llama_server_context_overflow(monkeypatch):
+    """HTTP 400 exceed_context_size must retry a shorter tail, not return None.
+
+    Ingest already bisects on that phrase. The query path used to fail-open and
+    skip retrieval for the turn.
+    """
+    monkeypatch.setattr(settings, "embed_max_chars", 2000)
+    monkeypatch.setattr(settings, "embed_retries", 1)
+    lengths: list[int] = []
+
+    def post(_url, json=None, **_kwargs):
+        text = json["input"]
+        lengths.append(len(text))
+        response = MagicMock()
+        if len(text) > 1200:
+            response.status_code = 400
+            response.text = '{"error":{"message":"exceed_context_size"}}'
+            response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "400",
+                request=MagicMock(),
+                response=response,
+            )
+            return response
+        response.status_code = 200
+        response.text = ""
+        response.raise_for_status = MagicMock()
+        response.json.return_value = {"data": [{"embedding": [0.5]}]}
+        return response
+
+    with _mock_embed_client(AsyncMock(side_effect=post)):
+        vector = asyncio.run(get_embedding("q" * 2000))
+
+    assert vector == [0.5]
+    assert lengths == [2000, 1200]
+
+
+def test_get_embedding_does_not_start_units_for_llama_swap(monkeypatch):
+    """On-demand nomic probes must not run when EMBED_URL is not the nomic port.
+
+    ensure_embed_urls blocks the event loop on a dummy embed when it has no unit.
+    """
+    monkeypatch.setattr(
+        "rag_proxy.clients.retrieval_async.on_demand_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "rag_proxy.clients.retrieval_async.uses_dedicated_query_embed_unit",
+        lambda: False,
+    )
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        "rag_proxy.clients.retrieval_async.ensure_embed_urls",
+        lambda urls: calls.append(urls),
+    )
+
+    response = MagicMock()
+    response.status_code = 200
+    response.text = ""
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {"data": [{"embedding": [0.1]}]}
+
+    with _mock_embed_client(AsyncMock(return_value=response)):
+        vector = asyncio.run(get_embedding("hello"))
+
+    assert vector == [0.1]
+    assert calls == []
+
+
 def test_get_embedding_returns_vector_on_success():
     response = MagicMock()
     response.status_code = 200

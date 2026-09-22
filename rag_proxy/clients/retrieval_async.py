@@ -23,7 +23,12 @@ from rag_proxy.clients.retrieval_core import (
     turbovec_hits_from_scored,
     turbovec_search_payload,
 )
-from ingest.embed_lifecycle import ensure_embed_urls, touch_embed_activity
+from ingest.embed_lifecycle import (
+    ensure_embed_urls,
+    on_demand_enabled,
+    touch_embed_activity,
+    uses_dedicated_query_embed_unit,
+)
 from rag_proxy.config import settings
 from rag_proxy.observability import record_embed_cache_hit, record_embed_cache_miss
 from rag_proxy.sidecar_client import (
@@ -51,9 +56,20 @@ def _cache_key(text: str) -> str:
     return hashlib.sha256(text.strip().encode()).hexdigest()
 
 
+async def _ensure_query_embed() -> None:
+    """Start the legacy nomic query unit off the event loop.
+
+    llama-swap embed-pool has no systemd unit. Calling ensure_embed_urls for
+    that URL blocks the proxy on a dummy embed probe.
+    """
+    if not on_demand_enabled() or not uses_dedicated_query_embed_unit():
+        return
+    await asyncio.to_thread(ensure_embed_urls, [settings.embed_url.rstrip("/")])
+
+
 async def get_embedding(text: str) -> list[float] | None:
-    """Embed text via the standalone nomic-embed server."""
-    ensure_embed_urls([settings.embed_url.rstrip("/")])
+    """Embed text via the OpenAI-compatible embeddings API."""
+    await _ensure_query_embed()
     char_limits = [settings.embed_max_chars]
     if settings.embed_max_chars > 1200:
         char_limits.append(1200)

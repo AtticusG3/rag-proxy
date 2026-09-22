@@ -8,6 +8,7 @@ import pytest
 
 from ingest.embed_lifecycle import (
     collect_embed_stop_units,
+    ensure_embed_urls,
     idle_stop_threshold_sec,
     on_demand_enabled,
     unit_for_embed_url,
@@ -58,6 +59,35 @@ def test_idle_stop_threshold_shorter_when_paused() -> None:
     assert idle_stop_threshold_sec(ingest_paused=True) < idle_stop_threshold_sec(
         ingest_paused=False
     )
+
+
+def test_ensure_embed_urls_skips_probe_when_url_has_no_unit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """llama-swap embed URLs must not pay a blocking health embed."""
+    monkeypatch.setattr("ingest.embed_lifecycle.on_demand_enabled", lambda: True)
+    with patch("ingest.embed_lifecycle.wait_for_embed_health") as wait:
+        with patch("ingest.embed_lifecycle._enable_start_unit") as start:
+            result = ensure_embed_urls(["http://127.0.0.1:8081"])
+    start.assert_not_called()
+    wait.assert_not_called()
+    assert result == ["http://127.0.0.1:8081"]
+
+
+def test_ensure_embed_urls_starts_nomic_query_unit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dedicated query port is the only URL on-demand is allowed to start."""
+    monkeypatch.setattr("ingest.embed_lifecycle.on_demand_enabled", lambda: True)
+    with patch(
+        "ingest.embed_lifecycle.wait_for_embed_health",
+        return_value=["http://127.0.0.1:8089"],
+    ) as wait:
+        with patch("ingest.embed_lifecycle._enable_start_unit") as start:
+            result = ensure_embed_urls(["http://127.0.0.1:8089"])
+    start.assert_called_once_with("nomic-embed.service")
+    wait.assert_called_once()
+    assert result == ["http://127.0.0.1:8089"]
 
 
 def test_on_demand_disabled_without_systemctl(monkeypatch: pytest.MonkeyPatch) -> None:

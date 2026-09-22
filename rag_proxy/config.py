@@ -93,6 +93,19 @@ class Settings:
     upstream_stream_abandon_sec: float = field(
         default_factory=lambda: _env_float("UPSTREAM_STREAM_ABANDON_SEC", 120.0)
     )
+    # Grace before the first SSE byte. Default matches the upstream timeout so a
+    # cold llama-swap load is not reaped by the inter-chunk idle timer.
+    upstream_first_byte_sec: float = field(
+        default_factory=lambda: _env_float(
+            "UPSTREAM_FIRST_BYTE_SEC",
+            _env_float("UPSTREAM_TIMEOUT_SEC", 600.0),
+        )
+    )
+    # Embed/Qdrant/sparse/TurboVec/rerank pools. Independent of upstream keepalive
+    # (0 closes llama-swap one-shot polls; RAG calls the same hosts every turn).
+    sidecar_max_keepalive: int = field(
+        default_factory=lambda: _env_int("SIDECAR_MAX_KEEPALIVE", 20)
+    )
     embed_max_chars: int = field(default_factory=lambda: _env_int("EMBED_MAX_CHARS", 2000))
     embed_retries: int = field(default_factory=lambda: _env_int("EMBED_RETRIES", 2))
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))

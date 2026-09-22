@@ -72,16 +72,18 @@ Full ~3M point reindex is deferred to the host operator; do not kick it from a r
 
 ## Upstream HTTP pool
 
-Shared `httpx.AsyncClient` for all upstream traffic (chat API relay and embed/Qdrant calls).
+Shared `httpx.AsyncClient` pools: one for the chat upstream, separate pools for embed, Qdrant, sparse, TurboVec, and the reranker.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `UPSTREAM_TIMEOUT_SEC` | `600` | Request timeout |
-| `UPSTREAM_MAX_CONNECTIONS` | `50` | Connection pool cap |
-| `UPSTREAM_MAX_KEEPALIVE` | `0` | Keepalive sockets (`0` = close after one-shot polls) |
+| `UPSTREAM_MAX_CONNECTIONS` | `50` | Connection pool cap (upstream and sidecars) |
+| `UPSTREAM_MAX_KEEPALIVE` | `0` | Upstream keepalive (`0` = close after one-shot polls) |
+| `SIDECAR_MAX_KEEPALIVE` | `20` | Keepalive for embed/Qdrant/sparse/TurboVec/rerank |
 | `UPSTREAM_KEEPALIVE_EXPIRY_SEC` | `15` | Keepalive socket expiry |
 | `UPSTREAM_IDLE_SWEEP_SEC` | `30` | Janitor interval for abandoned streams |
-| `UPSTREAM_STREAM_ABANDON_SEC` | `120` | Close upstream SSE when no bytes relayed for this long |
+| `UPSTREAM_STREAM_ABANDON_SEC` | `120` | After the first SSE byte, close when nothing is relayed for this long |
+| `UPSTREAM_FIRST_BYTE_SEC` | `UPSTREAM_TIMEOUT_SEC` | Before the first byte, wait this long (cold model load) |
 
 ## Proxy access control (optional)
 

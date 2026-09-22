@@ -20,7 +20,9 @@ _STREAM_TOUCH_INTERVAL_SEC = 1.0
 
 _upstream_client: httpx.AsyncClient | None = None
 _janitor_task: asyncio.Task[None] | None = None
-_stream_registry: dict[int, tuple[httpx.Response, float]] = {}
+# response, last activity monotonic, True after at least one relayed byte
+_StreamEntry = tuple[httpx.Response, float, bool]
+_stream_registry: dict[int, _StreamEntry] = {}
 _stream_registry_lock: asyncio.Lock | None = None
 
 
@@ -93,7 +95,7 @@ async def shutdown_upstream_client() -> None:
     async with _registry_lock():
         streams = list(_stream_registry.values())
         _stream_registry.clear()
-    for resp, _ in streams:
+    for resp, _activity, _seen in streams:
         await close_upstream_response(resp)
     if _upstream_client is not None:
         await _upstream_client.aclose()
@@ -109,18 +111,35 @@ async def close_upstream_response(response: httpx.Response | None) -> None:
         log.debug("upstream response close failed", exc_info=True)
 
 
+def _stream_idle_limit_sec(seen_bytes: bool) -> float:
+    """Inter-chunk idle vs time-to-first-byte.
+
+    Waiting on a cold llama-swap load is not an abandoned stream. After the
+    first byte, silence longer than UPSTREAM_STREAM_ABANDON_SEC is.
+    """
+    if seen_bytes:
+        return settings.upstream_stream_abandon_sec
+    return settings.upstream_first_byte_sec
+
+
 async def reap_abandoned_streams() -> int:
-    """Close upstream streams idle longer than UPSTREAM_STREAM_ABANDON_SEC."""
-    cutoff = time.monotonic() - settings.upstream_stream_abandon_sec
+    """Close upstream streams that have gone idle.
+
+    Before the first relayed byte the limit is UPSTREAM_FIRST_BYTE_SEC.
+    After that it is UPSTREAM_STREAM_ABANDON_SEC.
+    """
+    now = time.monotonic()
     closed = 0
     async with _registry_lock():
         stale_keys = [
-            key for key, (_, last_activity) in _stream_registry.items() if last_activity < cutoff
+            key
+            for key, (_resp, last_activity, seen_bytes) in _stream_registry.items()
+            if now - last_activity >= _stream_idle_limit_sec(seen_bytes)
         ]
         stale_entries = [
             _stream_registry.pop(key) for key in stale_keys if key in _stream_registry
         ]
-    for resp, _ in stale_entries:
+    for resp, _activity, _seen in stale_entries:
         await close_upstream_response(resp)
         closed += 1
     if closed:
@@ -146,17 +165,23 @@ async def register_stream(response: httpx.Response) -> int:
     key = id(response)
     now = time.monotonic()
     async with _registry_lock():
-        _stream_registry[key] = (response, now)
+        _stream_registry[key] = (response, now, False)
         _update_stream_gauge_locked()
     return key
 
 
-async def touch_stream(key: int) -> None:
+async def touch_stream(key: int, *, seen_only: bool = False) -> None:
+    """Record relay progress.
+
+    seen_only marks that a byte was relayed without moving the idle clock.
+    The first chunk uses that so a 1s touch throttle still counts as started.
+    """
     async with _registry_lock():
         entry = _stream_registry.get(key)
         if entry is not None:
-            response, _ = entry
-            _stream_registry[key] = (response, time.monotonic())
+            response, last_activity, _seen = entry
+            activity = last_activity if seen_only else time.monotonic()
+            _stream_registry[key] = (response, activity, True)
 
 
 async def unregister_stream(key: int) -> None:
@@ -199,10 +224,14 @@ async def _relay_upstream_chunks(
 ) -> AsyncGenerator[bytes, None]:
     reg_key = await register_stream(upstream)
     last_touch = time.monotonic()
+    seen_bytes = False
     try:
         async for chunk in upstream.aiter_bytes():
             now = time.monotonic()
-            if now - last_touch >= _STREAM_TOUCH_INTERVAL_SEC:
+            if not seen_bytes:
+                await touch_stream(reg_key, seen_only=True)
+                seen_bytes = True
+            elif now - last_touch >= _STREAM_TOUCH_INTERVAL_SEC:
                 await touch_stream(reg_key)
                 last_touch = now
             if await request.is_disconnected():

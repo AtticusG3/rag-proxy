@@ -71,9 +71,51 @@ def test_janitor_reaps_idle_registered_streams():
     async def _run() -> None:
         upstream = AsyncMock()
         key = await uc.register_stream(upstream)
-        uc._stream_registry[key] = (upstream, time.monotonic() - 9999)
+        uc._stream_registry[key] = (upstream, time.monotonic() - 9999, True)
 
         closed = await uc.reap_abandoned_streams()
+
+        assert closed == 1
+        upstream.aclose.assert_awaited_once()
+        assert key not in uc._stream_registry
+
+    asyncio.run(_run())
+
+
+def test_janitor_does_not_reap_before_first_byte():
+    """Cold llama-swap (no SSE yet) must survive the inter-chunk idle limit.
+
+    Time-to-first-token is not abandonment. Reaping at UPSTREAM_STREAM_ABANDON_SEC
+    kills a live generation during model load.
+    """
+
+    async def _run() -> None:
+        upstream = AsyncMock()
+        key = await uc.register_stream(upstream)
+        uc._stream_registry[key] = (upstream, time.monotonic() - 130, False)
+
+        with patch.object(uc.settings, "upstream_stream_abandon_sec", 120):
+            with patch.object(uc.settings, "upstream_first_byte_sec", 600):
+                closed = await uc.reap_abandoned_streams()
+
+        assert closed == 0
+        upstream.aclose.assert_not_called()
+        assert key in uc._stream_registry
+
+    asyncio.run(_run())
+
+
+def test_janitor_reaps_after_bytes_once_inter_chunk_idle_elapses():
+    """After the first byte, silence past UPSTREAM_STREAM_ABANDON_SEC is abandoned."""
+
+    async def _run() -> None:
+        upstream = AsyncMock()
+        key = await uc.register_stream(upstream)
+        uc._stream_registry[key] = (upstream, time.monotonic() - 130, True)
+
+        with patch.object(uc.settings, "upstream_stream_abandon_sec", 120):
+            with patch.object(uc.settings, "upstream_first_byte_sec", 600):
+                closed = await uc.reap_abandoned_streams()
 
         assert closed == 1
         upstream.aclose.assert_awaited_once()
@@ -125,7 +167,7 @@ def test_janitor_loop_reaps_abandoned_streams():
                     await uc.startup_upstream_client()
                     try:
                         key = await uc.register_stream(upstream)
-                        uc._stream_registry[key] = (upstream, time.monotonic() - 9999)
+                        uc._stream_registry[key] = (upstream, time.monotonic() - 9999, True)
                         deadline = time.monotonic() + 1.0
                         while key in uc._stream_registry and time.monotonic() < deadline:
                             await asyncio.sleep(0)
@@ -201,6 +243,41 @@ def test_relay_upstream_capture_reports_complete_body_and_closes():
         assert not uc._stream_registry
 
     asyncio.run(_run())
+
+
+def test_sidecar_pools_keepalive_when_upstream_keepalive_is_zero(monkeypatch):
+    """Embed and Qdrant are hit every chat turn; upstream keepalive 0 must not apply.
+
+    UPSTREAM_MAX_KEEPALIVE=0 exists so llama-swap one-shot polls do not hold
+    sockets. Reusing it on sidecar pools opens a new TCP connection per retrieval.
+    """
+    from rag_proxy import sidecar_client as sc
+
+    monkeypatch.setattr(uc.settings, "upstream_max_keepalive", 0)
+    monkeypatch.setattr(uc.settings, "sidecar_max_keepalive", 20)
+    monkeypatch.setattr(uc.settings, "upstream_max_connections", 50)
+    sc._embed_client = None
+    sc._qdrant_client = None
+    sc._sparse_client = None
+    sc._turbovec_client = None
+    sc._reranker_client = None
+    limits: list[object] = []
+
+    def ctor(*_args, **kwargs):
+        limits.append(kwargs.get("limits"))
+        client = MagicMock()
+        client.aclose = AsyncMock()
+        return client
+
+    async def _run() -> None:
+        with patch("rag_proxy.sidecar_client.httpx.AsyncClient", side_effect=ctor):
+            await sc.startup_sidecar_clients()
+            await sc.shutdown_sidecar_clients()
+
+    asyncio.run(_run())
+    assert limits
+    assert all(item is not None and item.max_keepalive_connections == 20 for item in limits)
+    assert all(item.max_connections == 50 for item in limits)
 
 
 async def _async_iter(items):
