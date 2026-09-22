@@ -24,7 +24,7 @@ flowchart TB
     CH["Chunks from corpus\nor Qdrant sample"] --> LLM["LLM entity/relation extraction"]
     LLM --> ONTO["Ontology filter"]
     ONTO --> MEM["ThreeLayerMemory SQLite"]
-    MEM --> FE["Fact embeddings\nnomic-embed"]
+    MEM --> FE["Fact embeddings\nQwen / EMBED_URL"]
   end
 
   subgraph online["Online — tier3_memgraphrag stage"]
@@ -62,7 +62,7 @@ flowchart TB
 | Service | Build time | Runtime |
 | --- | --- | --- |
 | OpenAI-compatible LLM | Entity + relation extraction | — |
-| nomic-embed (`EMBED_URL`) | Fact embedding (`--embed-url`) | Query + fact scoring |
+| Embeddings API (`EMBED_URL`) | Fact embedding (`--embed-url`) | Query + fact scoring |
 | Reranker sidecar (`RERANKER_URL`) | — | Optional; improves fact ordering |
 | Cognitive pipeline | — | `ENABLE_COGNITIVE_PIPELINE=true` |
 

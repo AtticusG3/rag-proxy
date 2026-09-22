@@ -7,7 +7,7 @@ Install rag_proxy, configure `.env`, run the proxy, and confirm RAG injection wo
 | Service | Role | Default URL |
 | --- | --- | --- |
 | Upstream chat API | Any OpenAI-compatible provider (`LLAMA_SWAP_URL`) | `http://127.0.0.1:8080` — [llama-swap](https://github.com/mostlygeek/llama-swap) is typical locally; OpenRouter, OpenAI, vLLM, and llama-server also work |
-| nomic-embed | Query embeddings (`llama-server --embedding`) | `http://127.0.0.1:8089` |
+| Embeddings API | OpenAI-compatible `/v1/embeddings` (`EMBED_URL`, `EMBED_MODEL=embed-pool` → Qwen3 Embedding 4B) | Same host as llama-swap in Docker; production often a dedicated embed listener |
 | Qdrant | Vector store | set `QDRANT_URL` in `.env` |
 
 Optional (cognitive mode): sparse BM25 sidecar (`SPARSE_INDEX_URL`), reranker (`RERANKER_URL`). See [Configuration](configuration.md) and [docker/README.md](../docker/README.md).
@@ -23,7 +23,7 @@ flowchart TB
   subgraph core["Core stack — legacy RAG"]
     RP["rag_proxy :8088"]
     LS["upstream :8080\nLLAMA_SWAP_URL"]
-    EM["nomic-embed :8089"]
+    EM["Qwen embeddings API\nEMBED_URL"]
     QD["Qdrant :6333"]
   end
 
@@ -65,7 +65,7 @@ Production deploy targets Linux systemd. See [Deployment](deployment.md).
 
 ### Docker
 
-For an optional **Docker homelab stack** (llama-swap:cuda bundled) with Qdrant + cognitive sidecars:
+For an optional **Docker homelab stack** (llama-swap:cuda for chat + Qwen `embed-pool`) with Qdrant + cognitive sidecars:
 
 ```bash
 cp docker/.env.example docker/.env
@@ -84,7 +84,7 @@ Minimum checklist:
 | `QDRANT_URL` | Yes | `http://<qdrant-host>:6333` |
 | `QDRANT_COLLECTION` | If not default | value from `.env.example` |
 | `LLAMA_SWAP_URL` | Yes — OpenAI-compatible upstream | `http://127.0.0.1:8080` (llama-swap typical) |
-| `EMBED_URL` | If embed server is not local | `http://127.0.0.1:8089` |
+| `EMBED_URL` | If embed API is not the Docker llama-swap default | OpenAI-compatible Qwen embeddings base (`embed-pool`) |
 
 Leave `ENABLE_COGNITIVE_PIPELINE=false` until legacy RAG injects chunks reliably. All other variables have safe defaults in [.env.example](../.env.example). Full reference: [Configuration](configuration.md).
 

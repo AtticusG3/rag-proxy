@@ -5,7 +5,7 @@ Common symptoms when operating rag_proxy. Start with [Getting started — Verify
 ```mermaid
 flowchart TD
   START["Chat returns 200 but\ncontext feels wrong?"] --> EMBED{"Embed server\nresponds?"}
-  EMBED -->|no| FIXE["Fix EMBED_URL / nomic-embed service"]
+  EMBED -->|no| FIXE["Fix EMBED_URL / Qwen embeddings API"]
   EMBED -->|yes| QD{"Qdrant collection\nhas points?"}
   QD -->|no| FIXQ["Index content via ingest\nor fix QDRANT_COLLECTION"]
   QD -->|yes| TH{"Logs show\nno chunks above threshold?"}
@@ -133,7 +133,7 @@ journalctl -u rag-proxy -f | grep -E 'RAG:|trace=|WARNING'
 | `status=203/EXEC` on rag-proxy/rag-admin | `ExecStart` python path or `WorkingDirectory` wrong | Run `bash scripts/install-systemd-units.sh` from repo root; verify `ls -l /opt/ai/venv/bin/python` or `$REPO/.venv/bin/python` |
 | Chunks not increasing | Open **Jobs** (live refresh) | If the page says it is waiting for embed/Qdrant, fix that endpoint — ingest will resume from the last chunk. If the file is `stalled` while endpoints are healthy, click Restart (this keeps existing chunks). |
 | Very slow embed | Dashboard tuning panel | Raise `INGEST_EMBED_CONCURRENCY` and `INGEST_BATCH_SIZE`; use GPU embed for bulk |
-| Wrong embed host | `EMBED_URL` on admin host | Admin defaults differ from proxy if unset — set explicitly (often `:8089`) |
+| Wrong embed host | `EMBED_URL` on admin host | Admin defaults differ from proxy if unset — set explicitly (Qwen `embed-pool` API, not a nomic `:8089` sidecar) |
 | Remote Qdrant latency | Upsert RTT to `QDRANT_URL` | Run admin near Qdrant or accept slower upserts |
 | End-of-run delay | `INGEST_SPARSE_REINDEX=idle` | Full BM25 rebuild when queue drains — set `off` during bulk |
 | Slow `systemctl stop rag-admin` | Shutdown used to run BM25 flush (up to 5 min) | Fixed in recent builds: shutdown skips flush; use **Rebuild BM25 now** if needed |

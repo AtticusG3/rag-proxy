@@ -1,12 +1,14 @@
 # Copy to docker/config.yaml and set model paths under /models (host MODELS_DIR).
 # llama-swap legacy CUDA image: config at /app/config.yaml, llama-server at /app/llama-server.
+#
+# rag_proxy calls embeddings at EMBED_URL with EMBED_MODEL=embed-pool (OpenAI /v1/embeddings).
+# Default compose EMBED_URL is this llama-swap. Point EMBED_URL at any Qwen embeddings API instead.
 
 healthCheckTimeout: 120
 
 hooks:
   on_startup:
-    preload:
-      - "nomic-embed"
+    preload: []
 
 models:
   # Example chat model — replace with your GGUF under MODELS_DIR.
@@ -23,10 +25,20 @@ models:
       --jinja
     ttl: 300
 
-  # Proxy entry for clients that call embeddings via llama-swap; rag_proxy uses EMBED_URL directly.
-  "nomic-embed":
-    name: "Nomic Embed v1.5"
-    proxy: "http://nomic-embed:8089"
+  # Qwen3 Embedding 4B (2560-d). Model id must match EMBED_MODEL (embed-pool).
+  "embed-pool":
+    name: "Qwen3 Embedding 4B (edit GGUF path)"
+    cmd: >
+      /app/llama-server
+      -m /models/qwen3-embedding-4b.gguf
+      --embedding
+      --pooling last
+      -ngl 99
+      -c 8192
+      --parallel 4
+      --host 127.0.0.1
+      --port ${PORT}
+    ttl: 300
 
   # Optional intent classifier (enable ENABLE_INTENT_ROUTER + INTENT_MODEL in docker/.env).
   # "intent-mini":

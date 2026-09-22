@@ -17,7 +17,7 @@ Module maps for contributors and agents. Operator guides stay under [docs/README
 
 ```text
 Clients / MCP
-    |                    +-- nomic-embed
+    |                    +-- embeddings API (Qwen / EMBED_URL)
     v                    |
 rag_proxy (:8088) -----> Qdrant (+ optional TurboVec / sparse / rerank)
     |                    |

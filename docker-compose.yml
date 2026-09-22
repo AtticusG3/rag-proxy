@@ -1,4 +1,6 @@
 # RAG proxy in front of llama-swap (CUDA). Clients use rag-proxy :8088, not llama-swap :8080.
+# Embeddings use an OpenAI-compatible API (Qwen3 via llama-swap embed-pool, or any EMBED_URL).
+# There is no dedicated nomic-embed container.
 #
 # Legacy RAG (minimal):
 #   cp docker/.env.example docker/.env
@@ -40,52 +42,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - rag_stack
-
-  # GPU embed sidecar; rag_proxy calls EMBED_URL directly (not via llama-swap).
-  nomic-embed:
-    image: ${NOMIC_EMBED_IMAGE:-ghcr.io/mostlygeek/llama-swap:cuda}
-    restart: unless-stopped
-    entrypoint: ["/app/llama-server"]
-    command:
-      - "-m"
-      - "${NOMIC_EMBED_MODEL:-/models/nomic-embed/nomic-embed-text-v1.5.Q8_0.gguf}"
-      - "--embedding"
-      - "--pooling"
-      - "mean"
-      - "-ngl"
-      - "99"
-      - "-c"
-      - "8096"
-      - "--parallel"
-      - "4"
-      - "-b"
-      - "2048"
-      - "-ub"
-      - "2048"
-      - "--host"
-      - "0.0.0.0"
-      - "--port"
-      - "8089"
-      - "--log-disable"
-    volumes:
-      - ${MODELS_DIR}:/models:ro
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8089/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
     networks:
       - rag_stack
 
@@ -157,7 +113,7 @@ services:
     environment:
       QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-nomad_knowledge_base}
-      TURBOVEC_DIM: ${TURBOVEC_DIM:-768}
+      TURBOVEC_DIM: ${TURBOVEC_DIM:-2560}
       TURBOVEC_BIT_WIDTH: ${TURBOVEC_BIT_WIDTH:-4}
       TURBOVEC_INDEX_PATH: /var/lib/rag_proxy/turbovec/index.tvim
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -188,8 +144,8 @@ services:
       - path: docker/.env
         required: true
     environment:
-      LLAMA_SWAP_URL: http://llama-swap:8080
-      EMBED_URL: http://nomic-embed:8089
+      # Chat/embed URLs come from docker/.env (see docker/.env.example). Do not pin
+      # them here — operators point EMBED_URL at any OpenAI-compatible Qwen API.
       RERANKER_URL: http://reranker:8095
       SPARSE_INDEX_URL: http://sparse-index:8096
       TURBOVEC_URL: http://turbovec-index:8097
@@ -199,8 +155,6 @@ services:
       - rag_proxy_state:/var/lib/rag_proxy
     depends_on:
       llama-swap:
-        condition: service_healthy
-      nomic-embed:
         condition: service_healthy
       reranker:
         condition: service_healthy

@@ -8,7 +8,7 @@ flowchart TB
     CL["Clients\nLAN / Tailscale"]
     RP["rag_proxy :8088"]
     LS["upstream :8080\nLLAMA_SWAP_URL"]
-    EM["nomic-embed :8089"]
+    EM["Qwen embeddings API\nEMBED_URL"]
     QD["Qdrant :6333"]
     AD["rag_admin :8087\noptional"]
   end
@@ -37,7 +37,7 @@ Default ports from `.env.example` (all overridable):
 | rag-proxy | `8088` | `PROXY_PORT` |
 | rag-proxy (second instance) | `8087` | Side-by-side dev with `PROXY_PORT=8087` |
 | Upstream chat API | `8080` | `LLAMA_SWAP_URL` (llama-swap typical) |
-| nomic-embed | `8089` | `EMBED_URL` — usually localhost; not served on the proxy port |
+| Embeddings API | `EMBED_URL` | OpenAI-compatible Qwen (`embed-pool`); not served on the proxy port |
 | Qdrant | `6333` | `QDRANT_URL` — same host or remote |
 | Reranker (optional) | `8095` | Cognitive sidecar |
 | Sparse index (optional) | `8096` | BM25 sidecar |
@@ -107,7 +107,7 @@ Run one checkout on `PROXY_PORT=8088`. Clone a second checkout, set `PROXY_PORT=
 
 ## Docker
 
-Docker Compose bundles rag-proxy with **llama-swap:cuda** as one homelab option, plus nomic-embed and optional Qdrant + cognitive sidecars. You can also run rag_proxy against any external OpenAI-compatible API by setting `LLAMA_SWAP_URL` alone.
+Docker Compose bundles rag-proxy with **llama-swap:cuda** as one homelab option (chat + Qwen embeddings via `embed-pool`), plus optional Qdrant and cognitive sidecars. There is no nomic-embed service. Point `EMBED_URL` at any OpenAI-compatible Qwen embeddings API (bundled llama-swap or an external host). You can also run rag_proxy against any external OpenAI-compatible chat API by setting `LLAMA_SWAP_URL` in `docker/.env`.
 
 ```bash
 # Legacy only

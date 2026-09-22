@@ -2,12 +2,14 @@
 
 Clients use **rag-proxy** on port **8088** (`/v1`). Optional **cognitive** profile adds CPU rerank, BM25 sparse, and TurboVec dense sidecars.
 
+Embeddings are an **OpenAI-compatible API** (`EMBED_URL` + `EMBED_MODEL=embed-pool` → Qwen3 Embedding 4B, 2560-d). Stock compose does **not** start a nomic-embed container. Default `docker/.env` points `EMBED_URL` at bundled llama-swap; set it to any Qwen embeddings API instead.
+
 ## Prerequisites
 
 - Docker Compose v2
-- NVIDIA Container Toolkit (for `llama-swap:cuda`)
-- Host directory with GGUF models (chat model + nomic-embed)
-- For full cognitive: Qdrant collection populated with chunk payloads (`text`, `content`, etc.)
+- NVIDIA Container Toolkit (for bundled `llama-swap:cuda`; skip if chat and embed URLs are external)
+- Host directory with GGUF models if you run bundled llama-swap (chat model + Qwen3 embedding)
+- For full cognitive: Qdrant collection populated with chunk payloads (`text`, `content`, etc.) matching `QDRANT_VECTOR_SIZE` (2560 for Qwen3)
 
 ## Deploy modes
 
@@ -16,7 +18,7 @@ Clients use **rag-proxy** on port **8088** (`/v1`). Optional **cognitive** profi
 ```bash
 cp docker/.env.example docker/.env
 cp docker/config.yaml.example docker/config.yaml
-# Edit MODELS_DIR, QDRANT_URL, chat model in docker/config.yaml
+# Edit MODELS_DIR, QDRANT_URL, chat/embed GGUF paths, or set EMBED_URL to an external Qwen API
 
 docker compose up -d --build
 ```
@@ -58,22 +60,22 @@ Use the same API key and paths as llama-swap; only the base URL changes to `http
 | Service | Profile | Image | Port | Role |
 |---------|---------|-------|------|------|
 | `rag-proxy` | default | build `Dockerfile` | 8088 | RAG injection, client entry |
-| `llama-swap` | default | `llama-swap:cuda` | 8080 | GPU chat model router |
-| `nomic-embed` | default | `llama-swap:cuda` | 8089 | Query embeddings (GPU, `-ngl 99`) |
+| `llama-swap` | default | `llama-swap:cuda` | 8080 | GPU chat router + Qwen embeddings (`embed-pool`) unless URLs are overridden |
 | `qdrant` | `qdrant` | `qdrant/qdrant` | 6333 | Vector DB (raised `nofile` ulimits in compose for large collections) |
 | `reranker` | `cognitive` | `sidecars/rerank` | 8095 | Cross-encoder rerank |
 | `sparse-index` | `cognitive` | `sidecars/sparse` | 8096 | BM25 hybrid retrieval |
 | `turbovec-index` | `cognitive` | `sidecars/turbovec` | 8097 | TurboQuant dense ANN |
 
-Internal URLs wired in compose:
+URLs:
 
-| Env | Value |
-|-----|-------|
-| `LLAMA_SWAP_URL` | `http://llama-swap:8080` |
-| `EMBED_URL` | `http://nomic-embed:8089` |
-| `RERANKER_URL` | `http://reranker:8095` |
-| `SPARSE_INDEX_URL` | `http://sparse-index:8096` |
-| `TURBOVEC_URL` | `http://turbovec-index:8097` |
+| Env | Stock default (`docker/.env.example`) | Compose hard-wires? |
+|-----|-------|------|
+| `LLAMA_SWAP_URL` | `http://llama-swap:8080` | No — set in `docker/.env` (external chat API allowed) |
+| `EMBED_URL` | `http://llama-swap:8080` | No — Qwen `/v1/embeddings` (bundled llama-swap or any host) |
+| `EMBED_MODEL` | `embed-pool` | No — llama-swap id for Qwen3 Embedding 4B |
+| `RERANKER_URL` | `http://reranker:8095` | Yes (cognitive profile) |
+| `SPARSE_INDEX_URL` | `http://sparse-index:8096` | Yes (cognitive profile) |
+| `TURBOVEC_URL` | `http://turbovec-index:8097` | Yes (cognitive profile) |
 
 ## Sidecar APIs
 

@@ -57,7 +57,7 @@ Client POST /v1/chat/completions
 ## External Dependencies
 
 - Upstream OpenAI-compatible API (`LLAMA_SWAP_URL`)
-- nomic-embed (`EMBED_URL`)
+- Embeddings API (`EMBED_URL`, typically Qwen3 `embed-pool`)
 - Qdrant (`QDRANT_URL` / `QDRANT_COLLECTION`)
 - Optional: TurboVec, sparse BM25, reranker, MemGraphRAG SQLite
 

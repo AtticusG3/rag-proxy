@@ -28,7 +28,7 @@ Non-chat routes (`GET /v1/models`, upstream embedding routes, health checks) are
 sequenceDiagram
   participant C as Client
   participant P as rag_proxy
-  participant E as nomic-embed
+  participant E as Embeddings API
   participant Q as Qdrant
   participant L as Upstream API
 
@@ -110,7 +110,7 @@ Retrieval skip/light/full decisions: `retrieval_policy.py`. Rollout: [Cognitive 
 | Service | Env | When needed |
 | --- | --- | --- |
 | Upstream chat API | `LLAMA_SWAP_URL` | Always — any OpenAI-compatible base URL |
-| nomic-embed | `EMBED_URL` | Always (for RAG) |
+| Embeddings API | `EMBED_URL` | Always (for RAG) — Qwen3 via llama-swap `embed-pool` or any OpenAI-compatible embeddings host |
 | Qdrant | `QDRANT_URL`, `QDRANT_COLLECTION` | Always (for RAG) — payloads always; ANN when `DENSE_BACKEND=qdrant` |
 | TurboVec dense | `TURBOVEC_URL`, `DENSE_BACKEND=turbovec` | Optional dense ANN to cut Qdrant RAM — [Configuration — TurboVec](configuration.md#turbovec-rollout-cut-qdrant-ram) |
 | Sparse BM25 | `SPARSE_INDEX_URL` | `ENABLE_HYBRID_RETRIEVAL=true` — sidecar mmaps the index from `SPARSE_INDEX_PATH` when set |
@@ -123,7 +123,7 @@ Retrieval skip/light/full decisions: `retrieval_policy.py`. Rollout: [Cognitive 
 flowchart TB
   RP["rag_proxy"]
   RP --> LS["upstream chat API\nrequired"]
-  RP --> EM["nomic-embed\nrequired for RAG"]
+  RP --> EM["Qwen embeddings API\nrequired for RAG"]
   RP --> QD["Qdrant\nrequired for RAG"]
   RP -.-> TV["TurboVec dense sidecar"]
   RP -.-> SP["sparse BM25 sidecar"]

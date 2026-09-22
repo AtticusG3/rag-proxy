@@ -22,7 +22,7 @@ With cognitive mode off (`ENABLE_COGNITIVE_PIPELINE=false`, the default), every 
 flowchart LR
   Client["Client\nOpen WebUI / Cursor / curl"]
   Proxy["rag_proxy\n:8088"]
-  Embed["nomic-embed\n:8089"]
+  Embed["Qwen embeddings API\nEMBED_URL"]
   Qdrant["Qdrant\nvector store"]
   Upstream["Upstream chat API\nLLAMA_SWAP_URL"]
   Model["Chat model"]
@@ -49,7 +49,7 @@ Optional **cognitive pipeline** adds staged retrieval (gating, hybrid BM25, rera
 
 ## Quick start
 
-**Prerequisites:** an OpenAI-compatible upstream (`LLAMA_SWAP_URL`), nomic-embed (`:8089`), and Qdrant with a populated collection. Homelab examples often use [llama-swap](https://github.com/mostlygeek/llama-swap) on `:8080`.
+**Prerequisites:** an OpenAI-compatible upstream (`LLAMA_SWAP_URL`), an OpenAI-compatible embeddings API (`EMBED_URL`, typically Qwen3 Embedding 4B as `embed-pool`), and Qdrant with a populated collection. Homelab examples often use [llama-swap](https://github.com/mostlygeek/llama-swap) for both chat and embeddings.
 
 ### Windows (local dev)
 
@@ -143,20 +143,20 @@ Per-request overrides (`x-rag-mode`, `x-no-cache`, `x-conversation-id`): [Header
 
 ## Deployment
 
-**Linux systemd** (production): edit `rag-proxy.service` and `nomic-embed.service` paths, then `systemctl enable --now nomic-embed rag-proxy`. Walkthrough: [Deployment](docs/deployment.md).
+**Linux systemd** (production): edit `rag-proxy.service` paths, then `systemctl enable --now rag-proxy`. Prefer llama-swap `embed-pool` (Qwen3) for embeddings; the shipped `nomic-embed.service` is legacy 768-d. Walkthrough: [Deployment](docs/deployment.md).
 
-**Docker** (optional bundled stack: llama-swap + optional Qdrant and cognitive sidecars):
+**Docker** (optional bundled stack: llama-swap for chat + Qwen embeddings, optional Qdrant and cognitive sidecars):
 
 ```powershell
 copy docker\.env.example docker\.env
 copy docker\config.yaml.example docker\config.yaml
-# Edit docker\.env and docker\config.yaml (MODELS_DIR, Qdrant, chat model)
+# Edit docker\.env and docker\config.yaml (MODELS_DIR, Qdrant, chat/Qwen GGUF, or external EMBED_URL)
 docker compose up -d --build
 ```
 
 Full stack with Qdrant and cognitive sidecars: `docker compose --profile qdrant --profile cognitive up -d --build`. Details: [docker/README.md](docker/README.md).
 
-Default ports in homelab examples: proxy `8088`, upstream `8080`, embed `8089` — all overridable in `.env`.
+Default ports in homelab examples: proxy `8088`, upstream/embed API `8080` — all overridable in `.env`.
 
 ## Tests
 

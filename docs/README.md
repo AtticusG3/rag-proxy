@@ -31,7 +31,7 @@ Diagrams in these guides use [Mermaid](https://mermaid.js.org/) (rendered on Git
 | --- | --- |
 | Proxy port (prod) | `8088` (`PROXY_PORT`) |
 | Upstream chat API | `http://127.0.0.1:8080` (`LLAMA_SWAP_URL`; llama-swap typical) |
-| nomic-embed | `http://127.0.0.1:8089` (localhost only) |
+| Embeddings API | `EMBED_URL` (`embed-pool` / Qwen3; not a dedicated nomic-embed container in Docker) |
 | Qdrant | set `QDRANT_URL` (e.g. `http://127.0.0.1:6333`) |
 | Cognitive pipeline | off (`ENABLE_COGNITIVE_PIPELINE=false`) |
 | Client base URL | `http://<host>:8088/v1` |

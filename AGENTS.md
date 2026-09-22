@@ -122,7 +122,7 @@ Operator guides: **docs/README.md** (index). Entry point: **README.md** (quick s
 
 - Git remotes: `origin` (Gitea primary) `https://git.kevynwatkins.com/kevyn/rag-proxy.git`; `github` (secondary) `https://github.com/AtticusG3/rag-proxy.git`
 - `gh` CLI works for GitHub (`AtticusG3/rag-proxy`); Gitea `origin` pull requests use the Gitea web UI, not `gh`
-- Default ports (all overridable in `.env`): proxy `8088`, llama-swap `8080`, nomic-embed `8089`; embed is called at `EMBED_URL`, not served on the proxy port
+- Default ports (all overridable in `.env`): proxy `8088`, llama-swap chat `8080`; embeddings are `EMBED_URL` (Qwen `embed-pool` / OpenAI-compatible API), not a nomic-embed sidecar and not served on the proxy port
 - `rag_admin` and ingest are optional and separate from the proxy — any host with reachable Qdrant/embed URLs
 - Example systemd units: `rag-proxy.service`, `nomic-embed.service` — edit paths before install; missing venv causes systemd 203/EXEC
 - Shell sessions do not auto-load `.env`; source explicitly (`set -a; . ./.env; set +a`) before smoke scripts
