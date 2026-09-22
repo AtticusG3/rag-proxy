@@ -37,7 +37,7 @@ def test_build_memory_index_row_normalizes_embeddings() -> None:
 
 
 def test_get_memory_index_cache_hit(tmp_path) -> None:
-    """Second call with unchanged mtime returns the same MemoryIndex object."""
+    """Reuse returns the same index and must not log INFO on every request."""
     mem = _memory_with_embedding()
     db_path = tmp_path / "mem.sqlite"
     mem.save(db_path)
@@ -46,7 +46,8 @@ def test_get_memory_index_cache_hit(tmp_path) -> None:
     first = get_memory_index(db_path)
     with patch("rag_proxy.memgraphrag.cache.log") as cache_log:
         second = get_memory_index(db_path)
-        cache_log.info.assert_called()
+        cache_log.debug.assert_called()
+        cache_log.info.assert_not_called()
     assert first is second
 
 

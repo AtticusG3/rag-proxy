@@ -20,7 +20,7 @@ def test_run_memgraphrag_appends_hits_to_context(monkeypatch) -> None:
         ChunkHit(id="mg-1", text="graph passage", score=0.7, source="memgraphrag"),
     ]
 
-    async def fake_retrieve(_query: str):
+    async def fake_retrieve(_query: str, **_kwargs):
         return list(expected)
 
     with patch("rag_proxy.stages.tier3_memgraphrag.get_memory_index") as get_index:
@@ -108,3 +108,34 @@ def test_run_memgraphrag_skips_empty_memory(monkeypatch) -> None:
 
     retriever_cls.assert_not_called()
     assert ctx.hits == []
+
+
+def test_run_memgraphrag_uses_rewritten_query_and_shared_embedding(monkeypatch) -> None:
+    """The stage must search the rewritten query with the vector retrieve already paid for."""
+    monkeypatch.setattr(settings, "memgraphrag_db_path", "/tmp/memgraphrag.sqlite")
+    memory = MagicMock()
+    memory.facts = {0: object()}
+    captured: dict = {}
+
+    async def fake_retrieve(query: str, **kwargs):
+        captured["query"] = query
+        captured["embedding"] = kwargs.get("query_embedding")
+        return []
+
+    with patch("rag_proxy.stages.tier3_memgraphrag.get_memory_index") as get_index:
+        index = MagicMock()
+        index.memory = memory
+        get_index.return_value = index
+        with patch(
+            "rag_proxy.stages.tier3_memgraphrag.MemGraphRetriever"
+        ) as retriever_cls:
+            retriever_cls.return_value.retrieve = AsyncMock(side_effect=fake_retrieve)
+            ctx = RequestContext(
+                query_text="who is Bob",
+                retrieval_query="Alice knows Bob",
+                query_embedding=[0.1, 0.2],
+            )
+            asyncio.run(run_memgraphrag(ctx))
+
+    assert captured["query"] == "Alice knows Bob"
+    assert captured["embedding"] == [0.1, 0.2]

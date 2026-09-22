@@ -64,6 +64,19 @@ def test_budget_keeps_constraint_lines():
     assert any("ERROR" in h.text for h in kept)
 
 
+def test_budget_keeps_low_score_graph_passage_beside_long_dense_hit():
+    """PPR scores sit near 0.01; a global sort spends the whole budget truncating dense text."""
+    hits = [
+        ChunkHit(id="dense", text="x" * 200, score=0.9, source="dense"),
+        ChunkHit(id="graph", text="Alice knows Bob", score=0.02, source="memgraphrag"),
+    ]
+    kept = apply_context_budget(hits, 80)
+    by_id = {hit.id: hit for hit in kept}
+    assert "graph" in by_id
+    assert by_id["graph"].text == "Alice knows Bob"
+    assert "dense" in by_id
+
+
 def test_merge_fused_with_sparse_reserve_keeps_sparse_slot():
     """Sparse reserve (opt-in via reserve_fraction) keeps sparse-only docs."""
     fused = ["d0", "d1", "d2", "d3", "d4"]
@@ -166,6 +179,27 @@ def test_hybrid_rrf_includes_sparse_only_doc(monkeypatch):
     hits = asyncio.run(hybrid_search("test query", limit=5))
     ids = [h.id for h in hits]
     assert "sparse-only" in ids
+
+
+def test_hybrid_rrf_collapses_dashed_uuid_and_bare_hex(monkeypatch):
+    """The same Qdrant point must fuse once when TurboVec and BM25 disagree on dashes."""
+    bare = "00000468c899c290e5c51718ca7521d3"
+    dashed = "00000468-c899-c290-e5c5-1718ca7521d3"
+    monkeypatch.setattr(settings, "enable_hybrid_retrieval", True)
+    monkeypatch.setattr(settings, "sparse_index_url", "http://sparse.test")
+    monkeypatch.setattr(settings, "sparse_reserve_fraction", 0.0)
+
+    async def fake_dense(*_a, **_k):
+        return [ChunkHit(id=bare, text="same chunk", score=0.9)]
+
+    async def fake_sparse(_query, _limit):
+        return [{"id": dashed, "score": 0.4, "payload": {"text": "same chunk"}}]
+
+    monkeypatch.setattr("rag_proxy.clients.qdrant._dense_chunks", fake_dense)
+    monkeypatch.setattr("rag_proxy.clients.qdrant.sparse_search", fake_sparse)
+
+    hits = asyncio.run(hybrid_search("test query", limit=5))
+    assert [h.id for h in hits] == [bare]
 
 
 def test_chunk_texts_property_matches_hits():

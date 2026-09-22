@@ -24,15 +24,20 @@ from rag_proxy.clients.rerank_adapter import (
     rerank_request_payload,
     rerank_request_url,
 )
+from rag_proxy.clients.retrieval_async import embed_text
 from rag_proxy.config import settings
 from rag_proxy.context import ChunkHit
 from rag_proxy.memgraphrag.cache import MemoryIndex
 
 try:
-    from rag_proxy.sidecar_client import get_embed_client, get_reranker_client
+    from rag_proxy.sidecar_client import get_reranker_client
 except ImportError:
-    get_embed_client = None  # type: ignore[assignment,misc]
     get_reranker_client = None  # type: ignore[assignment,misc]
+
+# PPR stays on the seed neighborhood. A full-graph walk follows schema cliques
+# and the default absolute threshold then drops every passage.
+_PPR_HOPS = 2
+_PPR_NEIGHBOR_CAP = 32
 
 log = logging.getLogger("rag-proxy.memgraphrag.retrieval")
 
@@ -49,7 +54,7 @@ class MemGraphRetriever:
         fact_top_k: int = 20,
         ppr_damping: float = 0.85,
         ppr_iterations: int = 20,
-        ppr_threshold: float = 0.01,
+        ppr_threshold: float = 0.0,
         passage_node_weight: float = 0.5,
     ):
         self.index = index
@@ -69,25 +74,21 @@ class MemGraphRetriever:
 
     # -- embedding ---------------------------------------------------------
 
-    async def _embed_query(self, query: str) -> list[float]:
-        """Embed a query string via the OpenAI-compatible embeddings API."""
+    async def _embed_query(
+        self, query: str, query_embedding: list[float] | None = None
+    ) -> list[float]:
+        """Reuse the retrieve-stage vector, else the shared embed client.
+
+        A private AsyncClient here skips truncation, the embed cache, and the
+        lifespan pool, and it embeds ctx.query_text instead of the rewritten query.
+        """
+        if query_embedding:
+            return list(query_embedding)
         trimmed = query.strip()
         if not trimmed:
             return []
-        url = f"{self.embed_url.rstrip('/')}/v1/embeddings"
-        payload = {"model": settings.embed_model, "input": trimmed}
-        if get_embed_client is not None:
-            try:
-                client = get_embed_client()
-                resp = await client.post(url, json=payload)
-                resp.raise_for_status()
-                return resp.json()["data"][0]["embedding"]
-            except RuntimeError:
-                pass
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(url, json=payload)
-        resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+        vector = await embed_text(trimmed)
+        return vector or []
 
     # -- fact scoring ------------------------------------------------------
 
@@ -117,7 +118,9 @@ class MemGraphRetriever:
 
         Returns list of (fact_idx, score) sorted by score descending.
         """
-        query_emb = np.array(await self._embed_query(query), dtype=np.float32)
+        query_emb = np.array(
+            await self._embed_query(query), dtype=np.float32
+        )
         return await asyncio.to_thread(self._score_facts_vectorized, query_emb)
 
     # -- reranking ---------------------------------------------------------
@@ -217,8 +220,8 @@ class MemGraphRetriever:
             for i, node in enumerate(nodes):
                 neighbors = adj.get(node, [])
                 if not neighbors:
-                    # Dangling node: redistribute uniformly
-                    new_scores += scores[i] / n
+                    # Dangling node: same damping as a real step, else mass grows.
+                    new_scores += self.ppr_damping * scores[i] / n
                     continue
                 share = self.ppr_damping * scores[i] / len(neighbors)
                 for nb in neighbors:
@@ -231,6 +234,35 @@ class MemGraphRetriever:
             if scores[i] > self.ppr_threshold:
                 result[node] = float(scores[i])
         return result
+
+    def _seed_subgraph(
+        self, seed_scores: dict[int, float], adj: dict[int, list[int]]
+    ) -> dict[int, list[int]]:
+        """Facts within a few hops of the seeds, with a neighbor cap.
+
+        Schema cliques make the full adjacency quadratic. Walking all of it
+        spreads seed mass until every node falls under a fixed threshold.
+        """
+        nodes: set[int] = set(seed_scores)
+        frontier = set(seed_scores)
+        for _ in range(_PPR_HOPS):
+            nxt: set[int] = set()
+            for node in frontier:
+                for neighbor in adj.get(node, [])[:_PPR_NEIGHBOR_CAP]:
+                    if neighbor not in nodes:
+                        nxt.add(neighbor)
+            if not nxt:
+                break
+            nodes |= nxt
+            frontier = nxt
+        subgraph: dict[int, list[int]] = {}
+        for node in nodes:
+            subgraph[node] = [
+                neighbor
+                for neighbor in adj.get(node, [])[:_PPR_NEIGHBOR_CAP]
+                if neighbor in nodes
+            ]
+        return subgraph
 
     # -- passage scoring from PPR ------------------------------------------
 
@@ -255,7 +287,9 @@ class MemGraphRetriever:
 
     # -- main retrieve -----------------------------------------------------
 
-    async def retrieve(self, query: str) -> list[ChunkHit]:
+    async def retrieve(
+        self, query: str, *, query_embedding: list[float] | None = None
+    ) -> list[ChunkHit]:
         """Full MemGraphRAG retrieval pipeline.
 
         1. Score facts against query
@@ -267,7 +301,9 @@ class MemGraphRetriever:
         log.info("MemGraphRAG retrieve: %r (memory: %s)", query[:80], self.memory.stats)
 
         # Step 1: Score facts (embed async, score in thread)
-        query_emb = np.array(await self._embed_query(query), dtype=np.float32)
+        query_emb = np.array(
+            await self._embed_query(query, query_embedding), dtype=np.float32
+        )
         all_scored = await asyncio.to_thread(self._score_facts_vectorized, query_emb)
         if not all_scored:
             log.info("No facts scored, returning empty")
@@ -292,9 +328,8 @@ class MemGraphRetriever:
 
         # Step 3: PPR from reranked facts
         seed_scores = {fi: score for fi, score in reranked if score > 0}
-        ppr_scores = await asyncio.to_thread(
-            self._ppr, seed_scores, self.index.fact_adj
-        )
+        subgraph = self._seed_subgraph(seed_scores, self.index.fact_adj)
+        ppr_scores = await asyncio.to_thread(self._ppr, seed_scores, subgraph)
         log.info("PPR: %d facts above threshold", len(ppr_scores))
 
         # Step 4: Aggregate to passages

@@ -63,6 +63,8 @@ class RequestContext:
     intent_confidence: float = 0.0
     retrieval: RetrievalDecision = RetrievalDecision.FULL
     retrieval_query: str | None = None
+    # Dense query vector from the retrieve stage. MemGraphRAG reuses it.
+    query_embedding: list[float] | None = None
     selected_model: str | None = None
     hits: list[ChunkHit] = field(default_factory=list)
     injected_tokens_est: int = 0

@@ -84,7 +84,7 @@ def get_memory_index(db_path: str | Path) -> MemoryIndex:
     with _lock:
         cached = _cache.get(key)
         if cached is not None and cached[0] == mtime:
-            log.info(
+            log.debug(
                 "Reusing cached memory index: %s (%d facts)",
                 path.name,
                 len(cached[1].memory.facts),
@@ -96,7 +96,7 @@ def get_memory_index(db_path: str | Path) -> MemoryIndex:
         with _lock:
             cached = _cache.get(key)
             if cached is not None and cached[0] == mtime:
-                log.info(
+                log.debug(
                     "Reusing cached memory index: %s (%d facts)",
                     path.name,
                     len(cached[1].memory.facts),

@@ -7,6 +7,8 @@ import threading
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 import httpx
 
 import numpy as np
@@ -33,37 +35,39 @@ def _minimal_index():
     return build_memory_index(_minimal_memory())
 
 
-def _embedding_response() -> MagicMock:
-    response = MagicMock()
-    response.raise_for_status = MagicMock()
-    response.json.return_value = {"data": [{"embedding": [1.0, 0.0, 0.0]}]}
-    return response
-
-
-def test_embed_query_uses_openai_embeddings_contract() -> None:
-    """Embed client must call /v1/embeddings with model + input like the rest of the stack."""
+def test_embed_query_reuses_retrieve_vector_else_shared_embed() -> None:
+    """A private embed client skips truncation and the cache; reuse the retrieve vector."""
     retriever = MemGraphRetriever(
         index=_minimal_index(),
         embed_url="http://embed.test",
         reranker_url="",
     )
-    captured: list[tuple[str, dict]] = []
 
-    async def post(url: str, json: dict | None = None, **_kwargs):
-        captured.append((url, json or {}))
-        return _embedding_response()
+    async def fail_embed(_text: str, **_kwargs):
+        raise AssertionError("provided query vector must skip a second embed")
 
     with patch(
-        "rag_proxy.memgraphrag.retrieval.httpx.AsyncClient",
-        return_value=FakeAsyncClient(AsyncMock(side_effect=post)),
-    ):
+        "rag_proxy.memgraphrag.retrieval.embed_text",
+        side_effect=fail_embed,
+    ), patch("rag_proxy.memgraphrag.retrieval.httpx.AsyncClient") as client:
+        vector = asyncio.run(
+            retriever._embed_query("who knows Bob?", query_embedding=[0.2, 0.4, 0.0])
+        )
+
+    assert vector == [0.2, 0.4, 0.0]
+    client.assert_not_called()
+
+    seen: list[str] = []
+
+    async def fake_embed(text: str, **_kwargs):
+        seen.append(text)
+        return [1.0, 0.0, 0.0]
+
+    with patch("rag_proxy.memgraphrag.retrieval.embed_text", side_effect=fake_embed):
         vector = asyncio.run(retriever._embed_query("who knows Bob?"))
 
     assert vector == [1.0, 0.0, 0.0]
-    assert len(captured) == 1
-    url, payload = captured[0]
-    assert url == "http://embed.test/v1/embeddings"
-    assert payload == {"model": settings.embed_model, "input": "who knows Bob?"}
+    assert seen == ["who knows Bob?"]
 
 
 def test_score_facts_uses_precomputed_embeddings_only() -> None:
@@ -75,14 +79,11 @@ def test_score_facts_uses_precomputed_embeddings_only() -> None:
     )
     embed_calls: list[str] = []
 
-    async def post(url: str, json: dict | None = None, **_kwargs):
-        embed_calls.append((json or {}).get("input", ""))
-        return _embedding_response()
+    async def fake_embed(text: str, **_kwargs):
+        embed_calls.append(text)
+        return [1.0, 0.0, 0.0]
 
-    with patch(
-        "rag_proxy.memgraphrag.retrieval.httpx.AsyncClient",
-        return_value=FakeAsyncClient(AsyncMock(side_effect=post)),
-    ):
+    with patch("rag_proxy.memgraphrag.retrieval.embed_text", side_effect=fake_embed):
         scored = asyncio.run(retriever.score_facts("who knows Bob?"))
 
     assert len(embed_calls) == 1
@@ -102,10 +103,10 @@ def test_score_facts_skips_facts_without_embeddings() -> None:
         reranker_url="",
     )
 
-    with patch(
-        "rag_proxy.memgraphrag.retrieval.httpx.AsyncClient",
-        return_value=FakeAsyncClient(AsyncMock(return_value=_embedding_response())),
-    ):
+    async def fake_embed(_text: str, **_kwargs):
+        return [1.0, 0.0, 0.0]
+
+    with patch("rag_proxy.memgraphrag.retrieval.embed_text", side_effect=fake_embed):
         scored = asyncio.run(retriever.score_facts("who knows Bob?"))
 
     assert scored == []
@@ -169,8 +170,6 @@ def test_retrieve_returns_chunk_hits_when_facts_score() -> None:
     )
 
     async def post(url: str, json: dict | None = None, **_kwargs):
-        if url.endswith("/v1/embeddings"):
-            return _embedding_response()
         if url.endswith("/rerank"):
             response = MagicMock()
             response.raise_for_status = MagicMock()
@@ -178,7 +177,13 @@ def test_retrieve_returns_chunk_hits_when_facts_score() -> None:
             return response
         raise AssertionError(f"unexpected url: {url}")
 
+    async def fake_embed(_text: str, **_kwargs):
+        return [1.0, 0.0, 0.0]
+
     with patch(
+        "rag_proxy.memgraphrag.retrieval.embed_text",
+        side_effect=fake_embed,
+    ), patch(
         "rag_proxy.memgraphrag.retrieval.httpx.AsyncClient",
         return_value=FakeAsyncClient(AsyncMock(side_effect=post)),
     ):
@@ -199,16 +204,16 @@ def test_retrieve_returns_empty_when_no_facts_scored() -> None:
         reranker_url="http://rerank.test",
     )
 
-    async def post(url: str, json: dict | None = None, **_kwargs):
-        if url.endswith("/v1/embeddings"):
-            return _embedding_response()
-        raise AssertionError("rerank must not run when no facts exist")
+    async def fake_embed(_text: str, **_kwargs):
+        return [1.0, 0.0, 0.0]
 
     with patch(
-        "rag_proxy.memgraphrag.retrieval.httpx.AsyncClient",
-        return_value=FakeAsyncClient(AsyncMock(side_effect=post)),
-    ):
+        "rag_proxy.memgraphrag.retrieval.embed_text",
+        side_effect=fake_embed,
+    ), patch("rag_proxy.memgraphrag.retrieval.httpx.AsyncClient") as client:
         hits = asyncio.run(retriever.retrieve("orphan query"))
+
+    client.assert_not_called()
 
     assert hits == []
 
@@ -279,16 +284,16 @@ def test_retrieve_seeds_ppr_with_dense_scores_without_reranker(monkeypatch) -> N
         ppr_threshold=0.0,
     )
 
-    async def post(url: str, json: dict | None = None, **_kwargs):
-        if url.endswith("/v1/embeddings"):
-            return _embedding_response()
-        raise AssertionError(f"unexpected url: {url}")
+    async def fake_embed(_text: str, **_kwargs):
+        return [1.0, 0.0, 0.0]
 
     with patch(
-        "rag_proxy.memgraphrag.retrieval.httpx.AsyncClient",
-        return_value=FakeAsyncClient(AsyncMock(side_effect=post)),
-    ):
+        "rag_proxy.memgraphrag.retrieval.embed_text",
+        side_effect=fake_embed,
+    ), patch("rag_proxy.memgraphrag.retrieval.httpx.AsyncClient") as client:
         hits = asyncio.run(retriever.retrieve("who knows Bob?"))
+
+    client.assert_not_called()
 
     assert [h.id for h in hits] == ["chunk-near", "chunk-far"]
     # Uniform seeds would tie these; the gap proves dense similarity survived.
@@ -356,7 +361,7 @@ def test_concurrent_retrieve_overlaps_during_cold_cache(tmp_path) -> None:
     max_active_embeds = 0
     embed_lock = threading.Lock()
 
-    async def slow_post(url: str, json: dict | None = None, **_kwargs):
+    async def slow_embed(_text: str, **_kwargs):
         nonlocal active_embeds, max_active_embeds
         with embed_lock:
             active_embeds += 1
@@ -364,7 +369,7 @@ def test_concurrent_retrieve_overlaps_during_cold_cache(tmp_path) -> None:
         await asyncio.sleep(0.05)
         with embed_lock:
             active_embeds -= 1
-        return _embedding_response()
+        return [1.0, 0.0, 0.0]
 
     async def run_pair() -> None:
         with patch("rag_proxy.memgraphrag.cache._load_index", side_effect=slow_load):
@@ -376,8 +381,8 @@ def test_concurrent_retrieve_overlaps_during_cold_cache(tmp_path) -> None:
                 reranker_url="",
             )
             with patch(
-                "rag_proxy.memgraphrag.retrieval.httpx.AsyncClient",
-                return_value=FakeAsyncClient(AsyncMock(side_effect=slow_post)),
+                "rag_proxy.memgraphrag.retrieval.embed_text",
+                side_effect=slow_embed,
             ):
                 await asyncio.gather(
                     retriever.retrieve("who knows Bob?"),
@@ -390,3 +395,39 @@ def test_concurrent_retrieve_overlaps_during_cold_cache(tmp_path) -> None:
 
     assert max_active_embeds >= 2
     assert elapsed < 0.18
+
+
+def test_ppr_dangling_node_does_not_grow_mass() -> None:
+    """Undamped dangling redistribution pushes an isolated seed above 1 and swamps edges."""
+    retriever = MemGraphRetriever(
+        index=_minimal_index(),
+        ppr_iterations=20,
+        ppr_damping=0.85,
+        ppr_threshold=0.0,
+    )
+    scores = retriever._ppr({0: 1.0}, {0: []})
+    assert scores[0] == pytest.approx(1.0)
+
+
+def test_ppr_default_threshold_keeps_diluted_neighbors() -> None:
+    """A 0.01 cutoff drops neighbors once seed mass spreads; top_k truncates instead."""
+    retriever = MemGraphRetriever(index=_minimal_index())
+    assert retriever.ppr_threshold == 0.0
+    neighbors = list(range(1, 80))
+    adj = {0: neighbors}
+    for node in neighbors:
+        adj[node] = []
+    scores = retriever._ppr({0: 1.0}, adj)
+    assert 1 in scores
+
+
+def test_ppr_walks_seed_neighborhood_not_full_schema_clique() -> None:
+    """Schema cliques make a full-graph walk dilute every seed under a fixed threshold."""
+    retriever = MemGraphRetriever(index=_minimal_index())
+    adj = {0: list(range(1, 101))}
+    for node in range(1, 101):
+        adj[node] = []
+    subgraph = retriever._seed_subgraph({0: 1.0}, adj)
+    assert len(subgraph) <= 33
+    assert 0 in subgraph
+    assert 100 not in subgraph

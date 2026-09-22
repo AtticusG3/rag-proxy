@@ -76,6 +76,41 @@ def apply_context_budget(hits: list[ChunkHit], budget: int) -> list[ChunkHit]:
     )
 
 
+def order_hits_for_injection(hits: list[ChunkHit]) -> list[ChunkHit]:
+    """Rank within each source, then round-robin when sources disagree.
+
+    Dense cosine, sparse BM25, the graph stage's fixed 0.9, and MemGraph PPR
+    are not one scale. A global score sort fills the budget with dense chunks
+    and drops graph passages whose scores sit near 0.01. One source stays
+    pure score order.
+    """
+    buckets: dict[str, list[ChunkHit]] = {}
+    sources: list[str] = []
+    for hit in hits:
+        if hit.source not in buckets:
+            sources.append(hit.source)
+            buckets[hit.source] = []
+        buckets[hit.source].append(hit)
+    for source in sources:
+        buckets[source].sort(key=lambda hit: hit.score, reverse=True)
+    if len(sources) <= 1:
+        return buckets[sources[0]] if sources else []
+    merged: list[ChunkHit] = []
+    index = {source: 0 for source in sources}
+    while len(merged) < len(hits):
+        added = False
+        for source in sources:
+            cursor = index[source]
+            bucket = buckets[source]
+            if cursor < len(bucket):
+                merged.append(bucket[cursor])
+                index[source] = cursor + 1
+                added = True
+        if not added:
+            break
+    return merged
+
+
 def _apply_context_budget(
     hits: list[ChunkHit],
     budget: int,
@@ -86,8 +121,21 @@ def _apply_context_budget(
 ) -> list[ChunkHit]:
     kept: list[ChunkHit] = []
     used = 0
-    sorted_hits = sorted(hits, key=lambda h: h.score, reverse=True)
-    for h in sorted_hits:
+    ordered = order_hits_for_injection(hits)
+    multi_source = len({hit.source for hit in hits}) > 1
+    pending = ordered
+    if multi_source:
+        # Take whole chunks round-robin before truncating a long dense hit
+        # into the entire remaining budget.
+        pending = []
+        for hit in ordered:
+            piece_units = measure(hit.text)
+            if not hit.text.strip() or used + piece_units > budget:
+                pending.append(hit)
+                continue
+            kept.append(hit)
+            used += piece_units + separator_cost
+    for h in pending:
         lines = h.text.splitlines()
         priority = [ln for ln in lines if _CONSTRAINT.search(ln)]
         piece = h.text

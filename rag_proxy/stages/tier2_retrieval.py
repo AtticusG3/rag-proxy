@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from rag_proxy.registry.models import ModelRegistry
 from rag_proxy.clients.qdrant import hybrid_search
+from rag_proxy.clients.retrieval_async import embed_text
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext, RetrievalDecision
 
@@ -16,6 +17,11 @@ async def run_retrieval(ctx: RequestContext, _registry: ModelRegistry) -> None:
     if not query:
         return
 
+    vector = await embed_text(
+        query, no_cache=ctx.no_cache, cache_hits=ctx.cache_hits
+    )
+    ctx.query_embedding = vector
+
     limit = ctx.top_k_for_retrieval(
         settings.retrieval_candidate_k if ctx.retrieval == RetrievalDecision.FULL else settings.top_k
     )
@@ -27,6 +33,7 @@ async def run_retrieval(ctx: RequestContext, _registry: ModelRegistry) -> None:
         limit=limit,
         no_cache=ctx.no_cache,
         cache_hits=ctx.cache_hits,
+        vector=vector,
     )
     ctx.hits = hits
     ctx.stage_trace.append(f"retrieve:{len(ctx.hits)}")

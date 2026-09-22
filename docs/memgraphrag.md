@@ -163,6 +163,8 @@ RERANKER_URL=http://127.0.0.1:8095
 
 Reranking runs only when `ENABLE_RERANKER=true` and `RERANKER_URL` is set. Otherwise (or if the sidecar errors) PPR is seeded with the dense fact-similarity scores — still works, weaker ordering.
 
+PPR walks two hops from those seeds and keeps at most 32 neighbors per fact, so schema cliques do not spread the seed across the whole graph. Passage scores are kept down to zero and then truncated by `TOP_K`. The stage reuses the retrieve-stage query vector and the rewritten query when one exists.
+
 Restart the proxy after changes: `sudo systemctl restart rag-proxy`.
 
 ## Runtime index cache

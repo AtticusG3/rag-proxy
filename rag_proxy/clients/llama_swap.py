@@ -5,22 +5,45 @@ from __future__ import annotations
 import json
 import logging
 import time
+from contextlib import asynccontextmanager
 
 import httpx
 
 from rag_proxy.config import settings
+from rag_proxy.upstream_client import ensure_upstream_client
 
 log = logging.getLogger("rag-proxy")
 
 _auto_model_cache: dict[str, tuple[float, str | None]] = {}
 
 
+@asynccontextmanager
+async def _http_client(timeout: float):
+    """Borrow the lifespan upstream pool, or open a one-shot client.
+
+    Intent and rewrite run before the proxy relays the chat request. A fresh
+    AsyncClient per call pays a TCP handshake against llama-swap on every
+    stage. Scripts and tests have no lifespan pool, so they still get a
+    one-shot client. Callers pass timeout on each request: the shared pool
+    default is UPSTREAM_TIMEOUT_SEC, which is too long for a classifier.
+    """
+    try:
+        client = await ensure_upstream_client()
+    except RuntimeError:
+        client = None
+    if client is not None:
+        yield client
+        return
+    async with httpx.AsyncClient(timeout=timeout) as owned:
+        yield owned
+
+
 async def fetch_models(base_url: str | None = None) -> list[dict]:
     """Fetch /v1/models from an OpenAI-compatible endpoint; fail-open to []."""
     url = (base_url or settings.llama_swap_url).rstrip("/")
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(f"{url}/v1/models")
+        async with _http_client(10) as client:
+            r = await client.get(f"{url}/v1/models", timeout=10)
             r.raise_for_status()
             data = r.json()
             return data.get("data", [])
@@ -66,8 +89,8 @@ async def fetch_running_model(base_url: str | None = None) -> str | None:
     """Return the currently loaded model id from llama-swap's /running; None if idle."""
     url = (base_url or settings.llama_swap_url).rstrip("/")
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get(f"{url}/running")
+        async with _http_client(5) as client:
+            r = await client.get(f"{url}/running", timeout=5)
             r.raise_for_status()
             data = r.json()
     except Exception as e:
@@ -130,11 +153,13 @@ async def chat_completion_content(
     }
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
+    timeout = timeout_ms / 1000.0 + 1
     try:
-        async with httpx.AsyncClient(timeout=timeout_ms / 1000.0 + 1) as client:
+        async with _http_client(timeout) as client:
             r = await client.post(
                 f"{url}/v1/chat/completions",
                 json=payload,
+                timeout=timeout,
             )
             r.raise_for_status()
             choices = r.json().get("choices", [])

@@ -12,6 +12,7 @@ When MemGraphRAG finds no scored facts or passages, the stage adds no hits
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from rag_proxy.config import settings
@@ -24,7 +25,8 @@ log = logging.getLogger("rag-proxy.stage.memgraphrag")
 
 async def run_memgraphrag(ctx: RequestContext) -> None:
     """Run MemGraphRAG retrieval and append results to ctx.hits."""
-    if not ctx.query_text:
+    query = ctx.effective_query()
+    if not query:
         return
 
     db_path = settings.memgraphrag_db_path
@@ -33,7 +35,7 @@ async def run_memgraphrag(ctx: RequestContext) -> None:
         return
 
     try:
-        index = get_memory_index(db_path)
+        index = await asyncio.to_thread(get_memory_index, db_path)
         if not index.memory.facts:
             log.info("MemGraphRAG memory is empty, skipping")
             return
@@ -47,7 +49,7 @@ async def run_memgraphrag(ctx: RequestContext) -> None:
             passage_node_weight=settings.memgraphrag_passage_node_weight,
         )
 
-        hits = await retriever.retrieve(ctx.query_text)
+        hits = await retriever.retrieve(query, query_embedding=ctx.query_embedding)
         if hits:
             ctx.hits.extend(hits)
             ctx.stage_trace.append(f"memgraphrag:{len(hits)}")
