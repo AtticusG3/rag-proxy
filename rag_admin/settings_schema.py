@@ -39,9 +39,9 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "ingest",
         "int",
         "admin",
-        "4",
+        "2",
         hot=True,
-        help_text="Max concurrent embed batches across all files.",
+        help_text="Max concurrent embed batches. Cap to embed-pool slots (often ~2 on a shared GPU host).",
     ),
     SettingField(
         "INGEST_FILE_CONCURRENCY",
@@ -133,10 +133,10 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "ingest",
         "str",
         "admin",
-        "http://127.0.0.1:8089",
+        "http://127.0.0.1:8081",
         help_text=(
-            "OpenAI-compatible embeddings base (nomic :8089 or llama-swap :8081). "
-            "When pointing at llama-swap, set EMBED_MODEL=embed-pool and EMBED_ON_DEMAND=false."
+            "OpenAI-compatible embeddings base. Typical: llama-swap embed-pool (:8081). "
+            "Legacy nomic systemd: :8089 with EMBED_MODEL=nomic-embed-text-v1.5 and EMBED_ON_DEMAND=true."
         ),
     ),
     SettingField(
@@ -145,9 +145,9 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "ingest",
         "str",
         "admin",
-        "nomic-embed-text-v1.5",
+        "embed-pool",
         hot=True,
-        help_text="OpenAI embeddings model id. Use embed-pool when EMBED_URL is llama-swap.",
+        help_text="OpenAI embeddings model id. Use embed-pool for Qwen3 Embedding 4B via llama-swap.",
     ),
     SettingField(
         "QDRANT_URL",
@@ -164,8 +164,8 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "ingest",
         "str",
         "admin",
-        "nomad_knowledge_base",
-        help_text="Collection name shared by ingest and proxy retrieval.",
+        "nomad_knowledge_base_qwen3",
+        help_text="Collection name shared by ingest and proxy retrieval (2560-d Qwen index typical).",
     ),
     SettingField(
         "QDRANT_VECTOR_SIZE",
@@ -173,8 +173,8 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "ingest",
         "int",
         "admin",
-        "768",
-        help_text="Dense width for new collections (768 nomic; 2560 for qwen3-embedding-4b / embed-pool).",
+        "2560",
+        help_text="Dense width for new collections (2560 for qwen3-embedding-4b / embed-pool; 768 for legacy nomic).",
     ),
     SettingField(
         "SPARSE_INDEX_URL",
@@ -238,8 +238,8 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "ingest",
         "str",
         "admin",
-        "nomic-ai/nomic-embed-text-v1.5",
-        help_text="Align with embed model. Startup log warns FALLBACK if this tokenizer cannot load.",
+        "Qwen/Qwen3-Embedding-4B",
+        help_text="Align with embed model (Qwen3 Embedding 4B typical). Startup log warns FALLBACK if this tokenizer cannot load.",
     ),
     SettingField(
         "INGEST_CHUNK_SEMANTIC",

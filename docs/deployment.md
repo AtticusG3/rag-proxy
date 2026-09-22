@@ -112,11 +112,14 @@ Run one checkout on `PROXY_PORT=8088`. Clone a second checkout, set `PROXY_PORT=
 Docker Compose starts **rag-proxy** by default. Set `LLAMA_SWAP_URL`, `EMBED_URL`, and `QDRANT_URL` in `docker/.env` so the proxy can run on a different host from your LLMs and vector DB. Optional profiles add bundled Qdrant (`qdrant`), cognitive sidecars (`cognitive`), or a single-box **llama-swap:cuda** router (`llama-swap`). There is no nomic-embed service.
 
 ```bash
-# Legacy only
+# Proxy only (set remote URLs in docker/.env)
 docker compose up -d --build
 
-# Qdrant + cognitive sidecars
+# Qdrant + cognitive sidecars on this host
 docker compose --profile qdrant --profile cognitive up -d --build
+
+# Optional single-box GPU llama-swap
+# docker compose --profile llama-swap up -d --build
 ```
 
 Service map, env wiring, sidecar APIs: [docker/README.md](../docker/README.md).

@@ -1,8 +1,8 @@
 [Unit]
-Description=RAG proxy for llama-swap (Qdrant context injection)
+Description=RAG proxy (OpenAI-compatible upstream + Qdrant context injection)
 After=network.target
-# nomic-embed starts on demand (EMBED_ON_DEMAND) when RAG or ingest needs it
-Before=llama-swap.service
+# Upstream chat/embed are external (LLAMA_SWAP_URL / EMBED_URL). Optional legacy
+# nomic-embed starts on demand only when EMBED_ON_DEMAND=true.
 
 [Service]
 Type=simple
