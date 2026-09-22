@@ -38,6 +38,7 @@ def _embed_with_limiter(
     max_chars: int,
     client: httpx.Client,
     limiter: EmbedLimiter | None,
+    model: str | None = None,
 ) -> list[list[float]]:
     if limiter is not None:
         limiter.acquire()
@@ -48,6 +49,7 @@ def _embed_with_limiter(
                 embed_urls=embed_urls,
                 max_chars=max_chars,
                 client=client,
+                model=model,
             )
         finally:
             limiter.release()
@@ -57,6 +59,7 @@ def _embed_with_limiter(
         embed_urls=embed_urls,
         max_chars=max_chars,
         client=client,
+        model=model,
     )
 
 
@@ -192,6 +195,8 @@ def run_ingest_pipeline(
     should_abort: Callable[[], bool] | None = None,
     turbovec_url: str = "",
     start_chunk_idx: int = 0,
+    embed_model: str | None = None,
+    record_source: Callable[[str], None] | None = None,
 ) -> int:
     """Embed batches concurrently and upsert to Qdrant in chunk order.
 
@@ -232,6 +237,9 @@ def run_ingest_pipeline(
             for batch in chunk_batches(chunks, batch_size):
                 if should_abort and should_abort():
                     raise IngestAborted("ingest aborted before batch")
+                if record_source is not None:
+                    for item in batch:
+                        record_source(str(item[1]))
                 texts = [chunk[2] for chunk in batch]
                 target_url = urls[next_seq % len(urls)]
                 future = pool.submit(
@@ -242,6 +250,7 @@ def run_ingest_pipeline(
                     max_chars=embed_max_chars,
                     client=embed_client,
                     limiter=embed_limiter,
+                    model=embed_model,
                 )
                 pending[next_seq] = (batch, chunk_start, future)
                 chunk_start += len(batch)

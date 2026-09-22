@@ -193,6 +193,60 @@ def test_resolve_sort_normalizes_bad_input() -> None:
     assert resolve_sort("nope", "sideways") == ("updated", "desc")
 
 
+def test_status_poll_does_not_rewrite_claim_order(tmp_path, monkeypatch) -> None:
+    """A Jobs refresh sends the column sort. That must not change which file is claimed."""
+    import asyncio
+    from types import SimpleNamespace
+
+    from starlette.requests import Request
+
+    from ingest.worker import IngestWorker
+    from rag_admin.db import AdminDatabase
+    from rag_admin.routes.ingest import ingest_status
+
+    db = AdminDatabase(str(tmp_path / "admin.sqlite"))
+    db.ingest.set_queue_order("size", "asc")
+    worker = IngestWorker(
+        IngestConfig(
+            zim_dir=str(tmp_path),
+            upload_dir=str(tmp_path),
+            embed_url="http://127.0.0.1:1",
+            qdrant_url="http://127.0.0.1:1",
+            qdrant_collection="test",
+            sparse_index_url="",
+        ),
+        db.ingest,
+    )
+    monkeypatch.setattr(worker, "ensure_workers", lambda: None)
+    monkeypatch.setattr(worker, "endpoint_health_snapshot", lambda: {"ok": True})
+
+    async def no_sidecars(*_args, **_kwargs):
+        return {}
+
+    monkeypatch.setattr(
+        "rag_admin.routes.ingest.load_sidecars_payload",
+        no_sidecars,
+    )
+    app = SimpleNamespace(state=SimpleNamespace(db=db, worker=worker))
+    request = Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/api/ingest/status",
+            "raw_path": b"/api/ingest/status",
+            "query_string": b"sort=name&dir=desc",
+            "headers": [],
+            "client": ("127.0.0.1", 9),
+            "server": ("test", 80),
+            "app": app,
+        }
+    )
+    asyncio.run(ingest_status(request))
+    assert db.ingest.get_queue_order() == ("size", "asc")
+
+
 def test_filter_visible_file_rows_hides_old_indexed() -> None:
     from datetime import datetime, timedelta, timezone
 

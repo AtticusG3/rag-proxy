@@ -75,6 +75,11 @@ class IngestDatabase:
                     key TEXT PRIMARY KEY,
                     value TEXT
                 );
+                CREATE TABLE IF NOT EXISTS ingest_point_sources (
+                    file_path TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    PRIMARY KEY (file_path, source)
+                );
                 """
             )
             self._ensure_ingest_columns(conn)
@@ -151,6 +156,41 @@ class IngestDatabase:
     def delete_file_state(self, file_path: str) -> None:
         with self._conn() as conn:
             conn.execute("DELETE FROM kb_ingest_state WHERE file_path = ?", (file_path,))
+            conn.execute(
+                "DELETE FROM ingest_point_sources WHERE file_path = ?",
+                (file_path,),
+            )
+
+    def remember_point_source(self, file_path: str, source: str) -> None:
+        """Remember a Qdrant payload.source written for this ingest file.
+
+        Corpus JSONL points use each record's source_url, not the file path.
+        Dismiss-missing runs after the file is gone, so the urls have to be stored.
+        """
+        cleaned = source.strip()
+        if not cleaned:
+            return
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO ingest_point_sources (file_path, source)
+                VALUES (?, ?)
+                ON CONFLICT(file_path, source) DO NOTHING
+                """,
+                (file_path, cleaned),
+            )
+
+    def list_point_sources(self, file_path: str) -> list[str]:
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT source FROM ingest_point_sources
+                WHERE file_path = ?
+                ORDER BY source
+                """,
+                (file_path,),
+            ).fetchall()
+        return [str(row["source"]) for row in rows]
 
     def get_file_state(self, file_path: str) -> dict[str, Any] | None:
         with self._conn() as conn:

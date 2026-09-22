@@ -105,6 +105,31 @@ class TestStallRecovery(unittest.TestCase):
             self.assertEqual(row["status"], "pending")
             self.assertEqual(row["chunks_embedded"], 12)
 
+    def test_restart_stalled_does_not_requeue_a_live_file(self) -> None:
+        """A second worker must not claim a file whose thread is still in process_file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "admin.sqlite")
+            db = IngestDatabase(db_path)
+            db.upsert_file_state("/zim/stuck.zim", status="running", chunks_embedded=12)
+            old = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+            conn = sqlite3.connect(db_path)
+            conn.execute(
+                "UPDATE kb_ingest_state SET updated_at = ? WHERE file_path = ?",
+                (old, "/zim/stuck.zim"),
+            )
+            conn.commit()
+            conn.close()
+
+            worker = _worker(db)
+            worker._inflight_paths.add("/zim/stuck.zim")
+            worker.restart_stalled_files()
+
+            row = db.get_file_state("/zim/stuck.zim")
+            assert row is not None
+            self.assertEqual(row["status"], "running")
+            self.assertEqual(row["chunks_embedded"], 12)
+            self.assertIn("/zim/stuck.zim", worker._preempt_paths)
+
     def test_retry_file_keeps_chunks_and_points(self) -> None:
         """Retry after an embed outage must not delete 14000 already-upserted chunks."""
         with tempfile.TemporaryDirectory() as tmp:

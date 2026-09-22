@@ -11,7 +11,6 @@ import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from itertools import islice
 from pathlib import Path
 from typing import Callable
 
@@ -66,6 +65,7 @@ class IngestConfig:
     memgraphrag_db_path: str = ""
     turbovec_url: str = ""
     turbovec_reindex_mode: str = "idle"
+    embed_model: str = ""
 
 
 def resolve_file_concurrency(
@@ -84,6 +84,8 @@ def resolve_file_concurrency(
 
 
 UpdateStateFn = Callable[..., None]
+# Refresh the stall clock while a resume walks chunks that are already upserted.
+_RESUME_SKIP_TICK = 32
 
 
 def _read_text_file(path: str) -> tuple[str, str]:
@@ -275,6 +277,7 @@ def process_file(
     embed_limiter: threading.Semaphore | None = None,
     should_abort: Callable[[], bool] | None = None,
     start_chunk_idx: int = 0,
+    record_source: Callable[[str], None] | None = None,
 ) -> int:
     """Embed one file into Qdrant. Returns total chunks embedded.
 
@@ -286,9 +289,21 @@ def process_file(
         chunk_config=config.chunk_config,
     )
     start = max(0, int(start_chunk_idx))
-    # ponytail: skip by re-chunking; add a persisted cursor if ZIM skip is hot
+    # Resume still re-chunks from the start so chunk boundaries stay stable.
+    # The walk checks abort and refreshes updated_at so a long skip can be
+    # stopped and does not look stalled.
     if start:
-        chunk_iter = islice(chunk_iter, start, None)
+        skipped = 0
+        for item in chunk_iter:
+            if should_abort and should_abort():
+                raise IngestAborted("ingest aborted while skipping embedded chunks")
+            if record_source is not None:
+                record_source(str(item[1]))
+            skipped += 1
+            if on_progress and skipped % _RESUME_SKIP_TICK == 0:
+                on_progress(chunks_embedded=start)
+            if skipped >= start:
+                break
     return run_ingest_pipeline(
         chunk_iter,
         embed_url=config.embed_url,
@@ -304,6 +319,8 @@ def process_file(
         should_abort=should_abort,
         turbovec_url=config.turbovec_url,
         start_chunk_idx=start,
+        embed_model=config.embed_model or None,
+        record_source=record_source,
     )
 
 
@@ -488,6 +505,7 @@ class IngestWorker:
         self._abort = threading.Event()
         self._paused = False
         self._preempt_paths: set[str] = set()
+        self._inflight_paths: set[str] = set()
         self._workers: list[tuple[threading.Thread, threading.Event]] = []
         self._worker_seq = 0
         self._embed_limiter = make_embed_semaphore(config.embed_concurrency)
@@ -590,6 +608,8 @@ class IngestWorker:
             self.config = config
             self._sparse.config = config
             self._turbovec.config = config
+            if config.embed_model:
+                os.environ["EMBED_MODEL"] = config.embed_model
         if self._alive_workers():
             self.resize_file_workers(self._file_worker_count())
 
@@ -655,6 +675,7 @@ class IngestWorker:
         queued_new = 0
         queued_retry = 0
         for path in scan_storage(*directories):
+            self._backfill_point_sources(path)
             row = self.db.get_file_state(path)
             if row is None:
                 self.db.upsert_file_state(
@@ -684,7 +705,14 @@ class IngestWorker:
         restarted: list[str] = []
         for row in stalled:
             path = row["file_path"]
-            self._prepare_file_restart(path, wipe=False)
+            with self._lock:
+                live = path in self._inflight_paths
+                if live:
+                    # Leave status=running so another worker cannot claim it.
+                    # The in-flight process_file aborts and re-queues itself.
+                    self._preempt_paths.add(path)
+            if not live:
+                self._prepare_file_restart(path, wipe=False)
             restarted.append(Path(path).name)
         message = (
             f"restarted {len(restarted)} stalled file(s)"
@@ -908,6 +936,15 @@ class IngestWorker:
                 )
 
     def _process_one(self, file_path: str) -> None:
+        with self._lock:
+            self._inflight_paths.add(file_path)
+        try:
+            self._process_one_inflight(file_path)
+        finally:
+            with self._lock:
+                self._inflight_paths.discard(file_path)
+
+    def _process_one_inflight(self, file_path: str) -> None:
         urls = self.config.embed_urls or parse_ingest_embed_urls(
             embed_url=self.config.embed_url
         )
@@ -926,6 +963,14 @@ class IngestWorker:
             with self._lock:
                 return file_path in self._preempt_paths
 
+        seen_sources: set[str] = set()
+
+        def record_source(source: str) -> None:
+            if not source or source in seen_sources:
+                return
+            seen_sources.add(source)
+            self.db.remember_point_source(file_path, source)
+
         count = process_file(
             file_path,
             self.config,
@@ -933,6 +978,7 @@ class IngestWorker:
             embed_limiter=self._embed_limiter,
             should_abort=should_abort,
             start_chunk_idx=start_chunk_idx,
+            record_source=record_source,
         )
 
         with self._lock:
@@ -1043,6 +1089,22 @@ class IngestWorker:
         except Exception as exc:
             log.warning("memgraphrag scrub failed for %s: %s", file_path, exc)
 
+    def _backfill_point_sources(self, file_path: str) -> None:
+        """Index Qdrant sources while the file is still on disk.
+
+        Already-indexed corpus JSONL is not re-read by process_file. Sync records
+        each source_url so a later dismiss can delete those points after the file is gone.
+        """
+        if self.db.list_point_sources(file_path):
+            return
+        if not os.path.isfile(file_path):
+            return
+        if determine_file_type(file_path) != "corpus_jsonl":
+            self.db.remember_point_source(file_path, file_path)
+            return
+        for _title, source_url, _text, _record in _iter_corpus_jsonl_records(file_path):
+            self.db.remember_point_source(file_path, source_url)
+
     def prune_missing_files(self) -> list[str]:
         """Drop ingest rows whose files no longer exist on disk."""
         removed: list[str] = []
@@ -1051,12 +1113,22 @@ class IngestWorker:
             if os.path.isfile(path):
                 continue
             log.warning("pruning missing ingest file: %s", path)
-            delete_source_points(
-                self.config.qdrant_url,
-                self.config.qdrant_collection,
-                path,
-                turbovec_url=self.config.turbovec_url or None,
-            )
+            sources = self.db.list_point_sources(path)
+            if not sources:
+                if determine_file_type(path) == "corpus_jsonl":
+                    log.warning(
+                        "missing corpus jsonl has no recorded source urls; "
+                        "points keyed by source_url may remain: %s",
+                        path,
+                    )
+                sources = [path]
+            for source in sources:
+                delete_source_points(
+                    self.config.qdrant_url,
+                    self.config.qdrant_collection,
+                    source,
+                    turbovec_url=self.config.turbovec_url or None,
+                )
             self.db.delete_file_state(path)
             removed.append(path)
         return removed

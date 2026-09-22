@@ -213,6 +213,56 @@ def test_prune_missing_files_removes_orphaned_rows() -> None:
         )
 
 
+def test_prune_missing_corpus_jsonl_deletes_recorded_source_urls() -> None:
+    """Corpus points use source_url. Deleting by the vanished file path leaves them."""
+    with tempfile.TemporaryDirectory() as zim_dir:
+        upload_dir = tempfile.mkdtemp()
+        db = IngestDatabase(os.path.join(zim_dir, "admin.sqlite"))
+        ghost_path = os.path.join(upload_dir, "wiki_corpus.jsonl")
+        db.upsert_file_state(ghost_path, status="indexed", file_type="corpus_jsonl")
+        db.remember_point_source(ghost_path, "https://example.com/b")
+        db.remember_point_source(ghost_path, "https://example.com/a")
+
+        worker = _worker_with_dirs(db, zim_dir, upload_dir)
+        with patch("ingest.worker.delete_source_points") as delete_mock:
+            removed = worker.prune_missing_files()
+
+        assert removed == [ghost_path]
+        deleted = [call.args[2] for call in delete_mock.call_args_list]
+        assert deleted == ["https://example.com/a", "https://example.com/b"]
+        assert db.list_point_sources(ghost_path) == []
+
+
+def test_sync_records_corpus_sources_while_the_file_exists() -> None:
+    """Dismiss runs after the jsonl is gone, so sync must store source urls first."""
+    import json
+
+    with tempfile.TemporaryDirectory() as zim_dir:
+        upload_dir = tempfile.mkdtemp()
+        db = IngestDatabase(os.path.join(zim_dir, "admin.sqlite"))
+        path = os.path.join(upload_dir, "wiki_corpus.jsonl")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {"title": "A", "source_url": "https://example.com/a", "text": "alpha"}
+                )
+                + "\n"
+            )
+            handle.write(
+                json.dumps(
+                    {"title": "B", "source_url": "https://example.com/b", "text": "beta"}
+                )
+                + "\n"
+            )
+        db.upsert_file_state(path, status="indexed", file_type="corpus_jsonl", chunks_embedded=2)
+        worker = _worker_with_dirs(db, zim_dir, upload_dir)
+        worker.enqueue_sync()
+        assert db.list_point_sources(path) == [
+            "https://example.com/a",
+            "https://example.com/b",
+        ]
+
+
 def test_enqueue_sync_registers_new_files() -> None:
     with tempfile.TemporaryDirectory() as zim_dir:
         upload_dir = tempfile.mkdtemp()

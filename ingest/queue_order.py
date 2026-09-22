@@ -1,8 +1,9 @@
-"""Queue claim ordering shared by the ingest worker and admin UI.
+"""Queue claim ordering for the ingest worker.
 
-The Jobs page column sort is persisted as the queue processing order:
-priority band (high -> mid -> low) always wins, then rows follow the
-operator's chosen sort, then FIFO (updated_at) as the tiebreaker.
+Priority band (high -> mid -> low) always wins, then the persisted
+queue_sort / queue_dir, then FIFO (updated_at). The Jobs column sort is
+display-only. "Switch to top of queue" writes the visible sort into this
+order and preempts running files. Status polls must not write it.
 """
 
 from __future__ import annotations

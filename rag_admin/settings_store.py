@@ -139,6 +139,7 @@ class SettingsStore:
     def build_ingest_config(self, *, zim_dir: str, upload_dir: str) -> IngestConfig:
         values = self.all_field_values()
         embed_url = values.get("EMBED_URL", "http://127.0.0.1:8089")
+        embed_model = self._explicit_embed_model()
         ingest_urls_raw = values.get("INGEST_EMBED_URLS", "").strip()
         return IngestConfig(
             zim_dir=zim_dir,
@@ -170,7 +171,24 @@ class SettingsStore:
             ),
             turbovec_url=values.get("TURBOVEC_URL", ""),
             turbovec_reindex_mode=values.get("INGEST_TURBOVEC_REINDEX", "idle").lower(),
+            embed_model=embed_model,
         )
+
+    def _explicit_embed_model(self) -> str:
+        """Model id from a real setting, not the form default.
+
+        The settings field defaults to embed-pool. Ingest must keep using
+        EMBED_MODEL from the process until an operator saves one, or a host
+        that never set the variable would switch models on admin startup.
+        """
+        stored = self.db.get_setting("EMBED_MODEL")
+        if stored is not None and stored.strip():
+            return stored.strip()
+        for path in (self.admin_env_path, self.proxy_env_path):
+            from_file = read_env_file(path).get("EMBED_MODEL", "").strip()
+            if from_file:
+                return from_file
+        return os.getenv("EMBED_MODEL", "").strip()
 
     def apply_to_worker(self, worker: IngestWorker, *, zim_dir: str, upload_dir: str) -> None:
         worker.update_config(self.build_ingest_config(zim_dir=zim_dir, upload_dir=upload_dir))

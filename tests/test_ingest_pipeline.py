@@ -245,6 +245,122 @@ def test_process_file_skips_already_embedded_chunks() -> None:
     assert count == 3
 
 
+def test_process_file_skip_can_abort_before_embed() -> None:
+    """A long ZIM resume must stop when the operator preempts, not after the skip."""
+    from ingest.types import IngestAborted
+
+    FakeHttpClient = _make_fake_http_client()
+    rows = [("Title", "/tmp/doc.txt", f"chunk-{i}") for i in range(6)]
+    checks = {"n": 0}
+
+    def should_abort() -> bool:
+        checks["n"] += 1
+        return checks["n"] >= 2
+
+    with tempfile.TemporaryDirectory() as tmp:
+        file_path = os.path.join(tmp, "notes.txt")
+        with open(file_path, "w", encoding="utf-8") as handle:
+            handle.write("placeholder")
+        config = IngestConfig(
+            zim_dir=tmp,
+            upload_dir=tmp,
+            embed_url="http://127.0.0.1:8089",
+            qdrant_url="http://127.0.0.1:6333",
+            qdrant_collection="test_collection",
+            sparse_index_url="",
+            batch_size=32,
+            embed_concurrency=1,
+        )
+        with patch("ingest.worker._iter_chunks_for_file", return_value=iter(rows)):
+            with patch("ingest.pipeline.httpx.Client", FakeHttpClient):
+                try:
+                    process_file(
+                        file_path,
+                        config,
+                        start_chunk_idx=5,
+                        should_abort=should_abort,
+                    )
+                except IngestAborted:
+                    aborted = True
+                else:
+                    aborted = False
+
+    assert aborted
+    assert FakeHttpClient.all_points() == []
+
+
+def test_process_file_skip_refreshes_progress_before_upsert() -> None:
+    """Stall detection uses updated_at. A silent skip looks stalled until the first upsert."""
+    from ingest.worker import _RESUME_SKIP_TICK
+
+    FakeHttpClient = _make_fake_http_client()
+    rows = [("Title", "/tmp/doc.txt", f"chunk-{i}") for i in range(_RESUME_SKIP_TICK + 1)]
+    seen: list[int] = []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        file_path = os.path.join(tmp, "notes.txt")
+        with open(file_path, "w", encoding="utf-8") as handle:
+            handle.write("placeholder")
+        config = IngestConfig(
+            zim_dir=tmp,
+            upload_dir=tmp,
+            embed_url="http://127.0.0.1:8089",
+            qdrant_url="http://127.0.0.1:6333",
+            qdrant_collection="test_collection",
+            sparse_index_url="",
+            batch_size=32,
+            embed_concurrency=1,
+        )
+        with patch("ingest.worker._iter_chunks_for_file", return_value=iter(rows)):
+            with patch("ingest.pipeline.httpx.Client", FakeHttpClient):
+                process_file(
+                    file_path,
+                    config,
+                    start_chunk_idx=_RESUME_SKIP_TICK,
+                    on_progress=lambda **kwargs: seen.append(int(kwargs["chunks_embedded"])),
+                )
+
+    assert seen[0] == _RESUME_SKIP_TICK
+    assert [point["payload"]["text"] for point in FakeHttpClient.all_points()] == [
+        f"chunk-{_RESUME_SKIP_TICK}"
+    ]
+
+
+def test_process_file_sends_config_embed_model() -> None:
+    """Hot-applied EMBED_MODEL must be the embeddings body, not the process env at startup."""
+    FakeHttpClient = _make_fake_http_client()
+    models: list[str] = []
+    original = FakeHttpClient.post
+
+    def post(self, url: str, json: dict) -> object:
+        if str(url).endswith("/v1/embeddings"):
+            models.append(str(json.get("model")))
+        return original(self, url, json)
+
+    FakeHttpClient.post = post
+
+    with tempfile.TemporaryDirectory() as tmp:
+        file_path = os.path.join(tmp, "notes.txt")
+        with open(file_path, "w", encoding="utf-8") as handle:
+            handle.write("First paragraph.")
+        config = IngestConfig(
+            zim_dir=tmp,
+            upload_dir=tmp,
+            embed_url="http://127.0.0.1:8089",
+            qdrant_url="http://127.0.0.1:6333",
+            qdrant_collection="test_collection",
+            sparse_index_url="",
+            batch_size=32,
+            embed_concurrency=1,
+            embed_model="embed-pool",
+        )
+        with patch("ingest.pipeline.httpx.Client", FakeHttpClient):
+            process_file(file_path, config)
+
+    assert models
+    assert set(models) == {"embed-pool"}
+
+
 def test_pipeline_reuses_single_embed_client() -> None:
     """Embed batches should share one httpx.Client passed into embed_texts."""
     FakeHttpClient = _make_fake_http_client()

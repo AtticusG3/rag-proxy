@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from ingest.worker import IngestWorker
@@ -9,6 +10,28 @@ from rag_admin.db import AdminDatabase
 from rag_admin.env_file import read_env_file
 from rag_admin.settings_schema import SETTING_FIELDS
 from rag_admin.settings_store import SettingsStore
+
+
+def test_embed_model_hot_apply_updates_worker_without_restart(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """EMBED_MODEL is hot: the running ingest worker must embed with the saved id."""
+    monkeypatch.delenv("EMBED_MODEL", raising=False)
+    db = AdminDatabase(str(tmp_path / "admin.sqlite"))
+    store = SettingsStore(
+        db,
+        admin_env_path=str(tmp_path / "rag-admin.env"),
+        proxy_env_path=str(tmp_path / "rag-proxy.env"),
+    )
+    worker = IngestWorker(
+        store.build_ingest_config(zim_dir=str(tmp_path), upload_dir=str(tmp_path)),
+        db.ingest,
+    )
+    result = store.save_group("ingest", {"EMBED_MODEL": "embed-pool"})
+    store.apply_to_worker(worker, zim_dir=str(tmp_path), upload_dir=str(tmp_path))
+    assert worker.config.embed_model == "embed-pool"
+    assert os.environ["EMBED_MODEL"] == "embed-pool"
+    assert result.restart_admin is False
 
 
 def test_save_group_writes_admin_env_and_hot_applies_worker(tmp_path: Path) -> None:

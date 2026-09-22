@@ -206,8 +206,8 @@ Payload fields written for proxy retrieval: `text`, `content`, `chunk`, `documen
 The Jobs page (`/jobs`) lets operators reprioritise the queue and sort the file table:
 
 - **Priority** — per-file `high` / `mid` / `low` (default `mid`) via the per-row select. Priority is always the primary queue order (`high` → `mid` → `low`). Promoting a pending file to `high` moves it to the top priority band and immediately yields lower-priority running work.
-- **Sortable columns** — click a header to choose the secondary order within each priority band. The UI and worker use the same persisted order, so the first pending row displayed is the next file claimed. The live poller preserves the active sort while it refreshes.
-- **Switch to top of queue** — shown while something is running and files are pending. After changing the secondary sort, this action aborts the current file(s) cleanly, re-queues them, and makes workers claim from the newly displayed top of the queue. Chunk IDs are deterministic, so re-ingest overwrites rather than duplicates points.
+- **Sortable columns** — click a header to reorder the table. That sort is display-only. The live status poll does not change which file the worker claims next.
+- **Switch to top of queue** — shown while something is running and files are pending. This writes the visible column sort as the claim order, aborts the current file(s), re-queues them, and makes workers claim from the top of that order. Chunk IDs are deterministic, so re-ingest overwrites rather than duplicates points. Priority (`high` → `mid` → `low`) still wins over the column sort.
 
 Priority changes post to `POST /api/ingest/priority-form`. The added **size** column shows on-disk file size alongside chunk progress.
 
