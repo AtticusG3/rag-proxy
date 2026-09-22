@@ -1,6 +1,6 @@
 # Admin Codemap
 
-**Last Updated:** 2026-07-27
+**Last Updated:** 2026-09-22
 **Entry Points:** `python -m rag_admin`, `rag_admin/app.py` (`create_app`)
 
 ## Architecture

@@ -1,7 +1,7 @@
 # Sidecars Codemap
 
-**Last Updated:** 2026-08-26
-**Entry Points:** each `sidecars/*/app.py` (Docker compose profiles / systemd units)
+**Last Updated:** 2026-09-22
+**Entry Points:** each `sidecars/*/app.py` (Docker `--profile cognitive` or systemd units; MCP standalone)
 
 ## Architecture
 

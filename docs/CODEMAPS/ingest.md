@@ -1,6 +1,6 @@
 # Ingest Codemap
 
-**Last Updated:** 2026-07-27
+**Last Updated:** 2026-09-22
 **Entry Points:** `ingest/worker.py` (`IngestWorker`), started from `rag_admin` lifespan / jobs
 
 ## Architecture

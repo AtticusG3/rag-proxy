@@ -37,7 +37,7 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag_admin/settings_store.py` | Persist Settings to env files + admin SQLite |
 | `ingest/worker.py` | Ingest queue worker (`IngestWorker`) |
 | `ingest/endpoint_health.py` | Embed + Qdrant probes; ingest waits instead of wiping chunks |
-| `docker/` | Compose profiles (proxy, cognitive sidecars) |
+| `docker/` | Compose: default `rag-proxy` only; profiles `qdrant`, `cognitive`, `llama-swap` (see `docker/README.md`) |
 | `ingest/` | ZIM/PDF/text ingest worker (Qdrant + sparse reindex) |
 | `ingest/chunking_strategy.py` | Per-document Chonkie strategy selection (recursive, sentence, semantic, token, code) |
 | `ingest/chunking.py` | Chonkie chunk execution, env-backed chunk config (`INGEST_CHUNK_*`), tokenizer resolution |
@@ -124,7 +124,8 @@ Operator guides: **docs/README.md** (index). Entry point: **README.md** (quick s
 - `gh` CLI works for GitHub (`AtticusG3/rag-proxy`); Gitea `origin` pull requests use the Gitea web UI, not `gh`
 - Default ports (all overridable in `.env`): proxy `8088`, llama-swap chat `8080`; embeddings are `EMBED_URL` (Qwen `embed-pool` / OpenAI-compatible API), not a nomic-embed sidecar and not served on the proxy port
 - `rag_admin` and ingest are optional and separate from the proxy — any host with reachable Qdrant/embed URLs
-- Example systemd units: `rag-proxy.service`, `nomic-embed.service` — edit paths before install; missing venv causes systemd 203/EXEC
+- Docker: `docker compose up` starts **rag-proxy** only; set remote `LLAMA_SWAP_URL` / `EMBED_URL` / `QDRANT_URL` in `docker/.env` — no nomic-embed container, no default `depends_on` llama-swap
+- Example systemd units: `rag-proxy.service`, optional legacy `nomic-embed.service` — edit paths before install; missing venv causes systemd 203/EXEC
 - Shell sessions do not auto-load `.env`; source explicitly (`set -a; . ./.env; set +a`) before smoke scripts
 - Production tuning reference: `SIMILARITY_THRESHOLD=0.65`, `TOP_K=5`, `EMBED_MAX_CHARS=2000`
 - Buster sparse sidecar (`:18096`) is populated: 2.11M docs / `nomad_knowledge_base_qwen3`. Snapshot at `/var/lib/rag_proxy/sparse` (~5.1G: CSC + jsonl). After mmap load, RSS is ~0.75G (was 17.0G heap / 24.9G rebuild peak). Restart answers `/health` immediately (`status=starting` until the snapshot is mapped) and skips the Qdrant scroll. First boot or `POST /reindex` still rebuilds from Qdrant and peaks near the old heap size. TurboVec (`:18097`, 2.1M vectors, ~8G RSS) already snapshots `.tvim` but `IdMapIndex.load` copies the index into RAM — the library has no mmap view.

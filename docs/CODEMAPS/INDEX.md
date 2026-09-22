@@ -1,6 +1,6 @@
 # Codemaps
 
-**Last Updated:** 2026-07-27
+**Last Updated:** 2026-09-22
 
 Module maps for contributors and agents. Operator guides stay under [docs/README.md](../README.md). Path-level agent notes: [AGENTS.md](../../AGENTS.md).
 
@@ -17,13 +17,16 @@ Module maps for contributors and agents. Operator guides stay under [docs/README
 
 ```text
 Clients / MCP
-    |                    +-- embeddings API (Qwen / EMBED_URL)
+    |                    +-- EMBED_URL (Qwen embed-pool / OpenAI-compatible)
     v                    |
 rag_proxy (:8088) -----> Qdrant (+ optional TurboVec / sparse / rerank)
     |                    |
-    +---> LLAMA_SWAP_URL (OpenAI-compatible upstream)
+    +---> LLAMA_SWAP_URL (OpenAI-compatible upstream; often remote)
 
-rag_admin (:8087) ---> ingest worker ---> embed endpoint + Qdrant (+ sidecars)
+rag_admin (:8087) ---> ingest worker ---> EMBED_URL + Qdrant (+ sidecars)
+
+Docker default: rag-proxy container only; Qdrant/chat/embed via docker/.env URLs
+Optional compose profiles: qdrant, cognitive, llama-swap (see docker/README.md)
 ```
 
 ## Related operator docs
