@@ -18,8 +18,10 @@ Exposes curated KB retrieval and personal agent memory as MCP tools for Hermes, 
 
 ```bash
 pip install -r requirements.txt
-export EMBED_URL=http://127.0.0.1:8089
+export EMBED_URL=http://127.0.0.1:8081
+export EMBED_MODEL=embed-pool
 export QDRANT_URL=http://127.0.0.1:6333
+# Legacy nomic query embed: EMBED_URL=http://127.0.0.1:8089 EMBED_MODEL=nomic-embed-text-v1.5
 # optional hybrid:
 # export SPARSE_INDEX_URL=http://127.0.0.1:8096
 # export ENABLE_HYBRID_RETRIEVAL=true

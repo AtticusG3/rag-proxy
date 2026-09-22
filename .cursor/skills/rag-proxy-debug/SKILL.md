@@ -24,9 +24,9 @@ POST chat/completions?
   yes -> query extracted? (LOG: no user text)
          no  -> check messages / multimodal content
          yes -> embedding OK? (LOG: skipped embedding returned None)
-                no  -> curl EMBED_URL /v1/embeddings
+                no  -> curl EMBED_URL /v1/embeddings (model = EMBED_MODEL, e.g. embed-pool)
                 yes -> Qdrant hits? (LOG: no chunks above threshold)
-                       no  -> lower SIMILARITY_THRESHOLD or fix QDRANT_URL/collection
+                       no  -> lower SIMILARITY_THRESHOLD or fix QDRANT_URL/collection/vector width
                        yes -> injection OK? (LOG: injected N chunks)
                               check client sees system message growth
 ```
@@ -43,14 +43,14 @@ POST chat/completions?
 ## Manual checks (ASCII-friendly)
 
 ```bash
-# Embed server
-curl -s -X POST "%EMBED_URL%/v1/embeddings" -H "Content-Type: application/json" -d "{\"model\":\"nomic-embed-text-v1.5\",\"input\":\"test\"}"
+# Embed server — match EMBED_MODEL (embed-pool or legacy nomic-embed-text-v1.5)
+curl -s -X POST "$EMBED_URL/v1/embeddings" -H "Content-Type: application/json" -d "{\"model\":\"embed-pool\",\"input\":\"test\"}"
 
 # Qdrant (replace collection)
-curl -s "%QDRANT_URL%/collections/%QDRANT_COLLECTION%"
+curl -s "$QDRANT_URL/collections/$QDRANT_COLLECTION"
 
 # Proxy health — non-RAG passthrough
-curl -s "%PROXY_HOST%:%PROXY_PORT%/v1/models"
+curl -s "http://127.0.0.1:${PROXY_PORT:-8088}/v1/models"
 ```
 
 ## Common causes
@@ -62,6 +62,7 @@ curl -s "%PROXY_HOST%:%PROXY_PORT%/v1/models"
 | Always passthrough | Wrong path (not in `CHAT_PATHS`), not POST |
 | Empty chunks | Payload keys don't match `extract_chunk_text` order |
 | Stream hangs | client disconnect or abandoned stream — check `relay_upstream`; janitor log `closed N idle upstream stream(s)` means `UPSTREAM_STREAM_ABANDON_SEC` elapsed with no bytes relayed |
+| Docker: embed fails | `EMBED_URL` uses `127.0.0.1` inside container — use host LAN/Tailscale URL or `host.docker.internal` |
 
 ## Rules
 
