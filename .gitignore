@@ -31,3 +31,8 @@ Desktop.ini
 /pr[0-9]*-*.json
 /pr-comments*.txt
 /pr-new-only.txt
+
+# Ad-hoc host diagnostics / one-off dumps (do not commit)
+_tmp*
+.tmp/
+.benchmarks/
