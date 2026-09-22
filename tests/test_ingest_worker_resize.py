@@ -94,3 +94,21 @@ def test_update_config_before_start_does_not_spawn_threads() -> None:
         worker = IngestWorker(_config(file_concurrency=2), db)
         worker.update_config(replace(worker.config, file_concurrency=4))
         assert _alive_count(worker) == 0
+
+
+def test_ensure_workers_respawns_dead_thread() -> None:
+    """Jobs UI polling must bring ingest back after a tokenizer panic kills the thread."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db = IngestDatabase(os.path.join(tmp, "ingest.sqlite"))
+        worker = IngestWorker(_config(file_concurrency=1), db)
+        worker.start()
+        try:
+            assert _wait_for(lambda: _alive_count(worker) == 1)
+            thread, event = worker._workers[0]
+            event.set()
+            thread.join(timeout=5.0)
+            assert not thread.is_alive()
+            worker.ensure_workers()
+            assert _wait_for(lambda: _alive_count(worker) == 1)
+        finally:
+            _stop_and_join(worker)

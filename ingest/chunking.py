@@ -431,15 +431,8 @@ def chunk_text(
                 min_tokens=chunk_config.min_chunk_tokens,
                 max_tokens=chunk_config.chunk_size,
             )
-        except Exception as exc:
-            log.warning(
-                "chunk strategy %s failed for %s: %s",
-                candidate.value,
-                ctx.source_path or ctx.file_type,
-                exc,
-            )
-            continue
-        if pieces:
+            if not pieces:
+                continue
             if candidate is not primary:
                 log.info(
                     "chunk fallback %s -> %s for %s",
@@ -464,6 +457,17 @@ def chunk_text(
                 context=ctx,
             )
             return pieces
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except BaseException as exc:
+            # HuggingFace tokenizers can raise pyo3 PanicException (BaseException).
+            log.warning(
+                "chunk strategy %s failed for %s: %s",
+                candidate.value,
+                ctx.source_path or ctx.file_type,
+                exc,
+            )
+            continue
 
     return []
 

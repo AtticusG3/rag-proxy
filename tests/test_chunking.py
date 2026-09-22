@@ -36,3 +36,23 @@ def test_chunk_text_respects_token_budget():
 def test_default_token_targets_match_nomic_guidance():
     assert DEFAULT_CHUNK_SIZE == 512
     assert DEFAULT_CHUNK_OVERLAP == 64
+
+
+def test_chunk_text_falls_back_after_tokenizer_panic(monkeypatch):
+    """tokenizers rust panics are BaseException; skip the article strategy, keep ingest alive."""
+
+    class PanicException(BaseException):
+        pass
+
+    def fake_run(strategy, text, *, tokenizer, config):
+        if strategy is ChunkStrategy.TOKEN:
+            return ["token fallback chunk"]
+        raise PanicException("called Result::unwrap() on an Err value")
+
+    monkeypatch.setattr("ingest.chunking._run_strategy", fake_run)
+    chunks = chunk_text(
+        "A wikipedia article that trips the recursive tokenizer.",
+        config=ChunkConfig(tokenizer="word", semantic_enabled=False),
+        strategy=ChunkStrategy.SENTENCE,
+    )
+    assert chunks == ["token fallback chunk"]

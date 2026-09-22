@@ -51,6 +51,7 @@ async def ingest_file(request: Request, file_path: str) -> JSONResponse:
 async def ingest_status(request: Request) -> JSONResponse:
     db = request.app.state.db
     worker = request.app.state.worker
+    worker.ensure_workers()
     sort, sort_dir = resolve_sort(
         request.query_params.get("sort"), request.query_params.get("dir")
     )

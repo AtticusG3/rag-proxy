@@ -631,6 +631,15 @@ class IngestWorker:
         self._workers = []
         self.resize_file_workers(self._file_worker_count())
 
+    def ensure_workers(self) -> None:
+        """Respawn file workers if the ingest thread died (e.g. tokenizer panic)."""
+        if self._stop.is_set():
+            return
+        if self._alive_workers():
+            return
+        log.warning("ingest file worker thread(s) missing; restarting")
+        self.start()
+
     def stop(self, *, flush_sparse: bool = False) -> None:
         """Signal workers to exit. Skip BM25 flush on shutdown (can block minutes)."""
         self._stop.set()
@@ -884,7 +893,10 @@ class IngestWorker:
                     file_path,
                     exc,
                 )
-            except Exception as exc:
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except BaseException as exc:
+                # pyo3 PanicException is BaseException; do not let it kill the worker thread.
                 log.exception("ingest failed for %s", file_path)
                 with self._lock:
                     self._preempt_paths.discard(file_path)
