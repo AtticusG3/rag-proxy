@@ -266,7 +266,7 @@ version bumps.
 
 ## MCP retrieval tools
 
-`sidecars/mcp_rag/` exposes MCP tools for IDE/agent integration (Hermes, Cursor, OpenClaw) — separate from the HTTP proxy path:
+`sidecars/mcp_rag/` exposes MCP tools for IDE/agent integration (Hermes, Cursor, OpenClaw) — separate from the HTTP proxy path. It runs on Python MCP SDK 2, which serves protocol `2026-07-28` (stateless requests) and 2025-era session clients from the same streamable HTTP endpoint:
 
 | Tool | Role |
 | --- | --- |

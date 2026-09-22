@@ -7,7 +7,7 @@ import json
 import logging
 import os
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 from personal_store import (
     default_store_path,
@@ -28,7 +28,7 @@ log = logging.getLogger("mcp-rag-context")
 _HOST = os.getenv("MCP_HOST", "127.0.0.1")
 _PORT = int(os.getenv("MCP_PORT", "9001"))
 
-mcp = FastMCP(
+mcp = MCPServer(
     "RAG Knowledge Base",
     instructions=(
         "Search the local offline knowledge base (ZIM archives, PDFs, and text files) "
@@ -36,9 +36,6 @@ mcp = FastMCP(
         "the graph index is available. Personal notes use memory_store / memory_recall "
         "(separate from the curated knowledge base — never write into Qdrant via these tools)."
     ),
-    host=_HOST,
-    port=_PORT,
-    streamable_http_path="/mcp",
 )
 
 
@@ -146,11 +143,18 @@ def main() -> None:
         return
 
     if transport in ("streamable-http", "http"):
-        mcp.run(transport="streamable-http")
+        # SDK 2 serves protocol 2026-07-28 (no session) and 2025 clients
+        # (initialize + Mcp-Session-Id) on this same endpoint.
+        mcp.run(
+            transport="streamable-http",
+            host=_HOST,
+            port=_PORT,
+            streamable_http_path="/mcp",
+        )
         return
 
     if transport == "sse":
-        mcp.run(transport="sse")
+        mcp.run(transport="sse", host=_HOST, port=_PORT)
         return
 
     raise SystemExit(f"Unsupported MCP_TRANSPORT: {transport}")

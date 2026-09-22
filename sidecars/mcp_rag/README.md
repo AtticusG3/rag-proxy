@@ -16,6 +16,8 @@ Exposes curated KB retrieval and personal agent memory as MCP tools for Hermes, 
 
 ## Run locally
 
+Requires Python 3.10 or newer (MCP Python SDK 2).
+
 ```bash
 pip install -r requirements.txt
 export EMBED_URL=http://127.0.0.1:8081
@@ -30,7 +32,7 @@ export QDRANT_URL=http://127.0.0.1:6333
 python app.py
 ```
 
-Default transport: streamable HTTP at `http://127.0.0.1:9001/mcp`. Set `MCP_TRANSPORT=stdio` for stdio mode.
+Default transport: streamable HTTP at `http://127.0.0.1:9001/mcp` (Python MCP SDK 2). That process answers protocol `2026-07-28` (stateless; no `initialize` handshake or `Mcp-Session-Id`) and 2025-era clients that still open a session. Set `MCP_TRANSPORT=stdio` for stdio mode. `MCP_TRANSPORT=sse` remains the legacy HTTP+SSE transport.
 
 Personal store path: `MCP_PERSONAL_STORE_PATH` (default `~/.local/share/rag_proxy/mcp_personal.sqlite`).
 

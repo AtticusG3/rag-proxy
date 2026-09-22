@@ -21,7 +21,7 @@ rag_proxy / ingest / MCP
 | Rerank | `sidecars/rerank/` | Cross-encoder reorder | `8095` |
 | Sparse BM25 | `sidecars/sparse/` | Sparse index + search; NVMe mmap snapshot, Qdrant scroll rebuild | `8096` |
 | TurboVec | `sidecars/turbovec/` | TurboQuant dense ANN (`/search`, `/add`, `/reindex`, `/save`) | `8097` |
-| MCP RAG | `sidecars/mcp_rag/` | MCP tools: KB search modes + personal `memory_*` | `9001` |
+| MCP RAG | `sidecars/mcp_rag/` | MCP tools: KB search modes + personal `memory_*` (SDK 2; 2026-07-28 and 2025 clients) | `9001` |
 
 Each HTTP sidecar follows `app.py` + `core.py` (+ `Dockerfile` / `requirements.txt`).
 

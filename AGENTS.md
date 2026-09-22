@@ -30,7 +30,7 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `scripts/build_memgraphrag_index.py` | Offline indexing: chunk → entity/rel extraction → ontology filter → memory build |
 | `tests/` | Offline pytest |
 | `sidecars/` | Rerank, BM25 sparse, TurboVec dense HTTP sidecars (Docker `cognitive` / `turbovec` profiles) |
-| `sidecars/mcp_rag/` | MCP tools: KB search (+ MemGraph `facts` mode) and personal `memory_*` store |
+| `sidecars/mcp_rag/` | MCP tools: KB search (+ MemGraph `facts` mode) and personal `memory_*` store (Python MCP SDK 2; requires Python >= 3.10) |
 | `sidecars/turbovec/` | TurboQuant dense ANN sidecar (`TURBOVEC_URL`, `DENSE_BACKEND=turbovec`) |
 | `rag_admin/` | Content Explorer UI, catalog subscriptions, ingest queue |
 | `rag_admin/settings_schema.py` | Settings UI field groups and defaults |
