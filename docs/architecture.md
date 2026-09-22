@@ -103,7 +103,7 @@ Retrieval skip/light/full decisions: `retrieval_policy.py`. Rollout: [Cognitive 
 | `rag_proxy/observability.py` | Trace IDs, pipeline summaries, metrics |
 | `rag_proxy/stages/` | Tier 0–3 stage implementations |
 | `rag_proxy/memgraphrag/` | Three-layer memory + PPR retrieval |
-| `sidecars/` | Rerank, BM25 sparse, TurboVec dense, MCP RAG (Docker profiles) |
+| `sidecars/` | Rerank, BM25 sparse, TurboVec dense, MCP RAG (`--profile cognitive` or standalone MCP) |
 
 ## External dependencies
 

@@ -87,8 +87,12 @@ Set `ENABLE_METRICS=true`. Hit `http://<proxy_host>:<PROXY_PORT>/metrics` — no
 
 ## Docker / sidecars
 
+Default `docker compose up` runs **rag-proxy only**. Chat, embeddings, and Qdrant must be reachable from the container via `docker/.env` (`LLAMA_SWAP_URL`, `EMBED_URL`, `QDRANT_URL`) — not `127.0.0.1` unless the service shares the container network namespace.
+
 | Symptom | Action |
 | --- | --- |
+| Proxy up, embed/Qdrant fail from container | Use LAN/Tailscale hostnames in `docker/.env`, not host loopback |
+| Expected llama-swap not running | Bundled GPU router needs `docker compose --profile llama-swap`; otherwise point URLs at an external swap host |
 | Hybrid no sparse hits | `SPARSE_INDEX_URL` set; sparse sidecar healthy (`:18096/health`); reindex after Qdrant changes |
 | Sparse index empty (`docs: 0`, `last_sync: 0.0` in `/api/settings/status`) | If `SPARSE_INDEX_PATH` has a snapshot, restart loads it via mmap (seconds). Otherwise the sidecar rebuilds from Qdrant; `/health` only answers after that initial sync finishes. `POST /reindex` forces a Qdrant rebuild and rewrites the snapshot |
 | Rerank stalls | Increase `RERANK_STAGE_TIMEOUT_MS` or `ENABLE_RERANKER=false` |
@@ -140,7 +144,7 @@ journalctl -u rag-proxy -f | grep -E 'RAG:|trace=|WARNING'
 | Pause seems ineffective | Pause only blocked new files; in-flight ZIM kept embedding | Pause now aborts at batch boundaries and re-queues the current file |
 
 | Nomic still on GPU after pause | `EMBED_ON_DEMAND=false` or idle timer not elapsed | Default: units unload after `EMBED_IDLE_PAUSED_SEC` (30s) when paused; set `EMBED_IDLE_PAUSED_SEC=5` for faster VRAM free |
-| First RAG query slow after idle | Cold-start loads nomic into VRAM | Expected with on-demand embed; subsequent queries are fast |
+| First RAG query slow after idle | Cold-start on embed host (nomic on-demand or llama-swap model load) | Expected when embed was unloaded; set `EMBED_ON_DEMAND=false` with llama-swap or use `EMBED_QUERY_ALWAYS_ON` for legacy nomic |
 | `systemctl stop` hangs on proxy | Uvicorn waited forever for open SSE streams | Set `PROXY_GRACEFUL_SHUTDOWN_SEC=15` (default); unit `TimeoutStopSec=30` |
 | Upload not ingesting | Jobs page status | Uploads queue automatically; use **Scan** only for files copied outside Admin |
 

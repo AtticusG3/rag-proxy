@@ -87,7 +87,7 @@ Paths default to `/opt/ai/config/rag-admin.env` and `/opt/ai/config/rag-proxy.en
 
 **Env-only (not in Settings UI):** `UPSTREAM_*`, model registry JSON, transcript capture (except `ENABLE_TRANSCRIPT_CAPTURE`), and most latency-budget knobs — set in env and restart. Chunk size changes require `python scripts/requeue_all_ingest.py` for existing files.
 
-**Port topology:** Settings defaults **Primary embed URL** to `http://127.0.0.1:8089` (query RAG; mirrored to `rag-proxy.env`). Bulk ingest uses `EMBED_URL` unless **Ingest embed URLs** (`INGEST_EMBED_URLS`) is set (comma-separated round-robin; empty = `EMBED_URL`).
+**Port topology:** Settings **Primary embed URL** defaults to `http://127.0.0.1:8089` in schema (legacy nomic). Set it to your production `EMBED_URL` (e.g. llama-swap `embed-pool` on `:8081`) — mirrored to `rag-proxy.env`. Bulk ingest uses `EMBED_URL` unless **Ingest embed URLs** (`INGEST_EMBED_URLS`) is set (comma-separated round-robin; empty = `EMBED_URL`).
 
 Status API: `GET /api/settings/status` (service reachability for the Settings page).
 
@@ -95,7 +95,7 @@ Status API: `GET /api/settings/status` (service reachability for the Settings pa
 
 Startup **refuses** default `ADMIN_SESSION_SECRET` and `ADMIN_PASSWORD` unless `ADMIN_ALLOW_INSECURE_DEFAULTS=true` (local dev only). Set strong secrets before exposing beyond localhost.
 
-Default bind: `127.0.0.1:8087`. Primary embed defaults to `:8089`; set **Ingest embed URLs** to override the embed endpoint used by bulk ingest.
+Default bind: `127.0.0.1:8087`. Configure **Primary embed URL** to match proxy (`embed-pool` typical); set **Ingest embed URLs** to override the embed endpoint used by bulk ingest alone.
 
 ## Environment variables
 
@@ -133,7 +133,7 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
    - **MediaWiki-like** titles/paths only: skip non-article namespaces (`Category:`, `File:`, …) and drop wiki chrome plus trailing References / See also / External links sections.
    - Existing indexed ZIM points stay as-is until you re-queue (`python scripts/requeue_all_ingest.py` or re-ingest per file).
 3. **Chunk** — `ingest/chunking_strategy.py` picks a Chonkie strategy per document; `ingest/chunking.py` loads token size/overlap from env and runs the chunker with strategy-specific fallbacks. Default **512 tokens / 64 overlap** (~12.5%) using the nomic-embed tokenizer when available.
-4. **Embed** — `ingest/embedder.py` calls `EMBED_URL` (same nomic-embed as proxy).
+4. **Embed** — `ingest/embedder.py` calls `EMBED_URL` (same OpenAI-compatible API as the proxy).
 5. **Write** — `ingest/qdrant_writer.py` upserts to `QDRANT_COLLECTION`.
 6. **Sparse reindex** — optional POST to `SPARSE_INDEX_URL` when `INGEST_SPARSE_REINDEX` triggers (hybrid cognitive mode).
 7. **TurboVec dual-write** — when `TURBOVEC_URL` is set, each upsert also `POST /add` to the dense sidecar; optional `INGEST_TURBOVEC_REINDEX` rebuilds from Qdrant.
@@ -225,7 +225,7 @@ The Jobs page auto-refreshes while files are pending or running and shows embed 
 | Parallel chunking | `INGEST_CHUNK_CONCURRENCY` | Default `min(4, cores / 2)`; concurrent chunk executions |
 | Batch size | `INGEST_BATCH_SIZE` | Raise (e.g. `256`) when embed server supports large batches |
 | Parallel embeds | `INGEST_EMBED_CONCURRENCY` | Default `4`; raise if embed server keeps up |
-| GPU embed | `nomic-embed` `-ngl 99` | Default in shipped units; see [Deployment](deployment.md) |
+| GPU embed | llama-swap `embed-pool` or legacy `nomic-embed` | Prefer swap + `EMBED_ON_DEMAND=false`; see [Deployment](deployment.md) |
 | Sparse rebuild | `INGEST_SPARSE_REINDEX=off` | Disable during bulk; reindex once at end |
 
 The capacity planner sets all of these automatically from the host profile; manual overrides still work. Effective values appear read-only on the Dashboard and Jobs pages.
@@ -274,7 +274,7 @@ version bumps.
 | `knowledge_base_status` | Qdrant / sparse / embed / MemGraph health |
 | `memory_store` / `memory_recall` / `memory_forget` | Personal agent notes in `MCP_PERSONAL_STORE_PATH` (SQLite). **Not** Qdrant ingest. |
 
-Defaults match the proxy (`EMBED_URL` `:8089`, hybrid/rerank off until enabled). Keep `MCP_HOST=127.0.0.1`. See [`sidecars/mcp_rag/README.md`](../sidecars/mcp_rag/README.md).
+Use the same `EMBED_URL` / `QDRANT_URL` as the proxy (`embed-pool` typical; hybrid/rerank off until enabled). Keep `MCP_HOST=127.0.0.1`. See [`sidecars/mcp_rag/README.md`](../sidecars/mcp_rag/README.md).
 
 ## Related docs
 

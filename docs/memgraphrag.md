@@ -70,7 +70,7 @@ Typical service URLs (adjust to your layout):
 
 - LLM: `MEMGRAPH_BUILD_LLM_URL` (default `http://127.0.0.1:8080/v1`) — use a remote endpoint when local GPU is busy with ingest, e.g. `http://192.168.1.202:8081/v1`
 - Model: `MEMGRAPH_BUILD_LLM_MODEL` (default `qwen3.5-9b-turbo`)
-- Embed: `MEMGRAPH_BUILD_EMBED_URL` or `EMBED_URL` (query embed `:8089`; bulk pool `:18089+`)
+- Embed: `MEMGRAPH_BUILD_EMBED_URL` or `EMBED_URL` (typical: llama-swap `embed-pool` on same base as `EMBED_URL`; legacy nomic query `:8089`)
 - Reranker: `http://127.0.0.1:8095` (cognitive Docker profile or `sidecars/rerank`)
 
 Set build LLM vars in `rag-proxy.env` or **rag-admin → Settings → MemGraphRAG index build**. The admin UI can start the build job and monitor logs.
@@ -95,7 +95,7 @@ python scripts/build_memgraphrag_index.py \
   --llm-model qwen3.5-9b-turbo \
   --max-chunks 1000 \
   --stratify-field source \
-  --embed-url http://127.0.0.1:8089
+  --embed-url http://127.0.0.1:8081
 ```
 
 | Flag | Default | Notes |
@@ -119,7 +119,7 @@ python scripts/build_memgraphrag_index.py \
   --llm-model your-chat-model \
   --chunk-size 512 \
   --overlap 64 \
-  --embed-url http://127.0.0.1:8089
+  --embed-url http://127.0.0.1:8081
 ```
 
 For a directory, all `**/*.txt` files are loaded and chunked.

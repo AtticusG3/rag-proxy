@@ -18,7 +18,7 @@ Diagrams in these guides use [Mermaid](https://mermaid.js.org/) (rendered on Git
 | [Headers and clients](headers-and-clients.md) | Base URL, per-request headers, client integration |
 | [Observability](observability.md) | Traces, JSON logs, metrics, log greps |
 | [Performance](performance.md) | Latency trade-offs, caching, tuning |
-| [Deployment](deployment.md) | systemd, Docker, port layout |
+| [Deployment](deployment.md) | systemd, Docker (proxy-only default), port layout |
 | [Troubleshooting](troubleshooting.md) | Symptom → fix table and diagnostic commands |
 | [Ingest and admin](ingest-and-admin.md) | RAG admin UI, ingest worker |
 | [MemGraphRAG](memgraphrag.md) | Offline index build, runtime enable, verify |
@@ -31,7 +31,8 @@ Diagrams in these guides use [Mermaid](https://mermaid.js.org/) (rendered on Git
 | --- | --- |
 | Proxy port (prod) | `8088` (`PROXY_PORT`) |
 | Upstream chat API | `http://127.0.0.1:8080` (`LLAMA_SWAP_URL`; llama-swap typical) |
-| Embeddings API | `EMBED_URL` (`embed-pool` / Qwen3; not a dedicated nomic-embed container in Docker) |
+| Embeddings API | `EMBED_URL` (`embed-pool` / Qwen3 2560-d; external host or llama-swap — not on proxy port; no nomic container in Docker) |
+| Docker default stack | `rag-proxy` only — see [docker/README.md](../docker/README.md) |
 | Qdrant | set `QDRANT_URL` (e.g. `http://127.0.0.1:6333`) |
 | Cognitive pipeline | off (`ENABLE_COGNITIVE_PIPELINE=false`) |
 | Client base URL | `http://<host>:8088/v1` |

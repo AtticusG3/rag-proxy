@@ -103,7 +103,7 @@ Leave `ENABLE_COGNITIVE_PIPELINE=false` until legacy RAG injects chunks reliably
 | `QDRANT_URL` | Yes | `http://<qdrant-host>:6333` |
 | `QDRANT_COLLECTION` | If not default | see `.env.example` |
 | `LLAMA_SWAP_URL` | Yes — any OpenAI-compatible API | `http://127.0.0.1:8080` (llama-swap typical) |
-| `EMBED_URL` | If not local | `http://127.0.0.1:8089` |
+| `EMBED_URL` | Yes for RAG | OpenAI-compatible Qwen base (`embed-pool`, 2560-d); often same GPU host as chat |
 
 Full reference: [Configuration](docs/configuration.md).
 
@@ -145,18 +145,17 @@ Per-request overrides (`x-rag-mode`, `x-no-cache`, `x-conversation-id`): [Header
 
 **Linux systemd** (production): edit `rag-proxy.service` paths, then `systemctl enable --now rag-proxy`. Prefer llama-swap `embed-pool` (Qwen3) for embeddings; the shipped `nomic-embed.service` is legacy 768-d. Walkthrough: [Deployment](docs/deployment.md).
 
-**Docker** (optional bundled stack: llama-swap for chat + Qwen embeddings, optional Qdrant and cognitive sidecars):
+**Docker** (rag-proxy container; chat, embed, and Qdrant URLs in `docker/.env` — can be remote hosts):
 
 ```powershell
 copy docker\.env.example docker\.env
-copy docker\config.yaml.example docker\config.yaml
-# Edit docker\.env and docker\config.yaml (MODELS_DIR, Qdrant, chat/Qwen GGUF, or external EMBED_URL)
+# Set QDRANT_URL, LLAMA_SWAP_URL, EMBED_URL to reachable APIs
 docker compose up -d --build
 ```
 
-Full stack with Qdrant and cognitive sidecars: `docker compose --profile qdrant --profile cognitive up -d --build`. Details: [docker/README.md](docker/README.md).
+Optional profiles: `qdrant`, `cognitive`, `llama-swap` (bundled GPU router for single-box dev). Details: [docker/README.md](docker/README.md).
 
-Default ports in homelab examples: proxy `8088`, upstream/embed API `8080` — all overridable in `.env`.
+Default client port: proxy `8088` (`PROXY_PORT` / `RAG_PROXY_HOST_PORT`).
 
 ## Tests
 

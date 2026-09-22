@@ -1,16 +1,18 @@
 # Configuration
 
-All settings load from environment variables (`.env` or systemd `EnvironmentFile`). Defaults live in `rag_proxy/config.py`; [.env.example](../.env.example) is the operator template.
+All settings load from environment variables (`.env` or systemd `EnvironmentFile`). Defaults live in `rag_proxy/config.py`; [.env.example](../.env.example) is the bare-metal template; [docker/.env.example](../docker/.env.example) is the Docker / split-host template (Qwen `embed-pool`, remote URLs).
 
 Restart the proxy after changing `.env`.
+
+**Production typical (bare metal or Docker):** `EMBED_URL` and `LLAMA_SWAP_URL` point at reachable hosts (often the same llama-swap GPU box), `EMBED_MODEL=embed-pool`, `EMBED_ON_DEMAND=false`, `QDRANT_VECTOR_SIZE=2560`, collection name matching your Qwen index. The table below lists `config.py` fallbacks when variables are unset (legacy nomic `:8089` / 768-d).
 
 ## Core proxy and retrieval
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `LLAMA_SWAP_URL` | `http://127.0.0.1:8080` | Upstream OpenAI-compatible chat API base URL (historical name; not limited to llama-swap). Examples: llama-swap, llama-server, vLLM, OpenRouter, OpenAI |
-| `EMBED_URL` | `http://127.0.0.1:8089` | OpenAI-compatible embeddings base (legacy nomic-embed `:8089`, or llama-swap e.g. `:8081`) |
-| `EMBED_MODEL` | `nomic-embed-text-v1.5` | Embeddings model id sent in `/v1/embeddings`. Cutover: `embed-pool` (resolves to qwen3-embedding-4b on Buster llama-swap) |
+| `EMBED_URL` | `http://127.0.0.1:8089` | OpenAI-compatible embeddings base. **Typical prod:** llama-swap or remote Qwen API (e.g. `:8081`). Legacy: nomic systemd `:8089` |
+| `EMBED_MODEL` | `nomic-embed-text-v1.5` | Model id for `/v1/embeddings`. **Typical prod:** `embed-pool` (qwen3-embedding-4b, 2560-d on llama-swap) |
 | `QDRANT_URL` | `http://192.168.1.36:6333` | Qdrant HTTP API |
 | `QDRANT_COLLECTION` | `nomad_knowledge_base` | Collection name |
 | `QDRANT_VECTOR_SIZE` | `768` | Dense vector width when creating collections (`2560` for full qwen3-embedding-4b) |
@@ -346,6 +348,19 @@ Sparse `SPARSE_MAX_POINTS` defaults to `0` (index the whole collection). A full 
 Proxy references rerank/sparse/turbovec via `RERANKER_URL`, `SPARSE_INDEX_URL`, and `TURBOVEC_URL` only.
 
 Details: [docker/README.md](../docker/README.md).
+
+## Docker compose (`docker/.env`)
+
+`docker compose up -d --build` starts **rag-proxy only**. Chat, embeddings, and Qdrant are external unless you enable profiles:
+
+| Profile | Adds |
+| --- | --- |
+| *(default)* | `rag-proxy` |
+| `qdrant` | Bundled Qdrant on the compose network |
+| `cognitive` | Rerank, sparse BM25, TurboVec sidecars (URLs wired in `docker-compose.yml`) |
+| `llama-swap` | Optional bundled GPU router for single-box dev — not started by default |
+
+Set `LLAMA_SWAP_URL`, `EMBED_URL`, and `QDRANT_URL` in `docker/.env` before `up`. There is no nomic-embed container. Walkthrough: [docker/README.md](../docker/README.md).
 
 ## Runtime config: proxy vs rag_admin
 

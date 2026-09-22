@@ -59,9 +59,9 @@ set -a; . ./.env; set +a
 
 Repository ships example units:
 
-- `rag-proxy.service` — FastAPI proxy
-- `nomic-embed.service` — llama-server with nomic-embed on GPU (`-ngl 99`, ~1 GiB VRAM)
-- `nomic-embed.env.example` — copy to `/opt/ai/config/`
+- `rag-proxy.service` — FastAPI proxy (required)
+- `nomic-embed.service` — **optional** legacy llama-server with nomic-embed on GPU (`-ngl 99`, ~1 GiB VRAM, 768-d)
+- `nomic-embed.env.example` — copy to `/opt/ai/config/` when using the nomic unit
 
 **Edit paths before install** — `User`, `WorkingDirectory`, `LLAMA_SERVER_BIN`, model path, and `ExecStart` are placeholders.
 
@@ -75,23 +75,25 @@ ExecStart=/opt/ai/venv/bin/python rag_proxy.py
 
 Raw `cp` of the repo units fails with **status=203/EXEC** when `WorkingDirectory` or `ExecStart` paths do not exist (wrong clone dir name or missing `.venv`). Use the install script or edit paths before `systemctl enable`.
 
-### Install
+### Install (preferred: external chat + Qwen embed)
+
+Point `LLAMA_SWAP_URL` and `EMBED_URL` at your GPU host (llama-swap `embed-pool` is typical). Set `EMBED_ON_DEMAND=false` so the proxy does not try to start nomic systemd units. See [Configuration — Llama-swap embed cutover](configuration.md#llama-swap-embed-cutover-preferred).
 
 ```bash
-sudo cp nomic-embed.service rag-proxy.service /etc/systemd/system/
+sudo cp rag-proxy.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now nomic-embed rag-proxy
+sudo systemctl enable --now rag-proxy
 ```
 
 ### Operations
 
 ```bash
-sudo systemctl status rag-proxy nomic-embed
+sudo systemctl status rag-proxy
 sudo systemctl restart rag-proxy          # after .env changes
 journalctl -u rag-proxy -f
 ```
 
-`rag-proxy.service` starts after `nomic-embed.service` (`Wants=` / `After=`).
+The shipped `rag-proxy.service` does **not** require `nomic-embed.service`. Nomic starts on demand only when `EMBED_ON_DEMAND=true` and `EMBED_URL` points at the nomic query port.
 
 ### Common startup failures
 
@@ -107,7 +109,7 @@ Run one checkout on `PROXY_PORT=8088`. Clone a second checkout, set `PROXY_PORT=
 
 ## Docker
 
-Docker Compose bundles rag-proxy with **llama-swap:cuda** as one homelab option (chat + Qwen embeddings via `embed-pool`), plus optional Qdrant and cognitive sidecars. There is no nomic-embed service. Point `EMBED_URL` at any OpenAI-compatible Qwen embeddings API (bundled llama-swap or an external host). You can also run rag_proxy against any external OpenAI-compatible chat API by setting `LLAMA_SWAP_URL` in `docker/.env`.
+Docker Compose starts **rag-proxy** by default. Set `LLAMA_SWAP_URL`, `EMBED_URL`, and `QDRANT_URL` in `docker/.env` so the proxy can run on a different host from your LLMs and vector DB. Optional profiles add bundled Qdrant (`qdrant`), cognitive sidecars (`cognitive`), or a single-box **llama-swap:cuda** router (`llama-swap`). There is no nomic-embed service.
 
 ```bash
 # Legacy only
@@ -153,9 +155,11 @@ Mitigations:
 
 `PROXY_INTERNAL_TOKEN` is opt-in. When unset, behavior is unchanged. When set, missing or wrong tokens receive HTTP 401 before any upstream relay. Header details: [Headers and clients — Internal token](headers-and-clients.md#internal-token-proxy_internal_token).
 
-### GPU embed (recommended on CUDA hosts)
+### GPU embed — legacy nomic unit (optional)
 
-Default units use **full GPU offload** (`NOMIC_GPU_LAYERS=99`). nomic-embed is small (~1 GiB VRAM).
+Use this path only when you keep a dedicated nomic query embed on `:8089` (768-d). **Preferred:** llama-swap `embed-pool` (2560-d) via `EMBED_URL` — section above and [Configuration — Llama-swap embed cutover](configuration.md#llama-swap-embed-cutover-preferred).
+
+Default nomic units use **full GPU offload** (`NOMIC_GPU_LAYERS=99`). nomic-embed is small (~1 GiB VRAM).
 
 ```bash
 sudo cp nomic-embed.env.example /opt/ai/config/nomic-embed.env

@@ -7,7 +7,7 @@ Install rag_proxy, configure `.env`, run the proxy, and confirm RAG injection wo
 | Service | Role | Default URL |
 | --- | --- | --- |
 | Upstream chat API | Any OpenAI-compatible provider (`LLAMA_SWAP_URL`) | `http://127.0.0.1:8080` — [llama-swap](https://github.com/mostlygeek/llama-swap) is typical locally; OpenRouter, OpenAI, vLLM, and llama-server also work |
-| Embeddings API | OpenAI-compatible `/v1/embeddings` (`EMBED_URL`, `EMBED_MODEL=embed-pool` → Qwen3 Embedding 4B) | Same host as llama-swap in Docker; production often a dedicated embed listener |
+| Embeddings API | OpenAI-compatible `/v1/embeddings` (`EMBED_URL`, `EMBED_MODEL=embed-pool` → Qwen3 Embedding 4B) | Often the same GPU host as chat; can be any reachable URL |
 | Qdrant | Vector store | set `QDRANT_URL` in `.env` |
 
 Optional (cognitive mode): sparse BM25 sidecar (`SPARSE_INDEX_URL`), reranker (`RERANKER_URL`). See [Configuration](configuration.md) and [docker/README.md](../docker/README.md).
@@ -65,15 +65,15 @@ Production deploy targets Linux systemd. See [Deployment](deployment.md).
 
 ### Docker
 
-For an optional **Docker homelab stack** (llama-swap:cuda for chat + Qwen `embed-pool`) with Qdrant + cognitive sidecars:
+For **Docker** (proxy container; upstream APIs configured in `docker/.env`):
 
 ```bash
 cp docker/.env.example docker/.env
-cp docker/config.yaml.example docker/config.yaml
+# Set QDRANT_URL, LLAMA_SWAP_URL, EMBED_URL
 docker compose up -d --build
 ```
 
-Full stack profile: [docker/README.md](../docker/README.md).
+Bundled Qdrant and cognitive sidecars: `docker compose --profile qdrant --profile cognitive up -d --build`. Optional bundled llama-swap: `--profile llama-swap`. See [docker/README.md](../docker/README.md).
 
 ## Configure `.env`
 
@@ -84,7 +84,7 @@ Minimum checklist:
 | `QDRANT_URL` | Yes | `http://<qdrant-host>:6333` |
 | `QDRANT_COLLECTION` | If not default | value from `.env.example` |
 | `LLAMA_SWAP_URL` | Yes — OpenAI-compatible upstream | `http://127.0.0.1:8080` (llama-swap typical) |
-| `EMBED_URL` | If embed API is not the Docker llama-swap default | OpenAI-compatible Qwen embeddings base (`embed-pool`) |
+| `EMBED_URL` | Yes for RAG | OpenAI-compatible Qwen embeddings base (`embed-pool`) |
 
 Leave `ENABLE_COGNITIVE_PIPELINE=false` until legacy RAG injects chunks reliably. All other variables have safe defaults in [.env.example](../.env.example). Full reference: [Configuration](configuration.md).
 
@@ -107,15 +107,14 @@ Details and per-request headers: [Headers and clients](headers-and-clients.md).
 Replace host/ports with your `.env` values. Expect JSON responses; errors usually mean a service is down or the URL is wrong.
 
 ```bash
-# 1. Embed server (must return embedding vector)
-# Legacy nomic (:8089) or llama-swap embed-pool — match EMBED_URL / EMBED_MODEL in .env
-curl -s -X POST "http://127.0.0.1:8089/v1/embeddings" \
+# 1. Embed server (must return embedding vector) — use your EMBED_URL / EMBED_MODEL
+curl -s -X POST "http://127.0.0.1:8081/v1/embeddings" \
   -H "Content-Type: application/json" \
-  -d '{"model":"nomic-embed-text-v1.5","input":"test query"}'
-# llama-swap cutover example:
-# curl -s -X POST "http://127.0.0.1:8081/v1/embeddings" \
+  -d '{"model":"embed-pool","input":"test query"}'
+# Legacy nomic systemd (:8089, 768-d):
+# curl -s -X POST "http://127.0.0.1:8089/v1/embeddings" \
 #   -H "Content-Type: application/json" \
-#   -d '{"model":"embed-pool","input":"test query"}'
+#   -d '{"model":"nomic-embed-text-v1.5","input":"test query"}'
 
 # 2. Qdrant collection exists
 curl -s "http://127.0.0.1:6333/collections/$QDRANT_COLLECTION"
@@ -155,7 +154,7 @@ flowchart LR
   I --> F["Forward to upstream API"]
 ```
 
-1. Last user message text is embedded via `EMBED_MODEL` (default `nomic-embed-text-v1.5`; cutover uses `embed-pool`).
+1. Last user message text is embedded via `EMBED_MODEL` (production: `embed-pool` / Qwen3 2560-d; legacy systemd may use `nomic-embed-text-v1.5`).
 2. Qdrant vector search returns up to `TOP_K` hits above `SIMILARITY_THRESHOLD`.
 3. Chunk text from payload fields: `text`, `content`, `chunk`, `document`, `page_content`.
 4. Chunks prepended to the system message (or a new system message is inserted).
