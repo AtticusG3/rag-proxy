@@ -1,8 +1,8 @@
 # Copy to docker/config.yaml and set model paths under /models (host MODELS_DIR).
 # llama-swap legacy CUDA image: config at /app/config.yaml, llama-server at /app/llama-server.
 #
-# rag_proxy calls embeddings at EMBED_URL with EMBED_MODEL=embed-pool (OpenAI /v1/embeddings).
-# Default compose EMBED_URL is this llama-swap. Point EMBED_URL at any Qwen embeddings API instead.
+# Used only with docker compose --profile llama-swap (optional bundled GPU router).
+# Production: run llama-swap on a GPU host and set LLAMA_SWAP_URL / EMBED_URL in docker/.env.
 
 healthCheckTimeout: 120
 

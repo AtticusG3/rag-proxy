@@ -1,31 +1,35 @@
-# RAG proxy in front of llama-swap (CUDA). Clients use rag-proxy :8088, not llama-swap :8080.
-# Embeddings use an OpenAI-compatible API (Qwen3 via llama-swap embed-pool, or any EMBED_URL).
-# There is no dedicated nomic-embed container.
+# RAG middleware stack. Clients use rag-proxy :8088 (/v1). Chat and embeddings are external
+# (LLAMA_SWAP_URL, EMBED_URL in docker/.env) — rag-proxy can run on a different host from LLMs.
+# Optional profiles: qdrant, cognitive, llama-swap (bundled GPU router for single-box dev).
 #
-# Legacy RAG (minimal):
+# Minimal (proxy only; point .env at remote Qdrant + upstream APIs):
 #   cp docker/.env.example docker/.env
-#   cp docker/config.yaml.example docker/config.yaml
 #   docker compose up -d --build
 #
-# Full homelab (Qdrant + cognitive sidecars):
+# Full homelab (Qdrant + cognitive sidecars on this host):
 #   cp docker/.env.example docker/.env
 #   cp docker/.env.homelab.example docker/.env.homelab
-#   cp docker/config.yaml.example docker/config.yaml
-#   # Merge homelab flags (see docker/README.md) or copy fields into docker/.env
+#   # QDRANT_URL=http://qdrant:6333; merge homelab flags (see docker/README.md)
 #   docker compose --profile qdrant --profile cognitive up -d --build
+#
+# Optional bundled llama-swap (single-box GPU dev):
+#   cp docker/config.yaml.example docker/config.yaml
+#   docker compose --profile llama-swap up -d --build
 #
 # OpenAI base URL: http://<host>:8088/v1
 
 name: rag-proxy-stack
 
 services:
+  # Optional all-in-one GPU chat + Qwen embed-pool (profile: llama-swap). Not started by default.
   llama-swap:
+    profiles: [llama-swap]
     image: ${LLAMA_SWAP_IMAGE:-ghcr.io/mostlygeek/llama-swap:cuda}
     restart: unless-stopped
     ports:
       - "${LLAMA_SWAP_HOST_PORT:-8080}:8080"
     volumes:
-      - ${MODELS_DIR:?set MODELS_DIR in docker/.env}:/models:ro
+      - ${MODELS_DIR:-/models}:/models:ro
       - ./docker/config.yaml:/app/config.yaml:ro
     environment:
       - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
@@ -154,8 +158,6 @@ services:
     volumes:
       - rag_proxy_state:/var/lib/rag_proxy
     depends_on:
-      llama-swap:
-        condition: service_healthy
       reranker:
         condition: service_healthy
         required: false
