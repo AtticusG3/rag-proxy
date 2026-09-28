@@ -24,6 +24,8 @@ flowchart TD
 | Wrong collection | Verify `QDRANT_COLLECTION` matches indexed data |
 | Gating skipped retrieval | Cognitive mode: `ENABLE_REQUEST_TRACE=true`; look for `retrieval=skip` — try `X-RAG-Mode: force` |
 | Query mismatch | Rephrase; embed uses last **user** message only |
+| TurboVec hits with empty text | Proxy folds Qdrant dashed UUIDs onto bare MD5 hex before payload merge (`canonical_point_id`). On older builds without that fold, dense ids and Qdrant payloads miss — upgrade, or confirm ingest dual-write and TurboVec `*.ids.sqlite` match the collection |
+| Embed 500 / context overflow on long queries | Query embed shrinks to 1200 chars and retries without probing llama-swap `/running`. Lower `EMBED_MAX_CHARS` if the embed model context is smaller than your default |
 
 ## Never injects / RAG silent
 

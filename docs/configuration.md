@@ -186,7 +186,7 @@ TurboVec remains the live ANN index; Qdrant is then payload (+ vector source for
 
 **Sidecar search:** `POST /search` runs top-k ANN first; `score_threshold` (and proxy `SIMILARITY_THRESHOLD`) filter hits *after* that shortlist — you may get fewer than `limit` results.
 
-**Id mapping:** ingest upserts use 32-char MD5 hex Qdrant ids. The sidecar maps the first 16 hex digits to TurboQuant uint64 keys and stores the full hex in SQLite (`*.ids.sqlite` beside the `.tvim` file).
+**Id mapping:** ingest upserts use 32-char MD5 hex Qdrant ids. The sidecar maps the first 16 hex digits to TurboQuant uint64 keys and stores the full hex in SQLite (`*.ids.sqlite` beside the `.tvim` file). Qdrant scroll/retrieve often echoes the same point as a dashed UUID; the proxy folds dashed UUIDs onto bare hex before hybrid fusion and payload merge so TurboVec hits keep their chunk text.
 
 **Persistence:** `TURBOVEC_AUTO_SAVE=true` (default) rewrites the `.tvim` file after every `/add`, `/remove`, and `/reindex`, plus on shutdown. During large bulk ingests, set `TURBOVEC_AUTO_SAVE=false` on the sidecar and call `POST /save` once when dual-write finishes to avoid heavy disk churn.
 

@@ -166,6 +166,8 @@ Clients should not expect HTTP 5xx solely because RAG failed. Verify retrieval v
 
 Retrieved chunk text is taken from Qdrant payload fields (in order): `text`, `content`, `chunk`, `document`, `page_content`.
 
+When hits come from more than one source (dense, sparse, graph, MemGraphRAG), context assembly ranks within each source then round-robins across sources before applying the char/token budget. That keeps low-numeric graph/PPR scores from being dropped behind long dense chunks. A single source stays pure score order.
+
 Chunks are prepended to the existing system message or inserted as a new system message. `TOP_K` and `SIMILARITY_THRESHOLD` control how many chunks and minimum score.
 
 ## Repository map (developer)
