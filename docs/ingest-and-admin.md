@@ -76,7 +76,7 @@ The admin UI writes overrides to env files on disk — it does **not** hot-reloa
 
 | Tab | Env file target | Hot-reload in admin |
 | --- | --- | --- |
-| Dense ingest & BM25 | `RAG_ADMIN_ENV_FILE` | Yes — ingest worker picks up batch size, pool URLs, pause |
+| Dense ingest & BM25 | `RAG_ADMIN_ENV_FILE` | Yes — ingest worker picks up batch size, pool URLs, `EMBED_MODEL`, pause |
 | Proxy RAG retrieval | `RAG_PROXY_ENV_FILE` | No — restart proxy |
 | Cognitive pipeline | `RAG_PROXY_ENV_FILE` | No — restart proxy |
 | MemGraphRAG runtime | `RAG_PROXY_ENV_FILE` | No — restart proxy |
