@@ -24,6 +24,8 @@ flowchart TD
 | Wrong collection | Verify `QDRANT_COLLECTION` matches indexed data |
 | Gating skipped retrieval | Cognitive mode: `ENABLE_REQUEST_TRACE=true`; look for `retrieval=skip` — try `X-RAG-Mode: force` |
 | Query mismatch | Rephrase; embed uses last **user** message only |
+| TurboVec hits with empty text | Proxy folds Qdrant dashed UUIDs onto bare MD5 hex before payload merge (`canonical_point_id`). On older builds without that fold, dense ids and Qdrant payloads miss — upgrade, or confirm ingest dual-write and TurboVec `*.ids.sqlite` match the collection |
+| Embed 500 / context overflow on long queries | Query embed shrinks to 1200 chars and retries without probing llama-swap `/running`. Lower `EMBED_MAX_CHARS` if the embed model context is smaller than your default |
 
 ## Never injects / RAG silent
 
@@ -43,6 +45,10 @@ Open WebUI "follow-up" / `### Task:` prompts may be skipped by design. Send a no
 Usually an upstream or model issue. Test the same `stream: true` request against `LLAMA_SWAP_URL` directly. Proxy relays SSE as-is.
 
 After the first SSE byte, upstream streams are closed after `UPSTREAM_STREAM_ABANDON_SEC` with no relayed bytes — increase if clients pause consumption for long periods. Before the first byte the wait is `UPSTREAM_FIRST_BYTE_SEC` (default: `UPSTREAM_TIMEOUT_SEC`) so a cold llama-swap load is not cut off.
+
+## Browser UI shows `ERR_CONTENT_DECODING_FAILED`
+
+The proxy strips `content-encoding` on relayed upstream responses because httpx already decoded the body. If you see this error on llama-server / Open WebUI assets served through the proxy, confirm you are on a build that includes that strip (`rag_proxy/app.py`). Do not re-add `content-encoding` to passthrough headers.
 
 ## Cognitive mode feels random
 
@@ -94,7 +100,9 @@ Default `docker compose up` runs **rag-proxy only**. Chat, embeddings, and Qdran
 | Proxy up, embed/Qdrant fail from container | Use LAN/Tailscale hostnames in `docker/.env`, not host loopback |
 | Expected llama-swap not running | Bundled GPU router needs `docker compose --profile llama-swap`; otherwise point URLs at an external swap host |
 | Hybrid no sparse hits | `SPARSE_INDEX_URL` set; sparse sidecar healthy (`:18096/health`); reindex after Qdrant changes |
-| Sparse index empty (`docs: 0`, `last_sync: 0.0` in `/api/settings/status`) | If `SPARSE_INDEX_PATH` has a snapshot, restart loads it via mmap (seconds). Otherwise the sidecar rebuilds from Qdrant; `/health` only answers after that initial sync finishes. `POST /reindex` forces a Qdrant rebuild and rewrites the snapshot |
+| Sparse index empty (`docs: 0`, `last_sync: 0.0` in `/api/settings/status`) | If `SPARSE_INDEX_PATH` has a snapshot, restart loads it via mmap (seconds). Otherwise the sidecar rebuilds from Qdrant; `/health` answers with `status=starting` until docs load. `POST /reindex` forces a Qdrant rebuild and rewrites the snapshot |
+| Sparse sync keeps failing while Qdrant boots | Expected: backoff from `SPARSE_INITIAL_RETRY_SEC` (5s) up to `SPARSE_RETRY_MAX_SEC` (300s), then normal `SPARSE_REFRESH_SEC` after success. Check Qdrant URL/collection in the sidecar unit env |
+| Lexical-only junk crowding hybrid results | Keep `SPARSE_RESERVE_FRACTION=0` (default). Raise only if you intentionally want reserved sparse-only slots |
 | Rerank stalls | Increase `RERANK_STAGE_TIMEOUT_MS` or `ENABLE_RERANKER=false` |
 | First rerank start slow | Downloads `BAAI/bge-reranker-base` (~400MB) |
 
