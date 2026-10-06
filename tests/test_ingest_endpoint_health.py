@@ -161,3 +161,20 @@ def test_process_one_resumes_from_chunks_already_embedded() -> None:
         assert row is not None
         assert row["status"] == "indexed"
         assert row["chunks_embedded"] == 14002
+
+def test_idle_worker_does_not_probe_embed_when_queue_is_empty() -> None:
+    """Indexed files are not work. The idle loop must not call the embed probe."""
+    with tempfile.TemporaryDirectory() as tmp:
+        db = IngestDatabase(os.path.join(tmp, "admin.sqlite"))
+        path = os.path.join(tmp, "done.txt")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("x")
+        db.upsert_file_state(path, status="indexed", chunks_embedded=3)
+        worker = _worker(db)
+        with patch.object(worker, "_endpoints_ready") as ready:
+            with patch("ingest.worker.process_file") as process:
+                worker.start()
+                time.sleep(0.4)
+                _stop_worker(worker)
+        ready.assert_not_called()
+        process.assert_not_called()

@@ -871,6 +871,14 @@ class IngestWorker:
             if self._paused:
                 time.sleep(1.0)
                 continue
+            # An empty queue must not embed a health string. Probe only when a
+            # file is waiting, so a dead embed server still pauses real work.
+            if not self.db.list_pending_files(limit=1):
+                self._fail_stalled_running()
+                self._sparse.flush()
+                self._turbovec.flush()
+                time.sleep(1.0)
+                continue
             if not self._endpoints_ready():
                 deadline = time.time() + _ENDPOINT_WAIT_SEC
                 while time.time() < deadline:
