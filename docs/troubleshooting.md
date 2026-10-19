@@ -46,6 +46,8 @@ Usually an upstream or model issue. Test the same `stream: true` request against
 
 After the first SSE byte, upstream streams are closed after `UPSTREAM_STREAM_ABANDON_SEC` with no relayed bytes — increase if clients pause consumption for long periods. Before the first byte the wait is `UPSTREAM_FIRST_BYTE_SEC` (default: `UPSTREAM_TIMEOUT_SEC`) so a cold llama-swap load is not cut off.
 
+Client cancel during a buffered (non-SSE) upstream read raises `CancelledError` (`BaseException`). Builds that close the upstream response in that path avoid leaking sockets into the shared pool; if `UPSTREAM_MAX_CONNECTIONS` appears exhausted after many aborted polls, confirm you are on that fix (`rag_proxy/app.py`).
+
 ## Browser UI shows `ERR_CONTENT_DECODING_FAILED`
 
 The proxy strips `content-encoding` on relayed upstream responses because httpx already decoded the body. If you see this error on llama-server / Open WebUI assets served through the proxy, confirm you are on a build that includes that strip (`rag_proxy/app.py`). Do not re-add `content-encoding` to passthrough headers.
@@ -144,6 +146,7 @@ journalctl -u rag-proxy -f | grep -E 'RAG:|trace=|WARNING'
 | --- | --- | --- |
 | `status=203/EXEC` on rag-proxy/rag-admin | `ExecStart` python path or `WorkingDirectory` wrong | Run `bash scripts/install-systemd-units.sh` from repo root; verify `ls -l /opt/ai/venv/bin/python` or `$REPO/.venv/bin/python` |
 | Chunks not increasing | Open **Jobs** (live refresh) | If the page says it is waiting for embed/Qdrant, fix that endpoint — ingest will resume from the last chunk. If the file is `stalled` while endpoints are healthy, click Restart (this keeps existing chunks). |
+| Queue idle forever after a crash | Admin logs for `ingest file worker thread(s) missing` or a HuggingFace `PanicException` | HF tokenizers can raise a pyo3 `PanicException` (`BaseException`). Current builds catch it per file and `GET /api/ingest/status` (Jobs live refresh) calls `ensure_workers()` to respawn dead threads — open Jobs or hit status once; no service restart needed |
 | Very slow embed | Dashboard tuning panel | Raise `INGEST_EMBED_CONCURRENCY` and `INGEST_BATCH_SIZE`; use GPU embed for bulk |
 | Wrong embed host | `EMBED_URL` on admin host | Admin defaults differ from proxy if unset — set explicitly (Qwen `embed-pool` API, not a nomic `:8089` sidecar) |
 | Remote Qdrant latency | Upsert RTT to `QDRANT_URL` | Run admin near Qdrant or accept slower upserts |
