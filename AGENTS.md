@@ -47,6 +47,48 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `.env.example` | Env template |
 | `docs/COGNITIVE_RAG_PLAN.md` | Operator architecture reference |
 
+## Agent skills
+
+Matt Pocock's engineering and productivity skills are vendored in `.agents/skills/` (pinned upstream commit and licence in `.agents/skills/README.md`). Start with `/ask-matt` if you're not sure which one fits. Typical flow: `/grill-with-docs` to align, `/to-spec` to publish a spec, `/to-tickets` to slice it, `/implement` or `/tdd` to build, `/code-review` before the PR.
+
+### Issue tracker
+
+GitHub Issues on `AtticusG3/rag-proxy`; always pass `--repo AtticusG3/rag-proxy` to `gh` because `origin` is Gitea. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) plus `prd`, `review-finding`, `severity:*` and `priority:*`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root (not written yet, created lazily; see #26). See `docs/agents/domain.md`.
+
+## Running and testing
+
+```bash
+# Linux / macOS
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt   # add requirements-admin.txt for rag_admin/ingest work
+pytest tests/ -q
+
+# Run the proxy (reads env; source .env first)
+set -a; . ./.env; set +a
+python rag_proxy.py           # listens on PROXY_HOST:PROXY_PORT (default 0.0.0.0:8088)
+python -m rag_admin           # admin UI, needs ADMIN_PASSWORD / ADMIN_SESSION_SECRET
+```
+
+Windows: `.\scripts\run-tests.ps1` (see Learned Workspace Facts).
+
+Known state on `main` at `4554a84`: 513 passed, 2 failed, 14 skipped on Linux. The two failures are a live-network test (#38) and a flaky cache test (#39). There is no CI yet (#24).
+
+## Issue workflow
+
+- **Spec:** the PRD lives as a GitHub issue labelled `prd` (currently #23), not as a file. Implementation tickets are its sub-issues.
+- **Tickets:** vertical slices with `## What to build`, `## Acceptance criteria` and `## Blocked by`. Pick from `ready-for-agent`, lowest `priority:p*` first, nothing with an open blocker.
+- **Review findings:** labelled `review-finding` + `severity:*`, grouped under a tracking issue (currently #29). Each has file/line permalinks and a suggested fix; confirm the finding still holds before fixing it.
+- **Branches and PRs:** one ticket per branch, PR on GitHub into `main` with `Closes #<n>`. Never push to `main`. Run `/code-review` against `main` before opening the PR.
+- **Gitea vs GitHub:** Gitea is the primary remote and can be ahead of GitHub (#28). Check before branching.
+
 ## Skills (project)
 
 | Skill | Use when |
@@ -55,6 +97,8 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag-proxy-test` | Tests |
 | `rag-proxy-debug` | Missing/wrong RAG context |
 | `rag-proxy-deploy` | systemd, `.env`, homelab |
+
+These live in `.cursor/skills/`. The vendored Matt Pocock skills are in `.agents/skills/` (see **Agent skills** above).
 
 ## Skills (user — `~/.cursor/skills/`)
 
