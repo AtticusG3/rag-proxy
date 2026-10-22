@@ -2,6 +2,25 @@
 
 Transparent RAG middleware: optional tiered cognitive pipeline, then forward to any OpenAI-compatible upstream (`LLAMA_SWAP_URL`). Default remains embed → Qdrant dense search → inject (fail-open).
 
+## Commands
+
+Overnight agents (autodev) read this first. Run these from the repo root.
+
+- **Install:** `python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt -r requirements-dev.txt` (add `requirements-admin.txt` only for ZIM/PDF ingest work)
+- **Test (the full suite, what autodev runs):** `python -m pytest -q`
+- **One file or test:** `python -m pytest -q tests/test_env_file.py` or `python -m pytest -q tests -k <name>`
+- **Typecheck:** none configured
+- **Lint:** none configured
+- **Baseline on `main` (`1bcf459`):** about 515 passed, 14 skipped. `tests/test_listing_parser.py::test_parse_live_dotsrc_root` fails because it goes to the internet (#21), and `tests/test_memgraphrag_cache.py` is sometimes flaky (#22). Anything else failing is yours.
+
+## No-go areas
+
+- No network in unit tests. Fake HTTP at the client seam (httpx transports / monkeypatched clients).
+- Don't edit real env files, `.env`, or anything under `/opt`; only `.env.example` gets new keys.
+- Don't change the systemd units (`*.service`), `docker-compose.yml` published ports or `deploy/` unless the ticket names them.
+- Don't touch `.agents/skills/`, `.cursor/`, the issue tracker, GitHub or the GitHub mirror.
+- Fail-open stays: a cognitive or retrieval error must never break the upstream request.
+
 ## Engineering principles
 
 All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
@@ -47,6 +66,48 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `.env.example` | Env template |
 | `docs/COGNITIVE_RAG_PLAN.md` | Operator architecture reference |
 
+## Agent skills
+
+Matt Pocock's engineering and productivity skills are vendored in `.agents/skills/` (pinned upstream commit and licence in `.agents/skills/README.md`). Start with `/ask-matt` if you're not sure which one fits. Typical flow: `/grill-with-docs` to align, `/to-spec` to publish a spec, `/to-tickets` to slice it, `/implement` or `/tdd` to build, `/code-review` before the PR.
+
+### Issue tracker
+
+Gitea issues on `default/rag-proxy` at git.kevynwatkins.com, through the `/api/v1` REST API (no sub-issues; parents use a checklist plus issue dependencies). The old GitHub issues were copied over on 22 Oct 2026. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`) plus `prd`, `review-finding`, `severity:*` and `priority:*`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root (not written yet, created lazily; see #9). See `docs/agents/domain.md`.
+
+## Running and testing
+
+```bash
+# Linux / macOS
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt   # add requirements-admin.txt for rag_admin/ingest work
+pytest tests/ -q
+
+# Run the proxy (reads env; source .env first)
+set -a; . ./.env; set +a
+python rag_proxy.py           # listens on PROXY_HOST:PROXY_PORT (default 0.0.0.0:8088)
+python -m rag_admin           # admin UI, needs ADMIN_PASSWORD / ADMIN_SESSION_SECRET
+```
+
+Windows: `.\scripts\run-tests.ps1` (see Learned Workspace Facts).
+
+Known state: see **Commands** above. There is no CI yet (#7).
+
+## Issue workflow
+
+- **Spec:** the PRD lives as a Gitea issue labelled `prd` (currently #6), not as a file. Implementation tickets carry `Parent: #6` and the PRD depends on them.
+- **Tickets:** vertical slices with `## What to build`, `## Acceptance criteria` and `## Blocked by`. Pick from `ready-for-agent`, lowest `priority:p*` first, nothing with an open blocker.
+- **Review findings:** labelled `review-finding` + `severity:*`, grouped under a tracking issue (currently #12). Each has file/line permalinks and a suggested fix; confirm the finding still holds before fixing it.
+- **Branches and PRs:** one ticket per branch, PR on Gitea into `main` with `Closes #<n>`. Never push to `main`. Run `/code-review` against `main` before opening the PR.
+- **Gitea vs GitHub:** Gitea is the primary remote and the only place to branch from or open PRs; GitHub is a mirror (#11).
+
 ## Skills (project)
 
 | Skill | Use when |
@@ -55,6 +116,8 @@ All work follows `.cursor/rules/engineering-principles.mdc` (Rules 1–8).
 | `rag-proxy-test` | Tests |
 | `rag-proxy-debug` | Missing/wrong RAG context |
 | `rag-proxy-deploy` | systemd, `.env`, homelab |
+
+These live in `.cursor/skills/`. The vendored Matt Pocock skills are in `.agents/skills/` (see **Agent skills** above).
 
 ## Skills (user — `~/.cursor/skills/`)
 

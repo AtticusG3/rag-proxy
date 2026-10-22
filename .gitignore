@@ -14,7 +14,9 @@ docker/config.yaml
 .ruff_cache/
 *.log
 .cursor/hooks/state/
-.agents/
+# Local agent state stays ignored; the vendored Matt Pocock skills are committed.
+.agents/*
+!.agents/skills/
 
 # Local ZIM sanitize spike dumps
 zim_spike_out/
