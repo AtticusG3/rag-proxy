@@ -1,36 +1,47 @@
-# Issue tracker: GitHub
+# Issue tracker: Gitea
 
-Issues and specs for this repo live as GitHub issues on **`AtticusG3/rag-proxy`**. Use the `gh` CLI for all operations.
+Issues, specs and PRs for this repo live on Kevyn's Gitea at **`git.kevynwatkins.com`**, repo **`default/rag-proxy`**. GitHub (`AtticusG3/rag-proxy`) is only a mirror. Its issues #23-#45 were copied here on 22 Oct 2026 (GitHub #n = Gitea #n-17) and the GitHub copies are frozen; don't use them.
 
-**Always pass `--repo AtticusG3/rag-proxy`** (or `-R`). In Kevyn's local clone `origin` is the Gitea primary (`git.kevynwatkins.com`) and `github` is the GitHub mirror, so `gh` can't reliably infer the repo from `git remote -v`. Gitea issues are not used for this repo.
+There's no `gh` equivalent assumed here. Use the Gitea REST API (`/api/v1`) with a token in the environment, or the official [`tea`](https://gitea.com/gitea/tea) CLI if it's installed and logged in. The API calls below are the ones the setup was done with.
+
+```bash
+G=https://git.kevynwatkins.com/api/v1/repos/default/rag-proxy
+H="Authorization: token $GITEA_TOKEN"   # never echo the token or put it in a file in the repo
+```
+
+The web UI sits behind Cloudflare and may refuse non-browser clients. The `/api/v1` paths are what to script against.
 
 ## Conventions
 
-- **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.
-- **Read an issue**: `gh issue view <number> --json number,title,body,labels,comments`.
-- **List issues**: `gh issue list --state open --json number,title,body,labels,comments --jq '[.[] | {number, title, body, labels: [.labels[].name], comments: [.comments[].body]}]'` with appropriate `--label` and `--state` filters.
-- **Make an issue a sub-issue of a parent**: `gh issue create --parent <parent> ...`, or `gh issue edit <parent> --add-sub-issue <child>` afterwards (`gh` 2.94+). Older `gh`: `gh api --method POST repos/<owner>/<repo>/issues/<parent>/sub_issues -F sub_issue_id=<child-db-id>` (database id, as in **Blocking** below). Without sub-issues, put `Part of #<parent>` at the top of the child body.
-- **Comment on an issue**: `gh issue comment <number> --body "..."`
-- **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
-- **Close**: `gh issue close <number> --comment "..."`
+- **Create an issue**: `curl -sS -X POST -H "$H" -H 'Content-Type: application/json' "$G/issues" -d @issue.json`, where `issue.json` is `{"title": "...", "body": "...", "labels": [<label ids>]}`. Labels are passed by **id**, not by name. Get them with `curl -sS -H "$H" "$G/labels?limit=50"`.
+- **Read an issue**: `curl -sS -H "$H" "$G/issues/<n>"`, and comments with `"$G/issues/<n>/comments"`.
+- **List issues**: `curl -sS -H "$H" "$G/issues?state=open&type=issues&labels=<name>&limit=50"`. `type=issues` matters, because Gitea returns PRs from this endpoint too.
+- **Comment**: `POST "$G/issues/<n>/comments"` with `{"body": "..."}`
+- **Labels**: `POST "$G/issues/<n>/labels"` with `{"labels": [<ids>]}` to add; `DELETE "$G/issues/<n>/labels/<id>"` to remove.
+- **Close**: `PATCH "$G/issues/<n>"` with `{"state": "closed"}`, after a comment saying why.
+- **Edit a body**: `PATCH "$G/issues/<n>"` with `{"body": "..."}`
 
-Don't rely on `gh` inferring the repo here (see the note at the top).
+Issues and PRs share one number space on Gitea, so a bare `#42` may be either. Resolve it with `GET "$G/pulls/42"` and fall back to `GET "$G/issues/42"`.
+
+### Parents and children (Gitea has no sub-issues)
+
+- The child's body starts with `Parent: #<parent>`.
+- The parent's body carries a checklist of its children (`- [ ] #<child> <title>`), ticked as they close.
+- The parent is **blocked by** each child through Gitea's native issue dependencies, so Gitea won't let the parent close while a child is open: `POST "$G/issues/<parent>/dependencies"` with `{"owner": "default", "repo": "rag-proxy", "index": <child>}`.
+
+### Blocking between tickets
+
+Use the same dependencies endpoint: `POST "$G/issues/<blocked>/dependencies"` with `{"owner": "default", "repo": "rag-proxy", "index": <blocker>}`. Also write it in the ticket's `## Blocked by` section, so it's readable without the UI. List the blockers of an issue with `GET "$G/issues/<n>/dependencies"`. A ticket is unblocked when all of them are closed.
 
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
 
-When set to `yes`, PRs run through the same labels and states as issues, using the `gh pr` equivalents:
-
-- **Read a PR**: `gh pr view <number> --comments` and `gh pr diff <number>` for the diff.
-- **List external PRs for triage**: `gh api --paginate 'repos/{owner}/{repo}/pulls?state=open' --jq '.[] | select(.author_association | IN("OWNER","MEMBER","COLLABORATOR") | not) | {number, title, author: .user.login, author_association, labels: [.labels[].name]}'`.
-- **Comment / label / close**: `gh pr comment`, `gh pr edit --add-label`/`--remove-label`, `gh pr close`.
-
-GitHub shares one number space across issues and PRs, so a bare `#42` may be either: resolve with `gh pr view 42` and fall back to `gh issue view 42`.
+When set to `yes`, PRs run through the same labels and states as issues: `GET "$G/pulls?state=open"`, `GET "$G/pulls/<n>.diff"`, and comment/label through the issue endpoints, since a PR is an issue on Gitea.
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue.
+Create a Gitea issue on `default/rag-proxy` as above.
 
 ## When a skill says "fetch the relevant ticket"
 
@@ -40,12 +51,12 @@ Read it as in **Read an issue** above.
 
 Used by `/wayfinder`. The **map** is a single issue with **child** issues as tickets.
 
-- **Map**: a single issue labelled `wayfinder:map`, holding the Notes / Decisions-so-far / Fog body. `gh issue create --label wayfinder:map`.
-- **Child ticket**: an issue linked to the map as a GitHub sub-issue (see **Make an issue a sub-issue of a parent**). Where sub-issues aren't enabled, add the child to a task list in the map body and put `Part of #<map>` at the top of the child body. Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`). Once claimed, the ticket is assigned to the driving dev.
-- **Blocking**: GitHub's **native issue dependencies**, the canonical, UI-visible representation. Add an edge with `gh api --method POST repos/<owner>/<repo>/issues/<child>/dependencies/blocked_by -F issue_id=<blocker-db-id>`, where `<blocker-db-id>` is the blocker's numeric **database id** (`gh api repos/<owner>/<repo>/issues/<n> --jq .id`, _not_ the `#number` or `node_id`). GitHub reports `issue_dependencies_summary.blocked_by` (open blockers only, the live gate). Where dependencies aren't available, fall back to a `Blocked by: #<n>, #<n>` line at the top of the child body. A ticket is unblocked when every blocker is closed.
-- **Frontier query**: list the map's open children (`gh issue list --state open`, scoped to the map's sub-issues / task list), drop any with an open blocker (`issue_dependencies_summary.blocked_by > 0`, or an open issue in the `Blocked by` line) or an assignee; first in map order wins.
-- **Claim**: `gh issue edit <n> --add-assignee @me`, the session's first write.
-- **Resolve**: `gh issue comment <n> --body "<answer>"`, then `gh issue close <n>`, then append a context pointer (gist + link) to the map's Decisions-so-far.
+- **Map**: one issue labelled `wayfinder:map` (create the label if missing), holding the Notes / Decisions-so-far / Fog body.
+- **Child ticket**: an issue with `Parent: #<map>` at the top, listed in the map's checklist, and the map blocked by it (see **Parents and children**). Labels: `wayfinder:<type>` (`research`/`prototype`/`grilling`/`task`).
+- **Blocking**: Gitea issue dependencies (see above), mirrored in a `Blocked by` line.
+- **Frontier query**: the map's open children with no open blockers and no assignee; first in checklist order wins.
+- **Claim**: `PATCH "$G/issues/<n>"` with `{"assignees": ["kevyn"]}` (or the agent's account), the session's first write.
+- **Resolve**: comment the answer, close the issue, then add a context pointer (gist + link) to the map's Decisions-so-far.
 
 ## Labels used in this repo
 
@@ -53,18 +64,18 @@ On top of the triage labels in `triage-labels.md`:
 
 | Label | Use |
 | --- | --- |
-| `prd` | A spec / PRD issue. Implementation tickets are its sub-issues. Current PRD: #23 |
-| `bug`, `enhancement`, `documentation` | Category (exactly one) |
-| `review-finding` | Came out of a code review. Body has file/line permalinks, evidence and a suggested fix. Review tracking issue: #29 |
+| `prd` | A spec / PRD issue; its tickets are its children. Current PRD: #6 |
+| `bug`, `enhancement`, `documentation` | Category (at most one) |
+| `review-finding` | Came out of a code review. Body has file/line permalinks pinned to a commit, the evidence, and a suggested fix. Review tracking issue: #12 |
 | `severity:high` / `severity:medium` / `severity:low` | Impact if it bites (review findings) |
 | `priority:p1` / `priority:p2` / `priority:p3` | Order to work in: do next / soon / when there's time |
 
 ## Ticket shape
 
-Tickets follow `/to-tickets`: a `## Parent` link, `## What to build` (end-to-end behaviour, not a layer list), `## Acceptance criteria` checkboxes, and `## Blocked by`. Native GitHub sub-issues link tickets to their parent. Blocking is written as a `Blocked by` section (GitHub's native dependencies are fine too).
+Tickets follow `/to-tickets`: `Parent: #<n>` at the top, `## What to build` (end-to-end behaviour, not a layer list), `## Acceptance criteria` checkboxes, and `## Blocked by`.
 
-## Git remotes and PRs
+## Branches and PRs
 
-- Branch from up-to-date `main`. Check Gitea `main` isn't ahead of GitHub `main` first (see the mirror sync ticket, #28).
-- Open PRs on GitHub against `main`. Never push straight to `main`.
-- Put `Closes #<n>` in the PR body for the ticket(s) it finishes.
+- Branch from up-to-date `main` on Gitea. Never push straight to `main`.
+- Open the PR on Gitea against `main` (`POST "$G/pulls"` with `{"head": "<branch>", "base": "main", "title": "...", "body": "..."}`) and put `Closes #<n>` in the body for the ticket(s) it finishes.
+- Don't merge your own PR; Kevyn merges.
