@@ -14,4 +14,4 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the 
 
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
 
-All five labels exist on `AtticusG3/rag-proxy` (`wontfix` was a GitHub default and is reused). Category labels are the GitHub defaults `bug` and `enhancement`.
+All five labels exist on Gitea `default/rag-proxy`, alongside `prd`, `bug`, `enhancement`, `documentation`, `review-finding`, `severity:*` and `priority:*`. `auto-agent` (created by autodev) opts a `ready-for-agent` ticket into the overnight worker; never put it on `ready-for-human`, `needs-*` or `prd` issues.
