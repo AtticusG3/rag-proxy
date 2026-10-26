@@ -54,7 +54,7 @@ flowchart LR
 | memgraphrag | `ENABLE_MEMGRAPHRAG` | Fact scoring + PPR + passages |
 | tools | `ENABLE_TOOLS` | Whitelisted file reads |
 | memory | `ENABLE_ROLLING_MEMORY` | Session summaries (`X-Conversation-Id`) |
-| context | *(always when hits exist)* | Assemble and inject; `ENABLE_TOKENIZER_ESTIMATE`, `ENABLE_SEMANTIC_DEDUPE`, `ENABLE_EMBED_CACHE` affect assembly |
+| context | *(always when hits exist)* | Assemble and inject; round-robins across hit sources (dense/sparse/graph/MemGraph) so one score scale cannot starve the budget; `ENABLE_TOKENIZER_ESTIMATE`, `ENABLE_SEMANTIC_DEDUPE`, `ENABLE_EMBED_CACHE` affect assembly |
 
 Related flags not tied to a single stage: `GATING_LOG_ONLY` (gating observe-only), `ENABLE_REQUEST_TRACE` / `ENABLE_JSON_LOGS` / `ENABLE_METRICS` (observability).
 
