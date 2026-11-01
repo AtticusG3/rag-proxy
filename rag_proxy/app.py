@@ -119,7 +119,7 @@ async def proxy(request: Request, path: str):
     request_t0 = time.perf_counter()
     body = await request.body()
 
-    skip_headers = {"host", "content-length", "transfer-encoding", "connection"}
+    skip_headers = {"host", "content-length", "transfer-encoding", "connection", "x-internal-token"}
     headers = {k: v for k, v in request.headers.items() if k.lower() not in skip_headers}
     capture_original_messages: list[dict] | None = None
     capture_ctx: RequestContext | None = None
