@@ -9,6 +9,13 @@ from pathlib import Path
 _ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 
 
+def validate_env_values(updates: dict[str, str]) -> None:
+    """Reject values that cannot be represented as one environment-file line."""
+    for key, value in updates.items():
+        if any(char in value for char in "\r\n\x00"):
+            raise ValueError(f"{key} must not contain CR, LF, or NUL")
+
+
 def read_env_file(path: str) -> dict[str, str]:
     """Parse KEY=VALUE lines; ignore comments and blanks."""
     file_path = Path(path)
@@ -27,6 +34,7 @@ def read_env_file(path: str) -> dict[str, str]:
 
 def write_env_file(path: str, updates: dict[str, str], *, create: bool = True) -> None:
     """Merge updates into an env file and atomically replace it."""
+    validate_env_values(updates)
     file_path = Path(path)
     existing = read_env_file(path) if file_path.is_file() else {}
     merged = {**existing, **updates}
