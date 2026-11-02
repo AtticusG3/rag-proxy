@@ -54,7 +54,7 @@ Optional shared secret when the proxy listens on `0.0.0.0` (LAN or Tailscale). W
 | --- | --- |
 | `X-Internal-Token` | Same string as `PROXY_INTERNAL_TOKEN` |
 
-When the env var is empty (default), the header is not required and behavior is unchanged.
+When the env var is empty (default), the header is not required. `X-Internal-Token` authenticates only to the proxy and is never forwarded upstream, even when the env var is empty. Upstream `Authorization` and other end-to-end headers are preserved.
 
 Example with token:
 
