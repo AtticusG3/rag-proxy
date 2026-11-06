@@ -7,6 +7,16 @@ import re
 from pathlib import Path
 
 _ENV_LINE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+_FORBIDDEN_VALUE_CHARS = ("\r", "\n", "\x00")
+
+
+def _validate_update_values(updates: dict[str, str]) -> None:
+    """Reject values that would break out of a single KEY=VALUE line."""
+    for key, value in updates.items():
+        if any(char in value for char in _FORBIDDEN_VALUE_CHARS):
+            raise ValueError(
+                f"{key} must not contain carriage return, newline, or NUL characters."
+            )
 
 
 def read_env_file(path: str) -> dict[str, str]:
@@ -27,6 +37,7 @@ def read_env_file(path: str) -> dict[str, str]:
 
 def write_env_file(path: str, updates: dict[str, str], *, create: bool = True) -> None:
     """Merge updates into an env file and atomically replace it."""
+    _validate_update_values(updates)
     file_path = Path(path)
     existing = read_env_file(path) if file_path.is_file() else {}
     merged = {**existing, **updates}

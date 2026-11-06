@@ -187,6 +187,55 @@ def test_ingest_pause_persists_in_sqlite(tmp_path: Path) -> None:
     assert store2.ingest_paused() is True
 
 
+def test_settings_save_route_newline_value_flashes_error_and_keeps_env_files(
+    tmp_path: Path,
+) -> None:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from rag_admin.routes import settings as settings_routes
+
+    db = AdminDatabase(str(tmp_path / "admin.sqlite"))
+    admin_env = tmp_path / "rag-admin.env"
+    proxy_env = tmp_path / "rag-proxy.env"
+    admin_env.write_text("INGEST_BATCH_SIZE=64\n", encoding="utf-8")
+    proxy_env.write_text("EMBED_URL=http://embed:8089\n", encoding="utf-8")
+    store = SettingsStore(
+        db,
+        admin_env_path=str(admin_env),
+        proxy_env_path=str(proxy_env),
+    )
+    worker = IngestWorker(
+        store.build_ingest_config(zim_dir=str(tmp_path), upload_dir=str(tmp_path)),
+        db.ingest,
+    )
+
+    app = FastAPI()
+    app.include_router(settings_routes.router)
+    app.state.settings_store = store
+    app.state.worker = worker
+    app.state.db = db
+
+    client = TestClient(app)
+    resp = client.post(
+        "/settings/save/ingest",
+        data={
+            "mode": "basic",
+            "INGEST_EMBED_URLS": "http://embed-a:8089\nRAG_ADMIN_RESTART_CMD=touch /tmp/pwned",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    location = resp.headers["location"]
+    assert "flash_level=error" in location
+    assert "INGEST_EMBED_URLS" in location
+    assert admin_env.read_text(encoding="utf-8") == "INGEST_BATCH_SIZE=64\n"
+    assert proxy_env.read_text(encoding="utf-8") == "EMBED_URL=http://embed:8089\n"
+    assert "INGEST_EMBED_URLS" not in read_env_file(str(admin_env))
+    assert "RAG_ADMIN_RESTART_CMD" not in read_env_file(str(admin_env))
+    assert "RAG_ADMIN_RESTART_CMD" not in read_env_file(str(proxy_env))
+
+
 def read_env_batch_size(path: Path) -> str:
     from rag_admin.env_file import read_env_file
 
