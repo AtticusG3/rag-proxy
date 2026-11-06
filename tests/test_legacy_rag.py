@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -183,7 +184,9 @@ def test_embed_text_uses_cache_when_enabled(monkeypatch):
         "rag_proxy.clients.retrieval_async.get_embedding",
         fake_get_embedding,
     )
-    monkeypatch.setattr("rag_proxy.clients.retrieval_async._embed_cache", {})
+    monkeypatch.setattr(
+        "rag_proxy.clients.retrieval_async._embed_cache", OrderedDict()
+    )
 
     async def run():
         first = await embed_text("cached query")

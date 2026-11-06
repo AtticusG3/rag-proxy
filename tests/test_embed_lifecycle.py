@@ -1,7 +1,13 @@
-"""Tests for on-demand nomic embed lifecycle (query embed unit only)."""
+"""Tests for on-demand nomic embed lifecycle (query embed unit only).
+
+Also covers the bounded LRU/TTL embed cache."""
 
 from __future__ import annotations
 
+import asyncio
+import re
+import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,6 +21,9 @@ from ingest.embed_lifecycle import (
     units_for_embed_urls,
 )
 from rag_admin.embed_idle_guard import EmbedIdleGuard
+from rag_proxy.clients import retrieval_async
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_unit_for_embed_url_maps_only_the_query_embed() -> None:
@@ -123,3 +132,91 @@ def test_idle_guard_keeps_warm_during_active_ingest(monkeypatch: pytest.MonkeyPa
 
     guard = EmbedIdleGuard(worker, job_runner)
     assert guard._should_stop_embed() is False
+
+
+def _embed_cache_env(
+    monkeypatch: pytest.MonkeyPatch, max_entries: int
+) -> "retrieval_async.OrderedDict[str, tuple[list[float], float]]":
+    """Enable the cache with a given cap and reset the module-level store."""
+    from collections import OrderedDict
+
+    monkeypatch.setattr(retrieval_async.settings, "enable_embed_cache", True)
+    monkeypatch.setattr(retrieval_async.settings, "embed_cache_max_entries", max_entries)
+    cache: "OrderedDict[str, tuple[list[float], float]]" = OrderedDict()
+    monkeypatch.setattr("rag_proxy.clients.retrieval_async._embed_cache", cache)
+    return cache
+
+
+def test_embed_cache_max_entries_evicts_oldest(monkeypatch: pytest.MonkeyPatch) -> None:
+    cache = _embed_cache_env(monkeypatch, 2)
+    calls: list[str] = []
+
+    async def fake_get_embedding(text: str):
+        calls.append(text)
+        return [float(len(text))]
+
+    monkeypatch.setattr(retrieval_async, "get_embedding", fake_get_embedding)
+
+    async def run() -> None:
+        for text in ("query-one", "query-two", "query-three"):
+            await retrieval_async.embed_text(text)
+
+    asyncio.run(run())
+
+    assert len(cache) <= 2
+    assert len(cache) == 2
+    assert calls == ["query-one", "query-two", "query-three"]
+    assert retrieval_async._cache_key("query-one") not in cache
+    assert retrieval_async._cache_key("query-three") in cache
+    # Evicted entry is re-embedded rather than served stale.
+    assert cache[next(iter(cache))][0] == [9.0]
+
+
+def test_embed_cache_expired_entry_removed_on_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    cache = _embed_cache_env(monkeypatch, 8)
+    key = retrieval_async._cache_key("stale query")
+    cache[key] = ([0.5], time.time() - retrieval_async._EMBED_CACHE_TTL - 1)
+
+    assert retrieval_async._embed_cache_get(key, time.time()) is None
+    assert key not in cache
+
+
+def test_embed_cache_hit_and_miss_counters(monkeypatch: pytest.MonkeyPatch) -> None:
+    from rag_proxy.observability import RAG_EMBED_CACHE_HITS, RAG_EMBED_CACHE_MISSES
+
+    cache = _embed_cache_env(monkeypatch, 8)
+    calls: list[str] = []
+
+    async def fake_get_embedding(text: str):
+        calls.append(text)
+        return [0.25]
+
+    monkeypatch.setattr(retrieval_async, "get_embedding", fake_get_embedding)
+    hits_before = RAG_EMBED_CACHE_HITS._value.get()
+    misses_before = RAG_EMBED_CACHE_MISSES._value.get()
+
+    async def run() -> None:
+        first = await retrieval_async.embed_text("counter query")
+        second = await retrieval_async.embed_text("counter query")
+        third = await retrieval_async.embed_text("counter query", no_cache=True)
+        assert first == [0.25]
+        assert second == [0.25]
+        assert third == [0.25]
+
+    asyncio.run(run())
+
+    assert RAG_EMBED_CACHE_MISSES._value.get() == misses_before + 1
+    assert RAG_EMBED_CACHE_HITS._value.get() == hits_before + 1
+    assert calls == ["counter query", "counter query"]
+    assert len(cache) == 1
+    # A hit moves the entry to the most-recently-used end.
+    assert next(reversed(cache.values()))[0] == [0.25]
+
+
+def test_embed_cache_max_entries_documented() -> None:
+    env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    configuration = (ROOT / "docs" / "configuration.md").read_text(encoding="utf-8")
+
+    assert re.search(r"(?m)^EMBED_CACHE_MAX_ENTRIES=2048\s*$", env_example)
+    assert "EMBED_CACHE_MAX_ENTRIES" in configuration
+

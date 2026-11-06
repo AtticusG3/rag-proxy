@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import logging
 import time
+from collections import OrderedDict
 
 import httpx
 
@@ -40,20 +41,50 @@ from rag_proxy.sidecar_client import (
 
 log = logging.getLogger("rag-proxy")
 
-_embed_cache: dict[str, tuple[list[float], float]] = {}
+_embed_cache: "OrderedDict[str, tuple[list[float], float]]" = OrderedDict()
 _EMBED_CACHE_TTL = 600.0
+EMBED_CACHE_MAX_ENTRIES_DEFAULT = 2048
+
+
+def embed_cache_max_entries() -> int:
+    """Bounded LRU capacity from settings, floored at one entry."""
+    return max(1, int(getattr(settings, "embed_cache_max_entries", EMBED_CACHE_MAX_ENTRIES_DEFAULT)))
 
 
 def embed_cache_stats() -> dict[str, int | float | bool]:
     return {
         "enabled": settings.enable_embed_cache,
         "entries": len(_embed_cache),
+        "max_entries": embed_cache_max_entries(),
         "ttl_sec": _EMBED_CACHE_TTL,
     }
 
 
 def _cache_key(text: str) -> str:
     return hashlib.sha256(text.strip().encode()).hexdigest()
+
+
+def _embed_cache_get(key: str, now: float) -> list[float] | None:
+    """Return a live cached vector, dropping the entry when it has expired."""
+    entry = _embed_cache.get(key)
+    if entry is None:
+        return None
+    vector, stored_at = entry
+    if now - stored_at >= _EMBED_CACHE_TTL:
+        _embed_cache.pop(key, None)
+        return None
+    _embed_cache.move_to_end(key)
+    return vector
+
+
+def _embed_cache_put(key: str, vector: list[float], now: float) -> None:
+    """Insert or refresh an entry and evict oldest entries past the cap."""
+    _embed_cache[key] = (vector, now)
+    _embed_cache.move_to_end(key)
+    max_entries = embed_cache_max_entries()
+    while len(_embed_cache) > max_entries:
+        oldest = next(iter(_embed_cache))
+        _embed_cache.pop(oldest, None)
 
 
 async def _ensure_query_embed() -> None:
@@ -135,16 +166,16 @@ async def embed_text(
     if settings.enable_embed_cache and not no_cache:
         key = _cache_key(text)
         now = time.time()
-        cached = _embed_cache.get(key)
-        if cached and now - cached[1] < _EMBED_CACHE_TTL:
+        cached = _embed_cache_get(key, now)
+        if cached is not None:
             record_embed_cache_hit()
             if cache_hits is not None:
                 cache_hits.append("embed")
-            return cached[0]
+            return cached
         record_embed_cache_miss()
         vector = await get_embedding(text)
         if vector is not None:
-            _embed_cache[key] = (vector, now)
+            _embed_cache_put(key, vector, now)
         return vector
     return await get_embedding(text)
 
