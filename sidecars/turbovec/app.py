@@ -21,7 +21,7 @@ log = logging.getLogger("turbovec-sidecar")
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant:6333").rstrip("/")
 DEFAULT_COLLECTION = os.getenv("QDRANT_COLLECTION", "nomad_knowledge_base")
-HOST = os.getenv("TURBOVEC_HOST", "0.0.0.0")
+HOST = os.getenv("TURBOVEC_HOST", "127.0.0.1")
 PORT = int(os.getenv("TURBOVEC_PORT", "8097"))
 DIM = int(os.getenv("TURBOVEC_DIM", str(DEFAULT_DIM)))
 BIT_WIDTH = int(os.getenv("TURBOVEC_BIT_WIDTH", str(DEFAULT_BIT_WIDTH)))
