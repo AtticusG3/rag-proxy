@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from datetime import datetime
 from urllib.parse import urlencode
@@ -44,16 +45,49 @@ templates.env.filters["format_dt"] = format_datetime
 templates.env.filters["format_size"] = format_size
 
 
+def trusted_proxy_networks() -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    """Parse ADMIN_TRUSTED_PROXIES (comma-separated IPs/CIDRs); skip bad entries."""
+    raw = os.getenv("ADMIN_TRUSTED_PROXIES", "")
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            continue
+    return networks
+
+
+def _peer_is_trusted_proxy(peer: str, networks: list) -> bool:
+    if not networks:
+        return False
+    try:
+        peer_ip = ipaddress.ip_address(peer)
+    except ValueError:
+        return False
+    return any(peer_ip in network for network in networks)
+
+
 def client_ip(request: Request) -> str:
-    """Client IP for rate limits: CF-Connecting-IP, then X-Forwarded-For, then peer."""
-    cf = request.headers.get("cf-connecting-ip")
-    if cf:
-        return cf.strip()
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client is not None:
-        return request.client.host
+    """Client IP for rate limits.
+
+    CF-Connecting-IP and X-Forwarded-For are trusted only when the TCP peer
+    is inside ADMIN_TRUSTED_PROXIES (comma-separated IPs/CIDRs, empty by
+    default = trust no forwarding headers). Otherwise the peer address is
+    used, so spoofed headers cannot bypass the login rate limit.
+    """
+    peer = request.client.host if request.client is not None else ""
+    if _peer_is_trusted_proxy(peer, trusted_proxy_networks()):
+        cf = request.headers.get("cf-connecting-ip")
+        if cf:
+            return cf.strip()
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    if peer:
+        return peer
     return "unknown"
 
 
