@@ -114,6 +114,7 @@ Default empty = no change (open proxy, same as before). Use when `PROXY_HOST=0.0
 | `ENABLE_TOOLS` | `false` | Whitelisted file reads |
 | `ENABLE_ROLLING_MEMORY` | `false` | Session summaries in SQLite |
 | `ENABLE_EMBED_CACHE` | `false` | In-request embed cache (respects `X-No-Cache`) |
+| `EMBED_CACHE_MAX_ENTRIES` | `2048` | Bounded LRU capacity for the embed cache; oldest entries evicted past the cap, expired entries dropped on access |
 | `ENABLE_TOKENIZER_ESTIMATE` | `false` | Use tiktoken (`cl100k_base`) for context budget and injection truncation |
 
 Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIVE_RAG_PLAN.md](COGNITIVE_RAG_PLAN.md).

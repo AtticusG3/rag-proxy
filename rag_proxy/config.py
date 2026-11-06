@@ -150,6 +150,9 @@ class Settings:
         default_factory=lambda: _env_bool("ENABLE_ROLLING_MEMORY", False)
     )
     enable_embed_cache: bool = field(default_factory=lambda: _env_bool("ENABLE_EMBED_CACHE", False))
+    embed_cache_max_entries: int = field(
+        default_factory=lambda: _env_int("EMBED_CACHE_MAX_ENTRIES", 2048)
+    )
     enable_json_logs: bool = field(default_factory=lambda: _env_bool("ENABLE_JSON_LOGS", False))
     enable_request_trace: bool = field(
         default_factory=lambda: _env_bool("ENABLE_REQUEST_TRACE", True)
