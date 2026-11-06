@@ -158,6 +158,16 @@ Mitigations:
 
 `PROXY_INTERNAL_TOKEN` is opt-in. When unset, behavior is unchanged. When set, missing or wrong tokens receive HTTP 401 before any upstream relay. Header details: [Headers and clients — Internal token](headers-and-clients.md#internal-token-proxy_internal_token).
 
+### Sidecars
+
+The rerank, sparse and TurboVec sidecars have no auth, and some of their endpoints are mutating: sparse `POST /reindex` starts a full rebuild from Qdrant (peaks at many GB of RAM), and TurboVec `POST /add`, `/remove`, `/reindex` and `/save` change or rewrite the dense index.
+
+So the sidecars bind to `127.0.0.1` by default. `RERANK_HOST`, `SPARSE_HOST` and `TURBOVEC_HOST` override this. Run them on the same host as the proxy and ingest worker and point `RERANKER_URL`, `SPARSE_INDEX_URL` and `TURBOVEC_URL` at `127.0.0.1`.
+
+Setting a sidecar host to `0.0.0.0`, or publishing its port, exposes these mutating endpoints to anyone on the LAN. Only do that behind a firewall or ACL that admits trusted hosts.
+
+Docker: the sidecar images set the host to `0.0.0.0` inside the container so the proxy container can reach them, and the `cognitive` profile publishes ports `8095`–`8097` on all interfaces. To keep a published port on loopback, put the address in its host-port variable in `docker/.env`, for example `SPARSE_INDEX_HOST_PORT=127.0.0.1:8096` (likewise `RERANKER_HOST_PORT` and `TURBOVEC_HOST_PORT`).
+
 ### GPU embed — legacy nomic unit (optional)
 
 Use this path only when you keep a dedicated nomic query embed on `:8089` (768-d). **Preferred:** llama-swap `embed-pool` (2560-d) via `EMBED_URL` — section above and [Configuration — Llama-swap embed cutover](configuration.md#llama-swap-embed-cutover-preferred).

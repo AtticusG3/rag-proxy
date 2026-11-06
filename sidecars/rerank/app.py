@@ -17,7 +17,7 @@ from core import rank_indices
 log = logging.getLogger("rerank-sidecar")
 
 MODEL_NAME = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-base")
-HOST = os.getenv("RERANK_HOST", "0.0.0.0")
+HOST = os.getenv("RERANK_HOST", "127.0.0.1")
 PORT = int(os.getenv("RERANK_PORT", "8095"))
 
 _encoder: Any = None
