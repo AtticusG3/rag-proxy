@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 from importlib import reload
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from rag_admin.rate_limit import LoginRateLimiter
+from rag_admin import helpers
 from rag_admin.helpers import client_ip
 from starlette.requests import Request
 
@@ -119,6 +121,49 @@ def test_client_ip_unknown_without_peer_and_trusted_proxies(
         "client": None,
     }
     assert client_ip(Request(scope)) == "unknown"
+
+
+def test_trusted_proxy_networks_are_parsed_once_per_env_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated calls with the same env value must not re-parse the value."""
+    helpers.reset_trusted_proxy_networks_cache()
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "10.0.0.0/8, not-an-ip ")
+
+    calls: list[str] = []
+    real_ip_network = ipaddress.ip_network
+
+    def counting_ip_network(entry, *args, **kwargs):
+        calls.append(entry)
+        return real_ip_network(entry, *args, **kwargs)
+
+    monkeypatch.setattr(ipaddress, "ip_network", counting_ip_network)
+    try:
+        first = helpers.trusted_proxy_networks()
+        assert first == [ipaddress.ip_network("10.0.0.0/8")]
+        parsed = list(calls)
+        assert helpers.trusted_proxy_networks() is first
+        assert calls == parsed
+
+        monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "172.16.0.0/12")
+        second = helpers.trusted_proxy_networks()
+        assert calls == parsed + ["172.16.0.0/12"]
+        assert second is not first
+    finally:
+        helpers.reset_trusted_proxy_networks_cache()
+
+
+def test_reset_trusted_proxy_networks_cache_forces_reparse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    helpers.reset_trusted_proxy_networks_cache()
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "10.0.0.0/8")
+    assert helpers.trusted_proxy_networks() is helpers.trusted_proxy_networks()
+
+    helpers.reset_trusted_proxy_networks_cache()
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "192.168.0.0/16")
+    assert helpers.trusted_proxy_networks() == [ipaddress.ip_network("192.168.0.0/16")]
+    helpers.reset_trusted_proxy_networks_cache()
 
 
 def test_login_rate_limiter_clears_on_success() -> None:
