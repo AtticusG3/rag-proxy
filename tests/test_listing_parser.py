@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from rag_admin.catalog.listing_parser import parse_directory_listing
 
@@ -33,6 +34,7 @@ def test_zim_files_are_subscribable() -> None:
     assert not infer_subscribable("devdocs", is_directory=True)
 
 
+@pytest.mark.network
 def test_parse_live_dotsrc_root() -> None:
     response = httpx.get("https://mirrors.dotsrc.org/kiwix/zim/", timeout=60.0)
     response.raise_for_status()
