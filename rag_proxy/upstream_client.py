@@ -173,8 +173,10 @@ async def register_stream(response: httpx.Response) -> int:
 async def touch_stream(key: int, *, seen_only: bool = False) -> None:
     """Record relay progress.
 
-    seen_only marks that a byte was relayed without moving the idle clock.
-    The first chunk uses that so a 1s touch throttle still counts as started.
+    Moves the idle clock to now and marks the stream as started. The first
+    relayed chunk uses this so UPSTREAM_STREAM_ABANDON_SEC counts from the first
+    byte, not from registration. seen_only marks a byte as relayed without
+    moving the idle clock.
     """
     async with _registry_lock():
         entry = _stream_registry.get(key)
@@ -229,7 +231,7 @@ async def _relay_upstream_chunks(
         async for chunk in upstream.aiter_bytes():
             now = time.monotonic()
             if not seen_bytes:
-                await touch_stream(reg_key, seen_only=True)
+                await touch_stream(reg_key)
                 seen_bytes = True
             elif now - last_touch >= _STREAM_TOUCH_INTERVAL_SEC:
                 await touch_stream(reg_key)
