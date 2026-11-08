@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import os
 import shutil
 import uuid
@@ -17,6 +18,7 @@ from rag_admin.config import settings
 from rag_admin.helpers import flash_redirect, templates, validated_ingest_file_path
 
 router = APIRouter()
+log = logging.getLogger("rag-admin")
 
 
 def _ensure_dirs() -> None:
@@ -97,17 +99,27 @@ async def upload_file(
         try:
             # Atomic no-clobber: raises FileExistsError if dest appeared during the copy.
             os.link(tmp, dest)
+        except FileExistsError:
+            raise
+        except OSError:
+            # Mount without hard links (exFAT, some SMB shares): re-check, then rename.
+            # shortcut: check-then-replace leaves a small race window, upgrade if same-name uploads run concurrently on such mounts.
+            if os.path.exists(dest):
+                raise FileExistsError(dest) from None
+            os.replace(tmp, dest)
         finally:
-            os.remove(tmp)
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(tmp)
 
     try:
         await asyncio.to_thread(_copy)
     except FileExistsError:
         return flash_redirect("/zim", f"{filename} already exists; upload not replaced.", level="error")
-    except Exception as exc:
+    except Exception:
+        log.exception("Upload of %s to %s failed", filename, dest_dir)
         with contextlib.suppress(OSError):
             os.remove(tmp)
-        return flash_redirect("/zim", f"Upload of {filename} failed: {exc}", level="error")
+        return flash_redirect("/zim", f"Upload of {filename} failed; check the server log.", level="error")
     db = request.app.state.db
     db.ingest.upsert_file_state(
         dest,

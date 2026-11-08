@@ -325,5 +325,49 @@ def test_upload_failure_no_partial_file(monkeypatch: pytest.MonkeyPatch, tmp_pat
     response, db, zim_dir = _upload(monkeypatch, tmp_path, "wiki.zim", b"data")
 
     assert "failed" in response.headers["location"]
+    assert "disk+full" not in response.headers["location"]
+    assert str(tmp_path).replace("/", "%2F") not in response.headers["location"]
     assert list(zim_dir.iterdir()) == []
     assert db.states == []
+
+
+def test_upload_without_hard_links_falls_back_to_replace(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from rag_admin.routes import zim
+
+    def no_link(src: object, dst: object) -> None:
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(zim.os, "link", no_link)
+    _, db, zim_dir = _upload(monkeypatch, tmp_path, "wiki.zim", b"data")
+
+    assert (zim_dir / "wiki.zim").read_bytes() == b"data"
+    assert db.states == [str(zim_dir / "wiki.zim")]
+    assert [p.name for p in zim_dir.iterdir()] == ["wiki.zim"]
+
+
+def test_upload_without_hard_links_still_rejects_existing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import shutil
+
+    from rag_admin.routes import zim
+
+    real_copy = shutil.copyfileobj
+
+    def copy_then_rival_lands(src: object, dst: object) -> None:
+        real_copy(src, dst)
+        (tmp_path / "zim" / "wiki.zim").write_bytes(b"winner")
+
+    def no_link(src: object, dst: object) -> None:
+        raise OSError(1, "Operation not permitted")
+
+    monkeypatch.setattr(zim.shutil, "copyfileobj", copy_then_rival_lands)
+    monkeypatch.setattr(zim.os, "link", no_link)
+    response, db, zim_dir = _upload(monkeypatch, tmp_path, "wiki.zim", b"loser")
+
+    assert "already+exists" in response.headers["location"]
+    assert (zim_dir / "wiki.zim").read_bytes() == b"winner"
+    assert db.states == []
+    assert [p.name for p in zim_dir.iterdir()] == ["wiki.zim"]
