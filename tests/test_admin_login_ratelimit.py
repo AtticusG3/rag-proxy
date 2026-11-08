@@ -182,47 +182,25 @@ def test_client_ip_invalid_cf_falls_back_to_forwarded_for(
     assert client_ip(Request(scope)) == "198.51.100.2"
 
 
-def test_trusted_proxy_networks_are_parsed_once_per_env_value(
+def test_trusted_proxy_networks_skips_bad_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "10.0.0.0/8, not-an-ip ,10.0.0/33")
+    assert helpers.trusted_proxy_networks() == [ipaddress.ip_network("10.0.0.0/8")]
+
+
+def test_client_ip_ipv4_mapped_ipv6_peer_matches_trusted_network(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Repeated calls with the same env value must not re-parse the value."""
-    helpers.reset_trusted_proxy_networks_cache()
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "10.0.0.0/8, not-an-ip ")
-
-    calls: list[str] = []
-    real_ip_network = ipaddress.ip_network
-
-    def counting_ip_network(entry, *args, **kwargs):
-        calls.append(entry)
-        return real_ip_network(entry, *args, **kwargs)
-
-    monkeypatch.setattr(ipaddress, "ip_network", counting_ip_network)
-    try:
-        first = helpers.trusted_proxy_networks()
-        assert first == [ipaddress.ip_network("10.0.0.0/8")]
-        parsed = list(calls)
-        assert helpers.trusted_proxy_networks() is first
-        assert calls == parsed
-
-        monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "172.16.0.0/12")
-        second = helpers.trusted_proxy_networks()
-        assert calls == parsed + ["172.16.0.0/12"]
-        assert second is not first
-    finally:
-        helpers.reset_trusted_proxy_networks_cache()
-
-
-def test_reset_trusted_proxy_networks_cache_forces_reparse(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    helpers.reset_trusted_proxy_networks_cache()
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "10.0.0.0/8")
-    assert helpers.trusted_proxy_networks() is helpers.trusted_proxy_networks()
-
-    helpers.reset_trusted_proxy_networks_cache()
-    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "192.168.0.0/16")
-    assert helpers.trusted_proxy_networks() == [ipaddress.ip_network("192.168.0.0/16")]
-    helpers.reset_trusted_proxy_networks_cache()
+    """A dual-stack peer like ::ffff:127.0.0.1 matches a 127.0.0.1 setting."""
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "127.0.0.1")
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/login",
+        "headers": [(b"x-forwarded-for", b"198.51.100.2, 10.0.0.1")],
+        "query_string": b"",
+        "client": ("::ffff:127.0.0.1", 12345),
+    }
+    assert client_ip(Request(scope)) == "198.51.100.2"
 
 
 def test_login_rate_limiter_clears_on_success() -> None:

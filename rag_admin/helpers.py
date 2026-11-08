@@ -45,19 +45,9 @@ templates.env.filters["format_dt"] = format_datetime
 templates.env.filters["format_size"] = format_size
 
 
-_trusted_networks_cache: tuple[str, list[ipaddress.IPv4Network | ipaddress.IPv6Network]] | None = None
-
-
 def trusted_proxy_networks() -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
-    """Parse ADMIN_TRUSTED_PROXIES (comma-separated IPs/CIDRs); skip bad entries.
-
-    Results are cached at module level and only re-parsed when the raw
-    environment value changes, so per-request calls stay cheap.
-    """
-    global _trusted_networks_cache
+    """Parse ADMIN_TRUSTED_PROXIES (comma-separated IPs/CIDRs); skip bad entries."""
     raw = os.getenv("ADMIN_TRUSTED_PROXIES", "")
-    if _trusted_networks_cache is not None and _trusted_networks_cache[0] == raw:
-        return _trusted_networks_cache[1]
     networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
     for entry in raw.split(","):
         entry = entry.strip()
@@ -67,14 +57,7 @@ def trusted_proxy_networks() -> list[ipaddress.IPv4Network | ipaddress.IPv6Netwo
             networks.append(ipaddress.ip_network(entry, strict=False))
         except ValueError:
             continue
-    _trusted_networks_cache = (raw, networks)
     return networks
-
-
-def reset_trusted_proxy_networks_cache() -> None:
-    """Drop the cached ADMIN_TRUSTED_PROXIES parsing (for tests/reconfiguration)."""
-    global _trusted_networks_cache
-    _trusted_networks_cache = None
 
 
 def _peer_is_trusted_proxy(peer: str, networks: list) -> bool:
@@ -84,6 +67,8 @@ def _peer_is_trusted_proxy(peer: str, networks: list) -> bool:
         peer_ip = ipaddress.ip_address(peer)
     except ValueError:
         return False
+    if isinstance(peer_ip, ipaddress.IPv6Address):
+        peer_ip = peer_ip.ipv4_mapped or peer_ip
     return any(peer_ip in network for network in networks)
 
 
