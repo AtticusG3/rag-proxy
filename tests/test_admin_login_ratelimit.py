@@ -123,6 +123,65 @@ def test_client_ip_unknown_without_peer_and_trusted_proxies(
     assert client_ip(Request(scope)) == "unknown"
 
 
+def test_client_ip_blank_forwarded_headers_fall_back_to_peer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Blank/whitespace forwarded values must not produce an empty client IP."""
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "127.0.0.1")
+    for headers in (
+        [(b"cf-connecting-ip", b" ")],
+        [(b"cf-connecting-ip", b"")],
+        [(b"x-forwarded-for", b" , 198.51.100.2")],
+        [(b"cf-connecting-ip", b" "), (b"x-forwarded-for", b"")],
+    ):
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/login",
+            "headers": headers,
+            "query_string": b"",
+            "client": ("127.0.0.1", 12345),
+        }
+        assert client_ip(Request(scope)) == "127.0.0.1"
+
+
+def test_client_ip_non_ip_forwarded_value_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forwarded value that is not a valid IP is not used as the key."""
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "127.0.0.1")
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/login",
+        "headers": [
+            (b"cf-connecting-ip", b"evil.example.com"),
+            (b"x-forwarded-for", b"not-an-ip, 198.51.100.2"),
+        ],
+        "query_string": b"",
+        "client": ("127.0.0.1", 12345),
+    }
+    assert client_ip(Request(scope)) == "127.0.0.1"
+
+
+def test_client_ip_invalid_cf_falls_back_to_forwarded_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_TRUSTED_PROXIES", "127.0.0.1")
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/login",
+        "headers": [
+            (b"cf-connecting-ip", b"junk"),
+            (b"x-forwarded-for", b"198.51.100.2, 10.0.0.1"),
+        ],
+        "query_string": b"",
+        "client": ("127.0.0.1", 12345),
+    }
+    assert client_ip(Request(scope)) == "198.51.100.2"
+
+
 def test_trusted_proxy_networks_are_parsed_once_per_env_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

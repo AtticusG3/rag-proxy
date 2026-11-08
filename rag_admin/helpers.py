@@ -87,6 +87,19 @@ def _peer_is_trusted_proxy(peer: str, networks: list) -> bool:
     return any(peer_ip in network for network in networks)
 
 
+def _forwarded_ip(raw: str | None) -> str | None:
+    """First entry of a forwarded header as a valid IP; None if blank or invalid."""
+    if raw is None:
+        return None
+    value = raw.split(",")[0].strip()
+    if not value:
+        return None
+    try:
+        return str(ipaddress.ip_address(value))
+    except ValueError:
+        return None
+
+
 def client_ip(request: Request) -> str:
     """Client IP for rate limits.
 
@@ -94,15 +107,20 @@ def client_ip(request: Request) -> str:
     is inside ADMIN_TRUSTED_PROXIES (comma-separated IPs/CIDRs, empty by
     default = trust no forwarding headers). Otherwise the peer address is
     used, so spoofed headers cannot bypass the login rate limit.
+
+    A forwarded value is used only if it parses as an IP address; blank or
+    invalid values fall through to the next source and finally the peer, so
+    the rate-limit key is never empty. The trusted proxy is expected to
+    overwrite (not append to) these headers.
     """
     peer = request.client.host if request.client is not None else ""
     if _peer_is_trusted_proxy(peer, trusted_proxy_networks()):
-        cf = request.headers.get("cf-connecting-ip")
+        cf = _forwarded_ip(request.headers.get("cf-connecting-ip"))
         if cf:
-            return cf.strip()
-        forwarded = request.headers.get("x-forwarded-for")
+            return cf
+        forwarded = _forwarded_ip(request.headers.get("x-forwarded-for"))
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            return forwarded
     if peer:
         return peer
     return "unknown"
