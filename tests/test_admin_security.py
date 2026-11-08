@@ -291,6 +291,29 @@ def test_upload_rejects_existing_filename(monkeypatch: pytest.MonkeyPatch, tmp_p
     assert [p.name for p in zim_dir.iterdir()] == ["wiki.zim"]
 
 
+def test_upload_same_name_race_does_not_overwrite(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import shutil
+
+    from rag_admin.routes import zim
+
+    real_copy = shutil.copyfileobj
+
+    def copy_then_rival_lands(src: object, dst: object) -> None:
+        real_copy(src, dst)
+        # A concurrent upload of the same name finishes while this copy is in flight.
+        (tmp_path / "zim" / "wiki.zim").write_bytes(b"winner")
+
+    monkeypatch.setattr(zim.shutil, "copyfileobj", copy_then_rival_lands)
+    response, db, zim_dir = _upload(monkeypatch, tmp_path, "wiki.zim", b"loser")
+
+    assert "already+exists" in response.headers["location"]
+    assert (zim_dir / "wiki.zim").read_bytes() == b"winner"
+    assert db.states == []
+    assert [p.name for p in zim_dir.iterdir()] == ["wiki.zim"]
+
+
 def test_upload_failure_no_partial_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from rag_admin.routes import zim
 

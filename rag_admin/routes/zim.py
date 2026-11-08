@@ -88,17 +88,22 @@ async def upload_file(
     dest = os.path.join(dest_dir, filename)
     if os.path.exists(dest):
         return flash_redirect("/zim", f"{filename} already exists; upload not replaced.", level="error")
-    # Short temp name in the same directory so os.replace stays on one filesystem.
+    # Temp name in the same directory so the link below stays on one filesystem.
     tmp = os.path.join(dest_dir, f".upload-{uuid.uuid4().hex}.part")
 
     def _copy() -> None:
         with open(tmp, "xb") as handle:
             shutil.copyfileobj(file.file, handle)
-        # shortcut: a same-named upload landing between the exists check and here is overwritten, upgrade to os.link if that matters
-        os.replace(tmp, dest)
+        try:
+            # Atomic no-clobber: raises FileExistsError if dest appeared during the copy.
+            os.link(tmp, dest)
+        finally:
+            os.remove(tmp)
 
     try:
         await asyncio.to_thread(_copy)
+    except FileExistsError:
+        return flash_redirect("/zim", f"{filename} already exists; upload not replaced.", level="error")
     except Exception as exc:
         with contextlib.suppress(OSError):
             os.remove(tmp)
