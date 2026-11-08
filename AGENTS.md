@@ -98,7 +98,7 @@ python -m rag_admin           # admin UI, needs ADMIN_PASSWORD / ADMIN_SESSION_S
 
 Windows: `.\scripts\run-tests.ps1` (see Learned Workspace Facts).
 
-Known state: see **Commands** above. There is no CI yet (#7).
+Known state: see **Commands** above. CI runs the offline suite on every push and PR (`.gitea/workflows/ci.yaml`, #7); the two known-red nodes — the internet-dependent listing parser test and the sometimes-flaky memgraphrag cache file — are deselected there.
 
 ## Issue workflow
 
