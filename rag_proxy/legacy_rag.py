@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from rag_proxy.clients.retrieval_async import get_embedding, search_qdrant_dense
 from rag_proxy.clients.retrieval_core import prepare_embed_text
-from rag_proxy.rag_context import RAG_CONTEXT_PREFIX
+from rag_proxy.rag_context import RAG_CONTEXT_PREFIX, wrap_injected_block
 
 __all__ = [
     "extract_query_text",
@@ -56,7 +56,7 @@ def extract_query_text(messages: list[dict]) -> str | None:
 def inject_context(messages: list[dict], chunks: list[str]) -> list[dict]:
     """Prepend retrieved context as a system message (or prefix an existing one)."""
     context_block = "\n\n---\n\n".join(chunks)
-    rag_prefix = f"{RAG_CONTEXT_PREFIX}{context_block}"
+    rag_prefix = wrap_injected_block(RAG_CONTEXT_PREFIX, context_block)
     messages = list(messages)
     if messages and messages[0]["role"] == "system":
         messages[0] = {**messages[0], "content": rag_prefix + "\n\n" + messages[0]["content"]}

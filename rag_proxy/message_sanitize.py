@@ -6,15 +6,23 @@ import copy
 from typing import Any
 
 from rag_proxy.legacy_rag import is_embeddable_user_query
-from rag_proxy.rag_context import RAG_CONTEXT_PREFIX
-
-ROLLING_MEMORY_PREFIX = "Operational memory (session):\n"
+from rag_proxy.rag_context import (
+    RAG_BLOCK_END,
+    RAG_BLOCK_START,
+    RAG_CONTEXT_PREFIX,
+    ROLLING_MEMORY_PREFIX,
+)
 
 
 def _strip_prefixed_block(content: str, prefix: str) -> str:
     if not content.startswith(prefix):
         return content
     remainder = content[len(prefix):]
+    if remainder.startswith(RAG_BLOCK_START + "\n"):
+        end = remainder.find("\n" + RAG_BLOCK_END)
+        if end != -1:
+            return remainder[end + len(RAG_BLOCK_END) + 1:].removeprefix("\n\n")
+    # Transcripts written before markers existed: cut at the first blank line.
     marker = "\n\n"
     if marker not in remainder:
         return ""

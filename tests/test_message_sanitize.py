@@ -2,6 +2,11 @@
 
 from rag_proxy.legacy_rag import inject_context
 from rag_proxy.message_sanitize import is_exportable_turn, sanitize_client_messages
+from rag_proxy.rag_context import (
+    RAG_CONTEXT_PREFIX,
+    ROLLING_MEMORY_PREFIX,
+    wrap_injected_block,
+)
 
 
 def test_sanitize_client_messages_removes_rag_prefix_but_keeps_system_prompt():
@@ -41,6 +46,42 @@ def test_sanitize_client_messages_strips_rolling_memory_prefix():
     out = sanitize_client_messages(messages)
 
     assert out[0]["content"] == "base instructions"
+
+
+def test_round_trip_multi_chunk_rag_block():
+    """Blank lines inside chunks must not leave retrieved text behind."""
+    messages = [
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": "hi"},
+    ]
+    chunks = ["chunk one", "chunk two\n\nmore of two", "chunk three\n\n\nand more"]
+
+    assert sanitize_client_messages(inject_context(messages, chunks)) == messages
+
+
+def test_round_trip_rolling_memory_block():
+    """A marked rolling-memory block with blank lines is stripped whole."""
+    block = wrap_injected_block(ROLLING_MEMORY_PREFIX, "old\n\nquery")
+    messages = [
+        {"role": "system", "content": block + "\n\nYou are helpful."},
+        {"role": "user", "content": "hi"},
+    ]
+
+    out = sanitize_client_messages(messages)
+
+    assert out[0]["content"] == "You are helpful."
+
+
+def test_old_unmarked_rag_block_still_stripped():
+    """Transcripts written before markers existed keep the first-blank-line rule."""
+    messages = [
+        {"role": "system", "content": f"{RAG_CONTEXT_PREFIX}old chunk\n\nYou are helpful."},
+        {"role": "user", "content": "hi"},
+    ]
+
+    out = sanitize_client_messages(messages)
+
+    assert out[0]["content"] == "You are helpful."
 
 
 def test_is_exportable_turn_skips_ui_meta_prompt():
