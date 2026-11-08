@@ -91,23 +91,27 @@ async def upload_file(
     if os.path.exists(dest):
         return flash_redirect("/zim", f"{filename} already exists; upload not replaced.", level="error")
     # Temp name in the same directory so the link below stays on one filesystem.
+    # A hard kill mid-copy leaves this hidden .part file behind; the scanner and listing ignore it.
+    # shortcut: no startup sweep of stale .upload-*.part files, add one if crashes during uploads become common.
     tmp = os.path.join(dest_dir, f".upload-{uuid.uuid4().hex}.part")
 
     def _copy() -> None:
-        with open(tmp, "xb") as handle:
-            shutil.copyfileobj(file.file, handle)
         try:
-            # Atomic no-clobber: raises FileExistsError if dest appeared during the copy.
-            os.link(tmp, dest)
-        except FileExistsError:
-            raise
-        except OSError:
-            # Mount without hard links (exFAT, some SMB shares): re-check, then rename.
-            # shortcut: check-then-replace leaves a small race window, upgrade if same-name uploads run concurrently on such mounts.
-            if os.path.exists(dest):
-                raise FileExistsError(dest) from None
-            os.replace(tmp, dest)
+            with open(tmp, "xb") as handle:
+                shutil.copyfileobj(file.file, handle)
+            try:
+                # Atomic no-clobber: raises FileExistsError if dest appeared during the copy.
+                os.link(tmp, dest)
+            except FileExistsError:
+                raise
+            except OSError:
+                # Mount without hard links (exFAT, some SMB shares): re-check, then rename.
+                # shortcut: check-then-replace leaves a small race window, upgrade if same-name uploads run concurrently on such mounts.
+                if os.path.exists(dest):
+                    raise FileExistsError(dest) from None
+                os.replace(tmp, dest)
         finally:
+            # Single cleanup for every outcome: copy failure, link failure, or success after link.
             with contextlib.suppress(FileNotFoundError):
                 os.remove(tmp)
 
@@ -117,8 +121,6 @@ async def upload_file(
         return flash_redirect("/zim", f"{filename} already exists; upload not replaced.", level="error")
     except Exception:
         log.exception("Upload of %s to %s failed", filename, dest_dir)
-        with contextlib.suppress(OSError):
-            os.remove(tmp)
         return flash_redirect("/zim", f"Upload of {filename} failed; check the server log.", level="error")
     db = request.app.state.db
     db.ingest.upsert_file_state(
