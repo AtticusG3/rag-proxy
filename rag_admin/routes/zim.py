@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import os
 import shutil
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -83,8 +86,23 @@ async def upload_file(
     dest_dir = settings.zim_dir if target == "zim" else settings.upload_dir
     filename = Path(file.filename or "upload.bin").name
     dest = os.path.join(dest_dir, filename)
-    with open(dest, "wb") as handle:
-        shutil.copyfileobj(file.file, handle)
+    if os.path.exists(dest):
+        return flash_redirect("/zim", f"{filename} already exists; upload not replaced.", level="error")
+    # Short temp name in the same directory so os.replace stays on one filesystem.
+    tmp = os.path.join(dest_dir, f".upload-{uuid.uuid4().hex}.part")
+
+    def _copy() -> None:
+        with open(tmp, "xb") as handle:
+            shutil.copyfileobj(file.file, handle)
+        # shortcut: a same-named upload landing between the exists check and here is overwritten, upgrade to os.link if that matters
+        os.replace(tmp, dest)
+
+    try:
+        await asyncio.to_thread(_copy)
+    except Exception as exc:
+        with contextlib.suppress(OSError):
+            os.remove(tmp)
+        return flash_redirect("/zim", f"Upload of {filename} failed: {exc}", level="error")
     db = request.app.state.db
     db.ingest.upsert_file_state(
         dest,
