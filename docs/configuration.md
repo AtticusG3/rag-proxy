@@ -278,7 +278,7 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `ADMIN_SESSION_TTL_SECONDS` | `604800` (7 days) | Server-side session lifetime; cookie `max-age` matches |
 | `ADMIN_LOGIN_MAX_ATTEMPTS` | `5` | Failed logins per client IP before lockout |
 | `ADMIN_LOGIN_LOCKOUT_MINUTES` | `15` | Lockout window for failed logins (HTTP 429) |
-| `ADMIN_TRUSTED_PROXIES` | *(empty)* | Comma-separated IPs/CIDRs allowed to set forwarding headers |
+| `ADMIN_TRUSTED_PROXIES` | *(empty)* | Comma-separated IPs/CIDRs allowed to set forwarding headers. Set this to your reverse proxy or tunnel address if admin sits behind one. If it is empty, all clients share the proxy's address for rate limiting. |
 | `ADMIN_ALLOW_INSECURE_DEFAULTS` | — | Set `true` for local dev only |
 
 **Session cookies (Track D):** Login creates a row in `admin_sessions` (same SQLite as `ADMIN_DB_PATH`). The cookie value is `session_id.exp.hmac` where `hmac` signs `session_id.exp` with `ADMIN_SESSION_SECRET`. Logout sets `revoked_at` on the row. Auth checks HMAC, expiry, and that the row exists and is not revoked. **Upgrading invalidates** old static `authenticated` cookies — users must log in again.
