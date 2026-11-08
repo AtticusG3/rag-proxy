@@ -124,6 +124,48 @@ def test_janitor_reaps_after_bytes_once_inter_chunk_idle_elapses():
     asyncio.run(_run())
 
 
+def test_first_byte_after_abandon_limit_survives_janitor():
+    """A cold-loaded stream whose first byte lands after the abandon limit lives on.
+
+    The post-first-byte idle clock starts at the first byte, not at registration.
+    """
+
+    async def _run() -> None:
+        clock = [1000.0]
+
+        async def slow_first_byte():
+            # Registered at t=1000; the first byte arrives 200s later.
+            clock[0] += 200
+            yield b"a"
+            yield b"b"
+
+        upstream = AsyncMock()
+        upstream.aiter_bytes = MagicMock(return_value=slow_first_byte())
+        request = AsyncMock()
+        request.is_disconnected = AsyncMock(return_value=False)
+        reg_key = id(upstream)
+
+        with patch.object(uc.time, "monotonic", side_effect=lambda: clock[0]):
+            with patch.object(uc.settings, "upstream_stream_abandon_sec", 120):
+                with patch.object(uc.settings, "upstream_first_byte_sec", 600):
+                    relay = uc.relay_upstream(request, upstream)
+                    assert await relay.__anext__() == b"a"
+
+                    await uc.reap_abandoned_streams()
+
+                    upstream.aclose.assert_not_called()
+                    assert reg_key in uc._stream_registry
+
+                    # Silence past the limit after the first byte is still reaped.
+                    clock[0] += 120
+                    await uc.reap_abandoned_streams()
+                    upstream.aclose.assert_awaited()
+                    assert reg_key not in uc._stream_registry
+                    await relay.aclose()
+
+    asyncio.run(_run())
+
+
 def test_janitor_keeps_active_long_streams():
     """Long-lived SSE with recent activity must not be closed by idle reaper."""
 
@@ -191,8 +233,9 @@ def test_relay_upstream_throttles_stream_registry_touch():
         request.is_disconnected = AsyncMock(return_value=False)
 
         reg_key = id(upstream)
-        # register, last_touch init, per-chunk now checks, touch_stream update on 3rd chunk
-        times = iter([0.0, 0.0, 0.1, 0.2, 1.5, 1.5])
+        # register, last_touch init, chunk a now + first-byte touch, chunk b now,
+        # chunk c now + touch_stream update
+        times = iter([0.0, 0.0, 0.1, 0.1, 0.2, 1.5, 1.5])
         last = [1.5]
 
         def fake_monotonic() -> float:
@@ -206,9 +249,9 @@ def test_relay_upstream_throttles_stream_registry_touch():
                 out.append(part)
                 ts = uc._stream_registry[reg_key][1]
                 if part == b"a":
-                    assert ts == 0.0
+                    assert ts == 0.1
                 elif part == b"b":
-                    assert ts == 0.0
+                    assert ts == 0.1
                 elif part == b"c":
                     assert ts == 1.5
 
