@@ -11,13 +11,8 @@ __all__ = ["should_bypass_heuristics", "run_tier0"]
 
 
 async def run_tier0(ctx: RequestContext) -> None:
-    # Header overrides are operator controls and must apply even
-    # when heuristic bypass is disabled.
-    if ctx.rag_mode_header in ("off", "force"):
-        ctx.stage_trace.extend(apply_retrieval_policy(ctx, "tier0"))
-        return
-
-    if not settings.enable_tier0_heuristics:
+    # The orchestrator has already applied X-RAG-Mode off/force before any stage runs.
+    if ctx.rag_mode_header in ("off", "force") or not settings.enable_tier0_heuristics:
         return
 
     ctx.stage_trace.extend(apply_retrieval_policy(ctx, "tier0"))

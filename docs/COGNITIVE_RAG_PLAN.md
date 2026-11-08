@@ -133,7 +133,7 @@ Registered in `pipeline_stages.py`; orchestrator runs in order, skipping disable
 
 Tier0 bypass and gating skip/light/full decisions live in `retrieval_policy.py`.
 
-The `tier0` stage is always registered when the cognitive pipeline is on (`enabled=True` in `pipeline_stages.py`). `ENABLE_TIER0_HEURISTICS` gates heuristic logic inside the stage; when false, tier0 no-ops except `X-RAG-Mode: off|force` header overrides.
+The `tier0` stage is always registered when the cognitive pipeline is on (`enabled=True` in `pipeline_stages.py`). `ENABLE_TIER0_HEURISTICS` gates heuristic logic inside the stage; when false, tier0 no-ops. `X-RAG-Mode: off|force` is applied once by the orchestrator before either stage list runs, so it also works with the cognitive pipeline off.
 
 ## Feature flag matrix
 

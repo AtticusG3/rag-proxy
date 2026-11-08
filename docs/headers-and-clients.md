@@ -136,7 +136,7 @@ When `TRANSCRIPT_HEADER_OPT_IN=false` (default), capture does not require this h
 
 ## Legacy mode headers
 
-With `ENABLE_COGNITIVE_PIPELINE=false`, `X-RAG-Mode: off` and `force` still apply where implemented in the orchestrator; tier0/gating are not active. `X-Conversation-Id` has no effect unless rolling memory is enabled.
+In legacy mode (`ENABLE_COGNITIVE_PIPELINE=false`), `X-RAG-Mode: off` and `force` both apply: the orchestrator reads the header once before it picks the legacy or cognitive stage list. `off` skips embed, search and context injection. `force` always retrieves; with no tier0 or gating stages in legacy mode, that matches `auto`. `X-Conversation-Id` has no effect unless rolling memory is enabled.
 
 ## Auth
 

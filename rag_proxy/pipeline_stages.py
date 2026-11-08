@@ -106,7 +106,7 @@ def build_legacy_pipeline_stages() -> list[PipelineStage]:
             name="retrieve",
             min_budget_ms=0,
             enabled=lambda: True,
-            should_run=lambda ctx: bool(ctx.query_text),
+            should_run=lambda ctx: bool(ctx.query_text) and _retrieval_active(ctx),
             run=_run_legacy_retrieve,
         ),
         PipelineStage(
