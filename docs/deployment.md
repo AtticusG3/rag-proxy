@@ -156,7 +156,7 @@ Mitigations:
 | Network | Firewall or Tailscale ACLs so only trusted hosts reach `PROXY_PORT` |
 | Application | Set `PROXY_INTERNAL_TOKEN` and configure clients to send `X-Internal-Token: <value>` on every request (including `GET /metrics`) |
 
-`PROXY_INTERNAL_TOKEN` is opt-in. When unset, behavior is unchanged. When set, missing or wrong tokens receive HTTP 401 before any upstream relay. Header details: [Headers and clients — Internal token](headers-and-clients.md#internal-token-proxy_internal_token).
+`PROXY_INTERNAL_TOKEN` is opt-in. When unset, behavior is unchanged. When set, missing or wrong tokens receive HTTP 401 before any upstream relay. The `X-Internal-Token` request header is always stripped before upstream forwarding so the shared secret never reaches llama-swap or other backends. Header details: [Headers and clients — Internal token](headers-and-clients.md#internal-token-proxy_internal_token).
 
 ### GPU embed — legacy nomic unit (optional)
 
