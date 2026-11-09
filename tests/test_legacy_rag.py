@@ -13,6 +13,8 @@ from conftest import FakeAsyncClient
 from rag_proxy.chunk_text import extract_chunk_text
 from rag_proxy.clients.retrieval_async import embed_text, get_embedding, search_qdrant_dense
 from rag_proxy.config import settings
+from rag_proxy.legacy_rag import inject_context
+from rag_proxy.rag_context import RAG_BLOCK_END, RAG_BLOCK_START
 
 
 def _mock_embed_client(post: AsyncMock):
@@ -225,3 +227,11 @@ def test_extract_chunk_text_payload_key_precedence(payload, expected):
 
 def test_extract_chunk_text_null_payload():
     assert extract_chunk_text({"payload": None}) == ""
+
+
+def test_inject_context_uses_marker_lines():
+    out = inject_context([{"role": "user", "content": "hi"}], ["a\n\nb", "c"])
+    lines = out[0]["content"].split("\n")
+    assert lines.count(RAG_BLOCK_START) == 1
+    assert lines.count(RAG_BLOCK_END) == 1
+    assert lines.index(RAG_BLOCK_START) < lines.index(RAG_BLOCK_END)

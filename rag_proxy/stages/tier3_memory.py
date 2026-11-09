@@ -10,6 +10,7 @@ from pathlib import Path
 
 from rag_proxy.config import settings
 from rag_proxy.context import RequestContext
+from rag_proxy.rag_context import ROLLING_MEMORY_PREFIX, wrap_injected_block
 
 log = logging.getLogger("rag-proxy")
 
@@ -68,7 +69,7 @@ async def run_memory(ctx: RequestContext) -> None:
         await asyncio.to_thread(_ensure_memory_schema, db_path)
         summary = await asyncio.to_thread(_load_summary, db_path, conv_id)
         if summary:
-            block = f"Operational memory (session):\n{summary}"
+            block = wrap_injected_block(ROLLING_MEMORY_PREFIX, summary)
             if ctx.messages and ctx.messages[0].get("role") == "system":
                 ctx.messages[0] = {
                     **ctx.messages[0],
