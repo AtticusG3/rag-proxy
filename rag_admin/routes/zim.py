@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 import os
 import shutil
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -14,6 +18,7 @@ from rag_admin.config import settings
 from rag_admin.helpers import flash_redirect, templates, validated_ingest_file_path
 
 router = APIRouter()
+log = logging.getLogger("rag-admin")
 
 
 def _ensure_dirs() -> None:
@@ -83,8 +88,40 @@ async def upload_file(
     dest_dir = settings.zim_dir if target == "zim" else settings.upload_dir
     filename = Path(file.filename or "upload.bin").name
     dest = os.path.join(dest_dir, filename)
-    with open(dest, "wb") as handle:
-        shutil.copyfileobj(file.file, handle)
+    if os.path.exists(dest):
+        return flash_redirect("/zim", f"{filename} already exists; upload not replaced.", level="error")
+    # Temp name in the same directory so the link below stays on one filesystem.
+    # A hard kill mid-copy leaves this hidden .part file behind; the scanner and listing ignore it.
+    # shortcut: no startup sweep of stale .upload-*.part files, add one if crashes during uploads become common.
+    tmp = os.path.join(dest_dir, f".upload-{uuid.uuid4().hex}.part")
+
+    def _copy() -> None:
+        try:
+            with open(tmp, "xb") as handle:
+                shutil.copyfileobj(file.file, handle)
+            try:
+                # Atomic no-clobber: raises FileExistsError if dest appeared during the copy.
+                os.link(tmp, dest)
+            except FileExistsError:
+                raise
+            except OSError:
+                # Mount without hard links (exFAT, some SMB shares): re-check, then rename.
+                # shortcut: check-then-replace leaves a small race window, upgrade if same-name uploads run concurrently on such mounts.
+                if os.path.exists(dest):
+                    raise FileExistsError(dest) from None
+                os.replace(tmp, dest)
+        finally:
+            # Single cleanup for every outcome: copy failure, link failure, or success after link.
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(tmp)
+
+    try:
+        await asyncio.to_thread(_copy)
+    except FileExistsError:
+        return flash_redirect("/zim", f"{filename} already exists; upload not replaced.", level="error")
+    except Exception:
+        log.exception("Upload of %s to %s failed", filename, dest_dir)
+        return flash_redirect("/zim", f"Upload of {filename} failed; check the server log.", level="error")
     db = request.app.state.db
     db.ingest.upsert_file_state(
         dest,
