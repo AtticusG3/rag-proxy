@@ -1,6 +1,6 @@
 # Admin Codemap
 
-**Last Updated:** 2026-09-22
+**Last Updated:** 2026-11-09
 **Entry Points:** `python -m rag_admin`, `rag_admin/app.py` (`create_app`)
 
 ## Architecture
@@ -12,7 +12,8 @@ Browser
 rag_admin FastAPI (:ADMIN_PORT, default 8087)
    |
    +-- routes/dashboard, explorer, zim, ingest, settings
-   +-- settings_store -> RAG_ADMIN_ENV_FILE / RAG_PROXY_ENV_FILE
+   +-- settings_store -> env_file.validate_env_values
+   |                    -> RAG_ADMIN_ENV_FILE / RAG_PROXY_ENV_FILE
    +-- IngestWorker (background)
    +-- embed / sidecar lifecycle guards (Linux systemd)
 ```
@@ -25,6 +26,7 @@ rag_admin FastAPI (:ADMIN_PORT, default 8087)
 | `rag_admin/auth.py` | Session cookie HMAC + SQLite sessions |
 | `rag_admin/config.py` | Admin/ingest env defaults |
 | `rag_admin/db.py` | Admin SQLite (queue, sessions, catalog) |
+| `rag_admin/env_file.py` | Atomic `KEY=VALUE` read/write; rejects CR/LF/NUL in values |
 | `rag_admin/settings_schema.py` | Settings field groups / defaults |
 | `rag_admin/settings_store.py` | Persist settings to env files + SQLite |
 | `rag_admin/settings_ui.py` | Settings form rendering helpers |
@@ -42,9 +44,10 @@ rag_admin FastAPI (:ADMIN_PORT, default 8087)
 ## Data Flow
 
 1. Operator configures via Settings UI (or env files).
-2. Ingest worker consumes queue rows from admin SQLite.
-3. Proxy cognitive flags written to `RAG_PROXY_ENV_FILE` require proxy restart.
-4. Some ingest keys hot-reload in the worker; capacity scale jobs rewrite pool env.
+2. `save_group` validates admin/proxy values (no CR/LF/NUL) before writing env files or SQLite; invalid saves flash an error and leave disk unchanged.
+3. Ingest worker consumes queue rows from admin SQLite.
+4. Proxy cognitive flags written to `RAG_PROXY_ENV_FILE` require proxy restart.
+5. Some ingest keys hot-reload in the worker; capacity scale jobs rewrite pool env.
 
 ## Related Areas
 
