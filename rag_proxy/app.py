@@ -51,6 +51,18 @@ logging.basicConfig(
 )
 log = logging.getLogger("rag-proxy")
 
+# Proxy-only headers (shared secret and per-request RAG controls) are consumed
+# here and must not leak to the upstream API.
+UPSTREAM_STRIPPED_HEADERS = frozenset(
+    {
+        "x-internal-token",
+        "x-rag-mode",
+        "x-no-cache",
+        "x-conversation-id",
+        "x-capture-log",
+    }
+)
+
 
 def _internal_token_ok(request: Request) -> bool:
     expected = settings.proxy_internal_token
@@ -121,6 +133,10 @@ async def proxy(request: Request, path: str):
 
     skip_headers = {"host", "content-length", "transfer-encoding", "connection"}
     headers = {k: v for k, v in request.headers.items() if k.lower() not in skip_headers}
+    # Proxy-only headers are consumed above/below but must not be forwarded upstream.
+    upstream_headers = {
+        k: v for k, v in headers.items() if k.lower() not in UPSTREAM_STRIPPED_HEADERS
+    }
     capture_original_messages: list[dict] | None = None
     capture_ctx: RequestContext | None = None
     should_capture = False
@@ -162,7 +178,7 @@ async def proxy(request: Request, path: str):
         upstream_req = client.build_request(
             method=request.method,
             url=f"{settings.llama_swap_url}/{path}",
-            headers=headers,
+            headers=upstream_headers,
             content=body,
             params=request.query_params,
         )
