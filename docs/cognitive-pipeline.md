@@ -43,7 +43,7 @@ flowchart LR
 
 | Stage | Flag | Purpose |
 | --- | --- | --- |
-| tier0 | `ENABLE_TIER0_HEURISTICS` | Fast path: skip embed/Qdrant for greetings/acks only. Stage always registered when cognitive pipeline is on; when the flag is false the stage no-ops except `X-RAG-Mode: off` or `force` header overrides. |
+| tier0 | `ENABLE_TIER0_HEURISTICS` | Fast path: skip embed/Qdrant for greetings/acks only. Stage always registered when cognitive pipeline is on; when the flag is false the stage no-ops. `X-RAG-Mode: off` or `force` is applied by the orchestrator before any stage runs. |
 | intent | `ENABLE_INTENT_ROUTER` | Classify query intent |
 | gating | `ENABLE_RETRIEVAL_GATING` | Skip/light/full retrieval |
 | routing | `ENABLE_MODEL_ROUTING` | Suggest or force model by intent |

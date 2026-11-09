@@ -22,6 +22,7 @@ from rag_proxy.pipeline_stages import (
     build_legacy_pipeline_stages,
     build_pipeline_stages,
 )
+from rag_proxy.retrieval_policy import apply_retrieval_policy
 
 log = logging.getLogger("rag-proxy")
 
@@ -106,6 +107,10 @@ def _needs_model_registry_refresh() -> bool:
 async def run_cognitive_pipeline(ctx: RequestContext) -> None:
     ctx.trace_id = ctx.trace_id or new_trace_id()
     ctx.cognitive_start_ms = time.perf_counter()
+
+    # X-RAG-Mode off/force is an operator override, so apply it once for both stage lists.
+    if ctx.rag_mode_header in ("off", "force"):
+        ctx.stage_trace.extend(apply_retrieval_policy(ctx, "tier0"))
 
     stages = _pipeline_stages_for_mode()
     try:

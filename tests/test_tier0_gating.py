@@ -44,26 +44,14 @@ def test_tier0_infra_beats_greeting_prefix():
     assert not should_bypass_heuristics(ctx)
 
 
-def test_tier0_header_off_skips_retrieval(monkeypatch):
+def test_tier0_leaves_rag_mode_header_to_orchestrator(monkeypatch):
+    """The orchestrator applies off/force once; tier0 must not trace or decide it again."""
     monkeypatch.setattr("rag_proxy.config.settings.enable_tier0_heuristics", True)
-    ctx = RequestContext(query_text="kubectl pods crash", rag_mode_header="off")
-    asyncio.run(tier0_heuristics.run_tier0(ctx))
-    assert ctx.retrieval == RetrievalDecision.SKIP
-
-
-def test_tier0_header_off_skips_when_heuristics_disabled(monkeypatch):
-    monkeypatch.setattr("rag_proxy.config.settings.enable_tier0_heuristics", False)
-    ctx = RequestContext(query_text="kubectl pods crash", rag_mode_header="off")
-    asyncio.run(tier0_heuristics.run_tier0(ctx))
-    assert ctx.retrieval == RetrievalDecision.SKIP
-
-
-def test_tier0_header_force_does_not_skip(monkeypatch):
-    monkeypatch.setattr("rag_proxy.config.settings.enable_tier0_heuristics", True)
-    ctx = RequestContext(query_text="hi", rag_mode_header="force")
-    asyncio.run(tier0_heuristics.run_tier0(ctx))
-    assert ctx.retrieval == RetrievalDecision.FULL
-    assert any("force" in t for t in ctx.stage_trace)
+    for header in ("off", "force"):
+        ctx = RequestContext(query_text="hi", rag_mode_header=header)
+        asyncio.run(tier0_heuristics.run_tier0(ctx))
+        assert ctx.retrieval == RetrievalDecision.FULL
+        assert ctx.stage_trace == []
 
 
 def test_gating_skips_simple_chat_with_confidence():
