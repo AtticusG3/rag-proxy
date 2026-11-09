@@ -1,6 +1,6 @@
 # Proxy Codemap
 
-**Last Updated:** 2026-09-22
+**Last Updated:** 2026-11-09
 **Entry Points:** `rag_proxy.py`, `python -m rag_proxy`, `rag_proxy/app.py`
 
 ## Architecture
@@ -10,7 +10,8 @@ Client POST /v1/chat/completions
         |
         v
   rag_proxy/app.py  ---- GET /metrics, GET /debug (native)
-        |
+        |                 (optional X-Internal-Token gate)
+        |                 strip hop-by-hop + x-internal-token
         v
   orchestrator.run_pipeline
         |

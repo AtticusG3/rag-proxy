@@ -85,6 +85,8 @@ The admin UI writes overrides to env files on disk — it does **not** hot-reloa
 
 Paths default to `/opt/ai/config/rag-admin.env` and `/opt/ai/config/rag-proxy.env` (`RAG_ADMIN_ENV_FILE`, `RAG_PROXY_ENV_FILE`). Shared keys on the ingest tab (`EMBED_URL`, `QDRANT_URL`, `QDRANT_COLLECTION`, `SPARSE_INDEX_URL`) are mirrored into both files.
 
+**One value per line:** `POST /settings/save/{group}` and `write_env_file` reject any admin/proxy field value that contains CR, LF, or NUL (`rag_admin/env_file.validate_env_values`). The save redirects with an error flash (for example `EMBED_URL must not contain CR, LF, or NUL`) and leaves both env files and admin SQLite unchanged. Paste single-line URLs and paths only — multiline secrets or accidental newline injection cannot be written into `KEY=VALUE` env files.
+
 **Env-only (not in Settings UI):** `UPSTREAM_*`, model registry JSON, transcript capture (except `ENABLE_TRANSCRIPT_CAPTURE`), and most latency-budget knobs — set in env and restart. Chunk size changes require `python scripts/requeue_all_ingest.py` for existing files.
 
 **Port topology:** Settings **Primary embed URL** defaults to `http://127.0.0.1:8089` in schema (legacy nomic). Set it to your production `EMBED_URL` (e.g. llama-swap `embed-pool` on `:8081`) — mirrored to `rag-proxy.env`. Bulk ingest uses `EMBED_URL` unless **Ingest embed URLs** (`INGEST_EMBED_URLS`) is set (comma-separated round-robin; empty = `EMBED_URL`).

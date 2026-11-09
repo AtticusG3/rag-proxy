@@ -140,6 +140,13 @@ journalctl -u rag-proxy -f | grep -E 'RAG:|trace=|WARNING'
 
 [Headers and clients](headers-and-clients.md)
 
+## Settings save fails with flash error (rag-admin)
+
+| Symptom | Check | Action |
+| --- | --- | --- |
+| Flash: `<KEY> must not contain CR, LF, or NUL` | Value pasted into Settings includes a line break or null byte | Re-enter a single-line value and save again. Env files and SQLite are left unchanged on rejection (`validate_env_values` in `rag_admin/env_file.py`) |
+| Save appears to succeed but proxy unchanged | Saved a proxy/cognitive tab without restart | Restart rag-proxy (or **Restart proxy** when `RAG_PROXY_RESTART_CMD` is set) |
+
 ## Ingest slow or stuck (rag-admin)
 
 | Symptom | Check | Action |
