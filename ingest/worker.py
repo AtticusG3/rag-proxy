@@ -38,6 +38,9 @@ from ingest.zim_reader import iter_zim_articles
 log = logging.getLogger("ingest.worker")
 
 _ENDPOINT_WAIT_SEC = 5.0
+# Pause after an endpoint outage before the file is retried; keeps the worker from spinning on a
+# dead embed server and starving database readers.
+_OUTAGE_BACKOFF_SEC = 1.0
 
 
 def _utc_now() -> str:
@@ -929,6 +932,12 @@ class IngestWorker:
                     file_path,
                     exc,
                 )
+                # A dead endpoint must not spin. Without this pause the loop re-claims the same
+                # file immediately, hammers the database with writes and starves readers (they
+                # report "database is locked"), and the outage is logged hundreds of times a
+                # second. The wait is interruptible so a stop does not hang the thread.
+                if self._stop.wait(_OUTAGE_BACKOFF_SEC):
+                    return
             except (KeyboardInterrupt, SystemExit):
                 raise
             except BaseException as exc:

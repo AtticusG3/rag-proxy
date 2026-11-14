@@ -40,6 +40,9 @@ class IngestDatabase:
     def _conn(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+        # Wait for a competing writer instead of raising "database is locked": the ingest worker
+        # and API readers share this file, and a short wait is always better than a 500.
+        conn.execute("PRAGMA busy_timeout = 5000")
         try:
             yield conn
             conn.commit()
