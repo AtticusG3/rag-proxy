@@ -1,11 +1,13 @@
-"""Security checks for rag-admin config and ingest path validation."""
+"""Security checks for rag-admin config, ingest path validation and auth middleware."""
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
-from fastapi import HTTPException
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
 
 from rag_admin.config import (
     DEFAULT_PASSWORD,
@@ -223,6 +225,43 @@ def test_validated_ingest_file_path_rejects_traversal(
         validated_ingest_file_path(str(traversal))
     assert exc_info.value.status_code == 400
     assert "must be under" in str(exc_info.value.detail)
+
+
+def _auth_client() -> TestClient:
+    from rag_admin.auth import AuthMiddleware
+
+    app = FastAPI()
+    app.add_middleware(AuthMiddleware)
+
+    @app.get("/api/settings/status")
+    def _status():
+        return {"ok": True}
+
+    @app.get("/settings")
+    def _settings_page():
+        return {"ok": True}
+
+    # TestClient re-raises server-side exceptions, so a middleware crash fails the test.
+    return TestClient(app)
+
+
+def test_unauthenticated_api_returns_json_401() -> None:
+    resp = _auth_client().get("/api/settings/status")
+    assert resp.status_code == 401
+    assert resp.json() == {"detail": "Not authenticated"}
+
+
+def test_unauthenticated_page_redirects_to_login() -> None:
+    resp = _auth_client().get("/settings", follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/login"
+
+
+def test_unauthenticated_api_no_traceback(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.DEBUG):
+        resp = _auth_client().get("/api/settings/status")
+    assert resp.status_code == 401
+    assert [r for r in caplog.records if r.exc_info] == []
 
 
 class _FakeDb:

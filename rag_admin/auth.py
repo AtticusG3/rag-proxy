@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 from fastapi import HTTPException, Request, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from rag_admin.config import settings
@@ -132,7 +132,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         db = _get_db(request)
         if path.startswith("/api/") and not is_authenticated(request, db):
-            raise HTTPException(status_code=401, detail="Not authenticated")
+            # Exception handlers do not wrap middleware, so raising here gives a 500.
+            return JSONResponse({"detail": "Not authenticated"}, status_code=401)
         if (
             not path.startswith("/api/")
             and path not in PUBLIC_PATHS
