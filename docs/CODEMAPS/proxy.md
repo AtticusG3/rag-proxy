@@ -1,6 +1,6 @@
 # Proxy Codemap
 
-**Last Updated:** 2026-11-09
+**Last Updated:** 2026-11-16
 **Entry Points:** `rag_proxy.py`, `python -m rag_proxy`, `rag_proxy/app.py`
 
 ## Architecture

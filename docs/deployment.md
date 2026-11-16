@@ -122,7 +122,7 @@ docker compose --profile qdrant --profile cognitive up -d --build
 # docker compose --profile llama-swap up -d --build
 ```
 
-Service map, env wiring, sidecar APIs: [docker/README.md](../docker/README.md).
+Service map, env wiring, host-port overrides (`RAG_PROXY_HOST_PORT`, sidecar `*_HOST_PORT`, `QDRANT_MEM_LIMIT`), and sidecar APIs: [docker/README.md](../docker/README.md).
 
 ## Cognitive rollout
 
