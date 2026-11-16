@@ -30,12 +30,12 @@ rag_admin FastAPI (:ADMIN_PORT, default 8087)
 | `rag_admin/settings_schema.py` | Settings field groups / defaults |
 | `rag_admin/settings_store.py` | Persist settings to env files + SQLite |
 | `rag_admin/settings_ui.py` | Settings form rendering helpers |
-| `rag_admin/job_runner.py` | Background jobs (MemGraph build, scale) |
+| `rag_admin/job_runner.py` | Background jobs (`memgraph_build`, `sidecar_migrate`); `reconcile_orphans` on startup |
 | `rag_admin/routes/dashboard.py` | Dashboard / jobs views |
 | `rag_admin/routes/explorer.py` | Content explorer + subscriptions |
 | `rag_admin/routes/zim.py` | ZIM / upload pages |
 | `rag_admin/routes/ingest.py` | `/api/ingest/*` queue API |
-| `rag_admin/routes/settings.py` | Settings HTML + save / status / restart |
+| `rag_admin/routes/settings.py` | Settings HTML + save / status / restart / sidecar migrate / MemGraph build |
 
 ## UI templates
 
@@ -47,7 +47,8 @@ rag_admin FastAPI (:ADMIN_PORT, default 8087)
 2. `save_group` validates admin/proxy values (no CR/LF/NUL) before writing env files or SQLite; invalid saves flash an error and leave disk unchanged.
 3. Ingest worker consumes queue rows from admin SQLite.
 4. Proxy cognitive flags written to `RAG_PROXY_ENV_FILE` require proxy restart.
-5. Some ingest keys hot-reload in the worker; capacity scale jobs rewrite pool env.
+5. Some ingest keys hot-reload in the worker (batch size, pool URLs, `EMBED_MODEL`, pause, reindex modes).
+6. Background jobs: **Migrate Qdrant → sidecars** (`scripts/migrate_qdrant_sidecars.py`) and MemGraph build; logs under `RAG_ADMIN_JOB_LOG_DIR`. On admin startup, `reconcile_orphans()` marks SQLite `running` rows whose process is gone as `failed` so Start/Stop work again after a restart.
 
 ## Related Areas
 

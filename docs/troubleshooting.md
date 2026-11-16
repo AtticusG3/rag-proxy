@@ -25,6 +25,9 @@ flowchart TD
 | Gating skipped retrieval | Cognitive mode: `ENABLE_REQUEST_TRACE=true`; look for `retrieval=skip` — try `X-RAG-Mode: force` |
 | Query mismatch | Rephrase; embed uses last **user** message only |
 | TurboVec hits with empty text | Proxy folds Qdrant dashed UUIDs onto bare MD5 hex before payload merge (`canonical_point_id`). On older builds without that fold, dense ids and Qdrant payloads miss — upgrade, or confirm ingest dual-write and TurboVec `*.ids.sqlite` match the collection |
+| TurboVec/BM25 counts lag Qdrant after bulk load | Dual-write missed older points, or collection was wiped without sidecar reindex | Settings **Migrate Qdrant → sidecars** (or `scripts/migrate_qdrant_sidecars.py`); already-synced sidecars skip. Then flip `DENSE_BACKEND=turbovec` only if TurboVec is primary |
+| Ingest queue crawls after every file | `INGEST_TURBOVEC_REINDEX=each` full-scrolls Qdrant per file | Set `idle` or `off`; use Migrate / `POST /reindex` for recovery |
+| Reindex running while ingest continues | Expected | TurboVec journals live `/add`/`/remove` during staged rebuild and replays before swap — no need to pause solely for reindex |
 | Embed 500 / context overflow on long queries | Query embed shrinks to 1200 chars and retries without probing llama-swap `/running`. Lower `EMBED_MAX_CHARS` if the embed model context is smaller than your default |
 
 ## Never injects / RAG silent
@@ -146,6 +149,8 @@ journalctl -u rag-proxy -f | grep -E 'RAG:|trace=|WARNING'
 | --- | --- | --- |
 | Flash: `<KEY> must not contain CR, LF, or NUL` | Value pasted into Settings includes a line break or null byte | Re-enter a single-line value and save again. Env files and SQLite are left unchanged on rejection (`validate_env_values` in `rag_admin/env_file.py`) |
 | Save appears to succeed but proxy unchanged | Saved a proxy/cognitive tab without restart | Restart rag-proxy (or **Restart proxy** when `RAG_PROXY_RESTART_CMD` is set) |
+| Migrate / MemGraph **Start** disabled with no live process | Admin restarted while SQLite still had `status=running` | Current builds call `reconcile_orphans()` on startup and mark dead rows `failed`; restart rag-admin or clear the stuck row, then Start again |
+| PDF ingest: password-protected / AES errors | Owner-encrypted "empty password" PDF, or missing `cryptography` | Install admin deps (`requirements-admin.txt` includes `cryptography` for pypdf AES). True user passwords cannot be opened — remove protection or skip the file |
 
 ## Ingest slow or stuck (rag-admin)
 

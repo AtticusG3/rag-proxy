@@ -15,6 +15,7 @@ Helper scripts for operators and homelab dev. Run from repo root unless noted.
 | [`run-tests.ps1`](run-tests.ps1) | Offline pytest (Windows; uses `.venv` when present) |
 | [`check_ingest_queue.py`](check_ingest_queue.py) | Print ingest queue status counts from admin SQLite (`kb_ingest_state`) |
 | [`clear_qdrant_collection.py`](clear_qdrant_collection.py) | Drop and recreate ingest Qdrant collection (destructive; loads `rag-admin.env`) |
+| [`migrate_qdrant_sidecars.py`](migrate_qdrant_sidecars.py) | One-shot Qdrant → TurboVec/BM25 rebuild (skip if synced); same job as Settings **Migrate** |
 
 See also: [Ingest and admin](../docs/ingest-and-admin.md), [MemGraphRAG](../docs/memgraphrag.md), [Configuration](../docs/configuration.md).
 

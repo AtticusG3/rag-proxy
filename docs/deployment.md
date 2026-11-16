@@ -41,6 +41,7 @@ Default ports from `.env.example` (all overridable):
 | Qdrant | `6333` | `QDRANT_URL` — same host or remote |
 | Reranker (optional) | `8095` | Cognitive sidecar |
 | Sparse index (optional) | `8096` | BM25 sidecar |
+| TurboVec dense (optional) | `8097` | Cognitive sidecar (`TURBOVEC_URL`, `DENSE_BACKEND=turbovec`) |
 | RAG admin UI (optional) | `8087` | `ADMIN_PORT` — only if `rag_admin` runs on this host |
 
 **Port collision:** default `ADMIN_PORT` and the documented second proxy instance both use `8087`. On one host, set `ADMIN_PORT` or `PROXY_PORT` to different values before running both.
