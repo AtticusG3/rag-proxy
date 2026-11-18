@@ -4,9 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   pytest:
+    # Mirrored GitHub PR branches (gh-pr/*) carry code from outside contributors.
+    # They are not tested automatically; a maintainer starts this workflow by hand after review.
+    if: ${{ !startsWith(github.head_ref, 'gh-pr/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
