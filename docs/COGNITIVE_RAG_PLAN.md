@@ -155,7 +155,7 @@ The `tier0` stage is always registered when the cognitive pipeline is on (`enabl
 | `ENABLE_GRAPH_LOOKUP` | false | SQLite infra graph |
 | `ENABLE_MEMGRAPHRAG` | false | Three-layer memory + PPR passage retrieval |
 | `ENABLE_TOOLS` | false | Whitelisted file reads |
-| `ENABLE_ROLLING_MEMORY` | false | Session summaries in SQLite |
+| `ENABLE_ROLLING_MEMORY` | false | Last-question recall per conversation in SQLite (not a model summary) |
 | `ENABLE_REQUEST_TRACE` | true | Per-request pipeline summary logs |
 | `ENABLE_JSON_LOGS` | false | JSON pipeline logs (vs text) |
 | `ENABLE_METRICS` | false | `GET /metrics` on proxy port |

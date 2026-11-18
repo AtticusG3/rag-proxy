@@ -1,4 +1,4 @@
-"""Rolling session memory (SQLite)."""
+"""Rolling session memory (SQLite): recalls the last saved question per conversation."""
 
 from __future__ import annotations
 
@@ -33,10 +33,14 @@ def _ensure_memory_schema(db_path: Path) -> None:
 def _load_summary(db_path: Path, conversation_id: str) -> str | None:
     if not db_path.exists():
         return None
+    # TTL <= 0 means rows never expire. Expired rows are skipped, not deleted;
+    # the next refresh overwrites them.
+    ttl = settings.memory_ttl_hours
+    cutoff = time.time() - ttl * 3600 if ttl > 0 else 0
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
-            "SELECT summary FROM session_memory WHERE conversation_id = ?",
-            (conversation_id,),
+            "SELECT summary FROM session_memory WHERE conversation_id = ? AND updated_at >= ?",
+            (conversation_id, cutoff),
         ).fetchone()
         return row[0] if row else None
 
@@ -80,7 +84,9 @@ async def run_memory(ctx: RequestContext) -> None:
             ctx.stage_trace.append("memory:loaded")
 
         user_turns = sum(1 for m in ctx.messages if m.get("role") == "user")
-        if user_turns > 0 and user_turns % settings.memory_refresh_turns == 0:
+        refresh = settings.memory_refresh_turns
+        if refresh > 0 and user_turns > 0 and user_turns % refresh == 0:
+            # shortcut: stores the latest question verbatim, not a model summary, upgrade if real summaries are wanted
             brief = (ctx.query_text or "")[:500]
             await asyncio.to_thread(_save_summary, db_path, conv_id, brief, user_turns)
             ctx.stage_trace.append("memory:refreshed")

@@ -115,7 +115,7 @@ Default empty = no change (open proxy, same as before). Use when `PROXY_HOST=0.0
 | `ENABLE_MODEL_ROUTING` | `false` | Model override by intent |
 | `MODEL_ROUTING_MODE` | `suggest` | `suggest` or `force` |
 | `ENABLE_TOOLS` | `false` | Whitelisted file reads |
-| `ENABLE_ROLLING_MEMORY` | `false` | Session summaries in SQLite |
+| `ENABLE_ROLLING_MEMORY` | `false` | Last-question recall per conversation in SQLite (not a model summary) |
 | `ENABLE_EMBED_CACHE` | `false` | In-request embed cache (respects `X-No-Cache`) |
 | `EMBED_CACHE_MAX_ENTRIES` | `2048` | Bounded LRU capacity for the embed cache; oldest entries evicted past the cap, expired entries dropped on access |
 | `ENABLE_TOKENIZER_ESTIMATE` | `false` | Use tiktoken (`cl100k_base`) for context budget and injection truncation |
@@ -211,8 +211,8 @@ TurboVec remains the live ANN index; Qdrant is then payload (+ vector source for
 | `TOOL_BUDGET_MS` | `300` | Tools stage min budget |
 | `TOOL_MAX_OUTPUT_CHARS` | `4000` | Max chars read per tool |
 | `MEMORY_DB_PATH` | `/var/lib/rag_proxy/memory.sqlite` | Rolling memory SQLite |
-| `MEMORY_TTL_HOURS` | `72` | Session memory expiry |
-| `MEMORY_REFRESH_TURNS` | `8` | Turns before memory refresh |
+| `MEMORY_TTL_HOURS` | `72` | Saved memory older than this is not injected (`0` = never expires) |
+| `MEMORY_REFRESH_TURNS` | `8` | Save the current question every N user turns (`0` = never save) |
 | `MEMGRAPHRAG_DB_PATH` | `/var/lib/rag_proxy/memgraphrag.sqlite` | MemGraphRAG index |
 | `MEMGRAPHRAG_FACT_TOP_K` | `20` | Fact candidates for PPR |
 | `MEMGRAPHRAG_PPR_DAMPING` | `0.85` | PageRank damping |

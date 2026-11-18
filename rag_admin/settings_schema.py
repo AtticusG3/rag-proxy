@@ -647,7 +647,7 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "int",
         "proxy",
         "72",
-        help_text="Expire memory entries after this many hours.",
+        help_text="Saved memory older than this many hours is not injected. 0 = never expires.",
     ),
     SettingField(
         "MEMORY_REFRESH_TURNS",
@@ -656,7 +656,7 @@ SETTING_FIELDS: tuple[SettingField, ...] = (
         "int",
         "proxy",
         "8",
-        help_text="Refresh memory summary every N conversation turns.",
+        help_text="Save the current question as memory every N user turns. 0 = never save.",
     ),
     # MemGraphRAG runtime (proxy env)
     SettingField(
