@@ -18,7 +18,7 @@ from rag_proxy.memgraphrag.memory import ThreeLayerMemory, load_memory
 log = logging.getLogger("rag-proxy.memgraphrag.cache")
 
 _lock = threading.Lock()
-_cache: dict[str, tuple[float, MemoryIndex]] = {}
+_cache: dict[str, tuple[tuple[int, int, int], MemoryIndex]] = {}
 _load_locks: dict[str, threading.Lock] = {}
 
 
@@ -75,15 +75,28 @@ def _load_index(path: Path) -> MemoryIndex:
     return build_memory_index(memory)
 
 
+def _file_key(path: Path) -> tuple[int, int, int]:
+    """Cache stamp for the SQLite file: (st_mtime_ns, st_size, st_ino), or (0, 0, 0) if missing.
+
+    A float st_mtime can stay equal across two saves inside one timestamp tick, so the
+    integer mtime is compared together with size and inode.
+    """
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return (0, 0, 0)
+    return (st.st_mtime_ns, st.st_size, st.st_ino)
+
+
 def get_memory_index(db_path: str | Path) -> MemoryIndex:
-    """Return cached MemoryIndex, reloading when the SQLite file mtime changes."""
+    """Return cached MemoryIndex, reloading when the SQLite file's stamp changes."""
     path = Path(db_path)
     key = str(path.resolve())
-    mtime = path.stat().st_mtime if path.exists() else 0.0
+    stamp = _file_key(path)
 
     with _lock:
         cached = _cache.get(key)
-        if cached is not None and cached[0] == mtime:
+        if cached is not None and cached[0] == stamp:
             log.debug(
                 "Reusing cached memory index: %s (%d facts)",
                 path.name,
@@ -95,7 +108,7 @@ def get_memory_index(db_path: str | Path) -> MemoryIndex:
     with load_lock:
         with _lock:
             cached = _cache.get(key)
-            if cached is not None and cached[0] == mtime:
+            if cached is not None and cached[0] == stamp:
                 log.debug(
                     "Reusing cached memory index: %s (%d facts)",
                     path.name,
@@ -106,7 +119,7 @@ def get_memory_index(db_path: str | Path) -> MemoryIndex:
         index = _load_index(path)
 
         with _lock:
-            _cache[key] = (mtime, index)
+            _cache[key] = (stamp, index)
         return index
 
 
