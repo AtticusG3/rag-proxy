@@ -31,7 +31,7 @@ from ingest.queue_order import order_queue_rows
 from ingest.scanner import scan_storage
 from ingest.sidecar_lifecycle import ensure_sparse_sidecar, ensure_turbovec_sidecar
 from ingest.stall import interrupt_error_message, is_stalled, stall_error_message
-from ingest.turbovec_client import trigger_reindex
+from ingest.turbovec_client import sidecar_auth_headers, trigger_reindex
 from ingest.types import determine_file_type, EndpointUnavailable, IngestAborted
 from ingest.zim_reader import iter_zim_articles
 
@@ -333,7 +333,11 @@ def trigger_sparse_reindex(config: IngestConfig) -> int | None:
     url = f"{config.sparse_index_url.rstrip('/')}/reindex"
     try:
         with httpx.Client(timeout=1800.0) as client:
-            response = client.post(url, json={"collection": config.qdrant_collection})
+            response = client.post(
+                url,
+                json={"collection": config.qdrant_collection},
+                headers=sidecar_auth_headers(),
+            )
             response.raise_for_status()
             return int(response.json().get("docs", 0))
     except Exception as exc:

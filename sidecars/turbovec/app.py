@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -12,7 +13,7 @@ from typing import Any, List, Optional
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core import DEFAULT_BIT_WIDTH, DEFAULT_DIM, HAS_TURBOVEC, TurboIndex
@@ -38,6 +39,20 @@ AUTO_SAVE = os.getenv("TURBOVEC_AUTO_SAVE", "true").strip().lower() in (
     "yes",
     "on",
 )
+# Optional shared secret for the mutating routes (/add, /remove, /reindex,
+# /save change or rewrite the dense index), checked via X-Internal-Token.
+# Empty (default) means no check at all, so an unset token behaves exactly as
+# before. Read-only routes never require it.
+SIDECAR_TOKEN = os.getenv("SIDECAR_TOKEN", "").strip()
+
+
+def require_sidecar_token(request: Request) -> None:
+    if not SIDECAR_TOKEN:
+        return
+    provided = request.headers.get("x-internal-token", "")
+    if not hmac.compare_digest(provided, SIDECAR_TOKEN):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
 
 index: Optional[TurboIndex] = None
 
@@ -195,7 +210,7 @@ def health() -> dict[str, Any]:
     return {"status": "ok", **stats}
 
 
-@app.post("/add")
+@app.post("/add", dependencies=[Depends(require_sidecar_token)])
 async def add(body: AddRequest) -> dict[str, Any]:
     idx = _require_index()
     try:
@@ -224,7 +239,7 @@ async def search(body: SearchRequest) -> dict[str, list[dict[str, Any]]]:
     return {"results": results}
 
 
-@app.post("/remove")
+@app.post("/remove", dependencies=[Depends(require_sidecar_token)])
 async def remove(body: RemoveRequest) -> dict[str, Any]:
     idx = _require_index()
     removed = await asyncio.to_thread(idx.remove, body.ids)
@@ -233,7 +248,7 @@ async def remove(body: RemoveRequest) -> dict[str, Any]:
     return {"removed": removed, "vectors": len(idx)}
 
 
-@app.post("/reindex")
+@app.post("/reindex", dependencies=[Depends(require_sidecar_token)])
 async def reindex(body: ReindexRequest) -> dict[str, Any]:
     try:
         count = await sync_from_qdrant(body.collection)
@@ -242,7 +257,7 @@ async def reindex(body: ReindexRequest) -> dict[str, Any]:
     return {"collection": body.collection, "docs": count, "vectors": count}
 
 
-@app.post("/save")
+@app.post("/save", dependencies=[Depends(require_sidecar_token)])
 async def save() -> dict[str, Any]:
     idx = _require_index()
     await asyncio.to_thread(idx.save)

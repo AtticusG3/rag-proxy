@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hmac
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -14,7 +15,7 @@ from typing import Any
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core import DEFAULT_COLLECTION as _DEFAULT_COLLECTION
@@ -61,6 +62,20 @@ MMAP = os.getenv("SPARSE_MMAP", "true").strip().lower() in (
 # scroll run on this many threads. Search is a single query; extra threads
 # do not help retrieve().
 N_THREADS = resolve_n_threads(int(os.getenv("SPARSE_N_THREADS", "0") or "0"))
+# Optional shared secret for the mutating route (/reindex rebuilds from Qdrant
+# and peaks at many GB of RAM), checked via X-Internal-Token. Empty (default)
+# means no check at all, so an unset token behaves exactly as before.
+# Read-only routes never require it.
+SIDECAR_TOKEN = os.getenv("SIDECAR_TOKEN", "").strip()
+
+
+def require_sidecar_token(request: Request) -> None:
+    if not SIDECAR_TOKEN:
+        return
+    provided = request.headers.get("x-internal-token", "")
+    if not hmac.compare_digest(provided, SIDECAR_TOKEN):
+        raise HTTPException(status_code=401, detail="unauthorized")
+
 
 # Payload keys fetched from Qdrant (text + provenance + recency metadata only).
 _SCROLL_PAYLOAD_KEYS = tuple(
@@ -277,7 +292,7 @@ def search(body: SearchRequest) -> dict[str, list[dict[str, Any]]]:
     return {"results": registry.search(body.collection, body.query, limit)}
 
 
-@app.post("/reindex")
+@app.post("/reindex", dependencies=[Depends(require_sidecar_token)])
 async def reindex(body: ReindexRequest) -> dict[str, Any]:
     try:
         count = await sync_collection(body.collection)

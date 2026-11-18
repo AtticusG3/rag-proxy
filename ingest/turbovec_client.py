@@ -8,7 +8,14 @@ from typing import Any
 
 import httpx
 
+from rag_proxy.sidecar_auth import sidecar_auth_headers as _sidecar_auth_headers
+
 log = logging.getLogger("ingest.turbovec")
+
+
+def sidecar_auth_headers() -> dict[str, str]:
+    """Sidecar mutating-route auth headers from SIDECAR_TOKEN (empty = none)."""
+    return _sidecar_auth_headers(os.getenv("SIDECAR_TOKEN", ""))
 
 
 def turbovec_url_from_env(explicit: str | None = None) -> str:
@@ -41,11 +48,19 @@ def add_points(
     payload = {"ids": ids, "vectors": vectors}
     try:
         if client is not None:
-            response = client.post(f"{url.rstrip('/')}/add", json=payload)
+            response = client.post(
+                f"{url.rstrip('/')}/add",
+                json=payload,
+                headers=sidecar_auth_headers(),
+            )
             response.raise_for_status()
             return int(response.json().get("added", len(ids)))
         with httpx.Client(timeout=60.0) as owned:
-            response = owned.post(f"{url.rstrip('/')}/add", json=payload)
+            response = owned.post(
+                f"{url.rstrip('/')}/add",
+                json=payload,
+                headers=sidecar_auth_headers(),
+            )
             response.raise_for_status()
             return int(response.json().get("added", len(ids)))
     except Exception as exc:
@@ -66,11 +81,19 @@ def remove_ids(
     payload = {"ids": [str(i) for i in ids]}
     try:
         if client is not None:
-            response = client.post(f"{url.rstrip('/')}/remove", json=payload)
+            response = client.post(
+                f"{url.rstrip('/')}/remove",
+                json=payload,
+                headers=sidecar_auth_headers(),
+            )
             response.raise_for_status()
             return int(response.json().get("removed", 0))
         with httpx.Client(timeout=60.0) as owned:
-            response = owned.post(f"{url.rstrip('/')}/remove", json=payload)
+            response = owned.post(
+                f"{url.rstrip('/')}/remove",
+                json=payload,
+                headers=sidecar_auth_headers(),
+            )
             response.raise_for_status()
             return int(response.json().get("removed", 0))
     except Exception as exc:
@@ -90,6 +113,7 @@ def trigger_reindex(
             response = client.post(
                 f"{url.rstrip('/')}/reindex",
                 json={"collection": collection},
+                headers=sidecar_auth_headers(),
             )
             response.raise_for_status()
             return int(response.json().get("docs", 0))

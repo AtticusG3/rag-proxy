@@ -6,6 +6,7 @@ import logging
 
 from rag_proxy.clients.rerank_adapter import (
     parse_rerank_indices,
+    rerank_auth_headers,
     rerank_request_payload,
     rerank_request_url,
 )
@@ -30,6 +31,7 @@ async def run_rerank(ctx: RequestContext) -> None:
         r = await client.post(
             rerank_request_url(settings.reranker_url),
             json=rerank_request_payload(pairs, settings.rerank_top_k),
+            headers=rerank_auth_headers(settings.sidecar_token),
         )
         r.raise_for_status()
         order = parse_rerank_indices(

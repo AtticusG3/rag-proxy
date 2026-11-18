@@ -116,7 +116,7 @@ def test_run_migration_skips_when_already_synced(monkeypatch, capsys) -> None:
                 return FakeResp({"status": "ok", "docs": 100, "max_points": 0})
             raise AssertionError(url)
 
-        def post(self, url: str, json=None):
+        def post(self, url: str, json=None, **_kwargs):
             raise AssertionError(f"unexpected POST {url}")
 
     monkeypatch.setattr(mig.httpx, "Client", FakeClient)
@@ -212,7 +212,7 @@ def test_run_migration_flushes_sidecars_after_qdrant_clear(monkeypatch, capsys) 
                 return FakeResp({"status": "ok", "vectors": 4200})
             return FakeResp({"status": "ok", "docs": 4200, "max_points": 0})
 
-        def post(self, url: str, json=None):
+        def post(self, url: str, json=None, **_kwargs):
             reindexed.append(url)
             return FakeResp({"docs": 0, "vectors": 0})
 

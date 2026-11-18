@@ -57,6 +57,7 @@ class RetrieveSettings:
     turbovec_url: str = ""
     memgraphrag_db_path: str = ""
     sparse_reserve_fraction: float = 0.0
+    sidecar_token: str = ""
 
     @classmethod
     def from_env(cls) -> RetrieveSettings:
@@ -80,6 +81,7 @@ class RetrieveSettings:
             memgraphrag_db_path=os.getenv(
                 "MEMGRAPHRAG_DB_PATH", "/var/lib/rag_proxy/memgraphrag.sqlite"
             ).strip(),
+            sidecar_token=os.getenv("SIDECAR_TOKEN", "").strip(),
         )
 
 
@@ -119,6 +121,7 @@ def _to_retrieve_config(settings: RetrieveSettings) -> RetrieveConfig:
         user_agent=settings.user_agent,
         dense_backend=settings.dense_backend,
         turbovec_url=settings.turbovec_url,
+        sidecar_token=settings.sidecar_token,
     )
 
 

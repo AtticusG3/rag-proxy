@@ -12,10 +12,18 @@ from __future__ import annotations
 from typing import Any
 
 from rag_proxy.config import settings
+from rag_proxy.sidecar_auth import sidecar_auth_headers
 
 
 def use_openai_rerank() -> bool:
     return settings.rerank_api == "openai"
+
+
+def rerank_auth_headers(token: str) -> dict[str, str]:
+    """Sidecar auth headers; empty in openai mode (the target is not our sidecar)."""
+    if use_openai_rerank():
+        return {}
+    return sidecar_auth_headers(token)
 
 
 def rerank_request_url(base_url: str) -> str:

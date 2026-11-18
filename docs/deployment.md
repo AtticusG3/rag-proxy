@@ -161,13 +161,17 @@ Mitigations:
 
 ### Sidecars
 
-The rerank, sparse and TurboVec sidecars have no auth, and some of their endpoints are mutating: sparse `POST /reindex` starts a full rebuild from Qdrant (peaks at many GB of RAM), and TurboVec `POST /add`, `/remove`, `/reindex` and `/save` change or rewrite the dense index.
+The rerank, sparse and TurboVec sidecars have no auth by default, and some of their endpoints are mutating: sparse `POST /reindex` starts a full rebuild from Qdrant (peaks at many GB of RAM), and TurboVec `POST /add`, `/remove`, `/reindex` and `/save` change or rewrite the dense index. The rerank sidecar has no mutating state, but `POST /rerank` runs the cross-encoder model, so anyone who can reach it can spend CPU on it.
 
 So the sidecars bind to `127.0.0.1` by default. `RERANK_HOST`, `SPARSE_HOST` and `TURBOVEC_HOST` override this. Run them on the same host as the proxy and ingest worker and point `RERANKER_URL`, `SPARSE_INDEX_URL` and `TURBOVEC_URL` at `127.0.0.1`.
 
-Setting a sidecar host to `0.0.0.0`, or publishing its port, exposes these mutating endpoints to anyone on the LAN. Only do that behind a firewall or ACL that admits trusted hosts.
+Setting a sidecar host to `0.0.0.0`, or publishing its port, exposes these endpoints to anyone on the LAN. Only do that behind a firewall or ACL that admits trusted hosts, or set `SIDECAR_TOKEN`.
 
-Docker: the sidecar images set the host to `0.0.0.0` inside the container so the proxy container can reach them, and the `cognitive` profile publishes ports `8095`–`8097` on all interfaces. To keep a published port on loopback, put the address in its host-port variable in `docker/.env`, for example `SPARSE_INDEX_HOST_PORT=127.0.0.1:8096` (likewise `RERANKER_HOST_PORT` and `TURBOVEC_HOST_PORT`).
+`SIDECAR_TOKEN` is opt-in, like `PROXY_INTERNAL_TOKEN`, and separate from it. When unset, behavior is unchanged: no check, same as today. When set, each sidecar requires the `X-Internal-Token` header with that value on its work-doing routes — rerank `POST /rerank`, sparse `POST /reindex`, TurboVec `POST /add` / `/remove` / `/reindex` / `/save` — and missing or wrong tokens receive HTTP 401 before any work. Read-only routes (`/health`, `/search`) never require the header. Set `SIDECAR_TOKEN` in the environment of every sidecar you want to protect **and** of every client that calls those routes (rag_proxy, the ingest worker, rag-admin, `scripts/migrate_qdrant_sidecars.py`, the MCP RAG sidecar); the clients only send the header when they see the var set.
+
+Docker: the sidecar images set the host to `0.0.0.0` inside the container so the proxy container can reach them, and the `cognitive` profile publishes ports `8095`–`8097` on all interfaces. To keep a published port on loopback, put the address in its host-port variable in `docker/.env`, for example `SPARSE_INDEX_HOST_PORT=127.0.0.1:8096` (likewise `RERANKER_HOST_PORT` and `TURBOVEC_HOST_PORT`). With published ports, set `SIDECAR_TOKEN` in `docker/.env`: compose passes it to the three sidecar containers and rag-proxy reads the same value from its `env_file`.
+
+Live deployments that bind a sidecar wider than loopback — a non-default `RERANK_HOST` / `SPARSE_HOST` / `TURBOVEC_HOST`, or a published host port without the `127.0.0.1:` prefix — are exactly the ones that need `SIDECAR_TOKEN` set (the compose `cognitive` profile publishes `8095`–`8097` on all interfaces by default). Inventory your own with `ss -ltnp | grep -E '809[567]'` and set the token where the bind is not `127.0.0.1`.
 
 ### GPU embed — legacy nomic unit (optional)
 

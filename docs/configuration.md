@@ -90,8 +90,11 @@ Shared `httpx.AsyncClient` pools: one for the chat upstream, separate pools for 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PROXY_INTERNAL_TOKEN` | *(empty)* | When set, require `X-Internal-Token` header on all proxy routes and `GET /metrics` |
+| `SIDECAR_TOKEN` | *(empty)* | When set, sidecars require `X-Internal-Token` on their work-doing routes (rerank `/rerank`; sparse/TurboVec `/reindex`; TurboVec `/add` `/remove` `/save`) |
 
 Default empty = no change (open proxy, same as before). Use when `PROXY_HOST=0.0.0.0` exposes the proxy on LAN or Tailscale — see [Deployment — Trust boundary](deployment.md#trust-boundary).
+
+`SIDECAR_TOKEN` is opt-in and separate from `PROXY_INTERNAL_TOKEN`. Unset = no check (behaves exactly as before). Set = missing or wrong header is rejected `401` before any work, on the work-doing routes only; read-only routes (`/health`, `/search`) are unchanged. Set the same value on each sidecar and let every client that calls those routes (proxy, ingest worker, admin, migrate script) read it from its own environment — see [Deployment — Sidecars](deployment.md#sidecars).
 
 ## Cognitive pipeline master and stages
 

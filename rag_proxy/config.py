@@ -75,6 +75,11 @@ class Settings:
     proxy_internal_token: str = field(
         default_factory=lambda: os.getenv("PROXY_INTERNAL_TOKEN", "")
     )
+    # Separate shared secret for the rerank/sparse/TurboVec sidecars' mutating
+    # routes, sent as X-Internal-Token. Empty (default) = no header sent.
+    sidecar_token: str = field(
+        default_factory=lambda: os.getenv("SIDECAR_TOKEN", "").strip()
+    )
     upstream_timeout_sec: float = field(
         default_factory=lambda: _env_float("UPSTREAM_TIMEOUT_SEC", 600.0)
     )

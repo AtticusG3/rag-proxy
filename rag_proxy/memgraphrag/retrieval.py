@@ -21,6 +21,7 @@ import numpy as np
 
 from rag_proxy.clients.rerank_adapter import (
     parse_rerank_indices,
+    rerank_auth_headers,
     rerank_request_payload,
     rerank_request_url,
 )
@@ -144,15 +145,18 @@ class MemGraphRetriever:
             url = rerank_request_url(self.reranker_url)
             payload = rerank_request_payload(pairs, len(fact_indices))
             resp = None
+            auth = rerank_auth_headers(settings.sidecar_token)
             if get_reranker_client is not None:
                 try:
                     client = get_reranker_client()
-                    resp = await client.post(url, json=payload, timeout=timeout)
+                    resp = await client.post(
+                        url, json=payload, timeout=timeout, headers=auth
+                    )
                 except RuntimeError:
                     resp = None
             if resp is None:
                 async with httpx.AsyncClient(timeout=timeout) as client:
-                    resp = await client.post(url, json=payload)
+                    resp = await client.post(url, json=payload, headers=auth)
             resp.raise_for_status()
             order = parse_rerank_indices(
                 resp.json(),

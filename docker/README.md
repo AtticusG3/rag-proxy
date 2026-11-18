@@ -116,6 +116,8 @@ Optional `llama-swap` profile also reads `LLAMA_SWAP_HOST_PORT` (default `8080`)
 
 Contract matches `rag_proxy/stages/tier2_rerank.py` and `rag_proxy/clients/qdrant.py`.
 
+When `SIDECAR_TOKEN` is set in `docker/.env`, compose passes it to all three sidecars and they require the `X-Internal-Token` header on their work-doing routes (`/rerank`, `/reindex`, and TurboVec `/add` `/remove` `/save`); rag-proxy reads the same value from `docker/.env`. Unset (default) = no check. Details: [Deployment — Sidecars](../docs/deployment.md#sidecars).
+
 **Reranker** — `POST /rerank`
 
 ```json

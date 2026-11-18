@@ -11,6 +11,7 @@ import httpx
 from rag_proxy.chunk_text import extract_chunk_text
 from rag_proxy.clients.rerank_adapter import (
     parse_rerank_indices,
+    rerank_auth_headers,
     rerank_request_payload,
     rerank_request_url,
 )
@@ -52,6 +53,7 @@ class RetrieveConfig:
     dense_backend: str = "qdrant"
     turbovec_url: str = ""
     sparse_reserve_fraction: float = 0.0
+    sidecar_token: str = ""
 
 
 def rrf_merge(
@@ -123,6 +125,13 @@ def merge_fused_with_sparse_reserve(
 
 def _headers(config: RetrieveConfig) -> dict[str, str]:
     return {"User-Agent": config.user_agent}
+
+
+def _rerank_headers(config: RetrieveConfig) -> dict[str, str]:
+    return {
+        "User-Agent": config.user_agent,
+        **rerank_auth_headers(config.sidecar_token),
+    }
 
 
 def embed_query(config: RetrieveConfig, query: str) -> list[float] | None:
@@ -246,7 +255,7 @@ def rerank_pairs(
     effective_top_k = top_k if top_k is not None else config.rerank_top_k
     try:
         with httpx.Client(
-            timeout=config.rerank_timeout_sec, headers=_headers(config)
+            timeout=config.rerank_timeout_sec, headers=_rerank_headers(config)
         ) as client:
             r = client.post(
                 rerank_request_url(config.reranker_url),

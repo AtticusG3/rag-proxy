@@ -21,6 +21,7 @@ from ingest.sidecar_migrate import (
     needs_sidecar_rebuild,
     sparse_target_docs,
 )
+from ingest.turbovec_client import sidecar_auth_headers
 
 
 def _log(msg: str) -> None:
@@ -57,6 +58,7 @@ def _post_reindex(base_url: str, collection: str, client: httpx.Client) -> dict[
     response = client.post(
         f"{base_url.rstrip('/')}/reindex",
         json={"collection": collection},
+        headers=sidecar_auth_headers(),
     )
     response.raise_for_status()
     body = response.json()
@@ -64,7 +66,9 @@ def _post_reindex(base_url: str, collection: str, client: httpx.Client) -> dict[
 
 
 def _post_save(base_url: str, client: httpx.Client) -> None:
-    response = client.post(f"{base_url.rstrip('/')}/save")
+    response = client.post(
+        f"{base_url.rstrip('/')}/save", headers=sidecar_auth_headers()
+    )
     response.raise_for_status()
 
 

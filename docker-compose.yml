@@ -62,6 +62,7 @@ services:
     environment:
       RERANK_MODEL: ${RERANK_MODEL:-BAAI/bge-reranker-base}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SIDECAR_TOKEN: ${SIDECAR_TOKEN:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/health', timeout=5)"]
       interval: 30s
@@ -89,6 +90,7 @@ services:
       SPARSE_MMAP: ${SPARSE_MMAP:-true}
       SPARSE_N_THREADS: ${SPARSE_N_THREADS:-0}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SIDECAR_TOKEN: ${SIDECAR_TOKEN:-}
     volumes:
       - rag_proxy_state:/var/lib/rag_proxy
     depends_on:
@@ -121,6 +123,7 @@ services:
       TURBOVEC_BIT_WIDTH: ${TURBOVEC_BIT_WIDTH:-4}
       TURBOVEC_INDEX_PATH: /var/lib/rag_proxy/turbovec/index.tvim
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SIDECAR_TOKEN: ${SIDECAR_TOKEN:-}
     volumes:
       - rag_proxy_state:/var/lib/rag_proxy
     depends_on:
