@@ -30,6 +30,24 @@ The optional tiered stage sequence (tier0 → … → context) run before forwar
 enabled by a master switch and per-subsystem flags.
 _Avoid_: smart mode, RAG mode
 
+**Tier0**:
+The first cognitive stage: a cheap heuristic fast path that skips retrieval for
+greetings and acknowledgements, and always retrieves for infra/troubleshooting
+questions.
+_Avoid_: pre-filter, cheap check
+
+**Gating**:
+The cognitive stage that decides per request between `skip`, `light` and `full`
+retrieval (`RetrievalDecision`), honouring `X-RAG-Mode: off` / `force` and
+observe-only mode while the flag is being rolled out.
+_Avoid_: routing (the model-choice stage), throttling
+
+**Embed pool**:
+The production embeddings deployment behind `EMBED_URL` (model id
+`embed-pool`): an HTTP `/v1/embeddings` endpoint on the upstream host, pooling
+replicas of one embedding model behind a single address.
+_Avoid_: embed server (ambiguous), embedding sidecar
+
 **Sidecar**:
 A small standalone HTTP service next to the proxy that offloads one retrieval
 concern (rerank, sparse, dense ANN, MCP tools).
@@ -55,6 +73,20 @@ _Avoid_: passage (outside MemGraphRAG), segment
 The worker pipeline that turns source files into chunks and writes them to
 Qdrant (+ sparse reindex).
 _Avoid_: indexing (ambiguous with sparse rebuild)
+
+**Dual-write**:
+Ingest's write path that keeps the dense index consistent across backends: each
+chunk upsert is written to Qdrant and mirrored to the TurboVec sidecar, and a
+source delete removes the points from both. Dual-write is primary; a full
+sidecar reindex (from Qdrant) is only the repair path.
+_Avoid_: replication, mirroring
+
+**MemGraphRAG layers**:
+The three SQLite memory layers the MemGraphRAG index is built from: *schema*
+(`head_type, relation, tail_type` patterns for denoising and grouping), *fact*
+(`head, relation, tail` triples, the nodes PPR walks) and *passage* (original
+chunk text plus its `chunk_id`, what actually gets injected).
+_Avoid_: graph tiers, memory levels
 
 **Scroll**:
 Paged iteration over a Qdrant collection used to build a snapshot.
