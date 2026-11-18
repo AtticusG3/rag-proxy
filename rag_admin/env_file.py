@@ -15,8 +15,11 @@ def _validate_update_values(updates: dict[str, str]) -> None:
     for key, value in updates.items():
         if any(char in value for char in _FORBIDDEN_VALUE_CHARS):
             raise ValueError(
-                f"{key} must not contain carriage return, newline, or NUL characters."
+                f"{key} must not contain CR, LF, or NUL"
             )
+
+
+validate_env_values = _validate_update_values  # GitHub-side name used by settings_store
 
 
 def read_env_file(path: str) -> dict[str, str]:
