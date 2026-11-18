@@ -165,7 +165,7 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 | `RECENCY_WEIGHT` | `0.1` | Recency boost on hits |
 | `RERANKER_URL` | `http://127.0.0.1:8095` | Rerank base URL (cognitive sidecar, or llama-swap when `RERANK_API=openai`) |
 | `RERANK_API` | `sidecar` | `sidecar` = `POST /rerank` pairs/indices; `openai` = `POST /v1/rerank` (llama-swap / llama-server) |
-| `RERANK_MODEL` | `reranker-pool` | Model id for `RERANK_API=openai` (e.g. `reranker-pool` → jina-reranker-v3.5). Unused in sidecar POST body |
+| `RERANK_MODEL` | `reranker-pool` | **Two meanings.** Proxy (`rag_proxy/config.py`): OpenAI-compatible model id when `RERANK_API=openai` (e.g. `reranker-pool`). Sidecar (`sidecars/rerank/app.py`): HuggingFace model name at process start (default `BAAI/bge-reranker-base`). Do not put `reranker-pool` in the sidecar unit/compose env — that breaks HF load. Proxy sidecar mode ignores this var in the POST body |
 | `RERANK_TOP_K` | `5` | Chunks after rerank |
 | `RERANK_TIMEOUT_MS` | `200` | Rerank entrance-gate minimum (ms of cognitive budget that must remain) |
 | `RERANK_STAGE_TIMEOUT_MS` | `5000` | Rerank stage hard exec cap |
@@ -190,6 +190,10 @@ TurboVec remains the live ANN index; Qdrant is then payload (+ vector source for
 **Id mapping:** ingest upserts use 32-char MD5 hex Qdrant ids. The sidecar maps the first 16 hex digits to TurboQuant uint64 keys and stores the full hex in SQLite (`*.ids.sqlite` beside the `.tvim` file). Qdrant scroll/retrieve often echoes the same point as a dashed UUID; the proxy folds dashed UUIDs onto bare hex before hybrid fusion and payload merge so TurboVec hits keep their chunk text.
 
 **Persistence:** `TURBOVEC_AUTO_SAVE=true` (default) rewrites the `.tvim` file after every `/add`, `/remove`, and `/reindex`, plus on shutdown. During large bulk ingests, set `TURBOVEC_AUTO_SAVE=false` on the sidecar and call `POST /save` once when dual-write finishes to avoid heavy disk churn.
+
+**Staged rebuild + live dual-write:** during `POST /reindex`, TurboVec builds a staged index and journals concurrent `/add` / `/remove` calls (`TurboRebuild.record_add` / `record_remove`), then replays the journal under the owner lock before swap (`commit`). Concurrent ingest during a rebuild is therefore safe; you do not need to pause the queue just because a reindex is running.
+
+**`INGEST_TURBOVEC_REINDEX`:** keep `idle` (or `off`) at corpus scale. `each` triggers a full Qdrant scroll after every file (~10+ min on large collections) and is recovery-only — dual-write is the steady-state path. Prefer Settings **Migrate Qdrant → sidecars** (or `scripts/migrate_qdrant_sidecars.py`) for a one-shot catch-up.
 
 **After Qdrant collection clear:** dropping or clearing the Qdrant collection does not empty TurboVec. Run `POST /reindex` on the sidecar (or wipe `TURBOVEC_INDEX_PATH` and its `.ids.sqlite`) before serving with `DENSE_BACKEND=turbovec`.
 
@@ -311,7 +315,8 @@ Used by `rag_admin/` and `ingest/` — separate from the proxy. Not required for
 | `RAG_ADMIN_ENV_FILE` | `/opt/ai/config/rag-admin.env` | Admin/ingest env file (Settings UI writes here) |
 | `RAG_PROXY_ENV_FILE` | `/opt/ai/config/rag-proxy.env` | Proxy env file (Settings UI writes cognitive/proxy groups here) |
 | `RAG_REPO_ROOT` | repo root | Path for admin background jobs |
-| `RAG_ADMIN_JOB_LOG_DIR` | `/var/lib/rag_proxy/admin_jobs` | MemGraph build job logs |
+| `RAG_ADMIN_JOB_LOG_DIR` | `/var/lib/rag_proxy/admin_jobs` | Background job logs (MemGraph build + Qdrant→sidecar migrate) |
+| `MIGRATE_HTTP_TIMEOUT_SEC` | `7200` | HTTP timeout for `scripts/migrate_qdrant_sidecars.py` (TurboVec/BM25 `/reindex`; min 60) |
 | `RAG_PROXY_RESTART_CMD` | `systemctl restart rag-proxy` | Optional restart hook from Settings |
 | `RAG_ADMIN_RESTART_CMD` | `systemctl restart rag-admin` | Optional restart hook from Settings |
 | `PROXY_GRACEFUL_SHUTDOWN_SEC` | `15` | Max seconds uvicorn waits for open connections on proxy stop |
@@ -339,7 +344,7 @@ Not loaded by `rag_proxy/config.py`. Set in Docker compose or sidecar unit env.
 
 | Service | Key vars | Default bind |
 | --- | --- | --- |
-| Rerank (`sidecars/rerank/`) | `RERANK_MODEL`, `RERANK_HOST`, `RERANK_PORT` | `8095` |
+| Rerank (`sidecars/rerank/`) | `RERANK_MODEL` (HF id, default `BAAI/bge-reranker-base`), `RERANK_HOST`, `RERANK_PORT` | `8095` |
 | Sparse BM25 (`sidecars/sparse/`) | `SPARSE_HOST`, `SPARSE_PORT`, `SPARSE_REFRESH_SEC`, `SPARSE_INITIAL_RETRY_SEC`, `SPARSE_RETRY_MAX_SEC`, `SPARSE_SCROLL_BATCH`, `SPARSE_MAX_POINTS`, `SPARSE_INDEX_PATH`, `SPARSE_MMAP`, `SPARSE_N_THREADS` | `8096` |
 | MCP RAG (`sidecars/mcp_rag/`) | `MCP_HOST`, `MCP_PORT`, `MCP_TRANSPORT`, `MCP_RAG_USER_AGENT`, `MCP_PERSONAL_STORE_PATH` | `9001` |
 | TurboVec dense (`sidecars/turbovec/`) | `TURBOVEC_HOST`, `TURBOVEC_PORT`, `TURBOVEC_DIM`, `TURBOVEC_BIT_WIDTH`, `TURBOVEC_INDEX_PATH`, `TURBOVEC_SCROLL_BATCH`, `TURBOVEC_AUTO_SAVE` | `8097` |

@@ -85,6 +85,8 @@ The admin UI writes overrides to env files on disk — it does **not** hot-reloa
 
 Paths default to `/opt/ai/config/rag-admin.env` and `/opt/ai/config/rag-proxy.env` (`RAG_ADMIN_ENV_FILE`, `RAG_PROXY_ENV_FILE`). Shared keys on the ingest tab (`EMBED_URL`, `QDRANT_URL`, `QDRANT_COLLECTION`, `SPARSE_INDEX_URL`) are mirrored into both files.
 
+**One value per line:** `POST /settings/save/{group}` and `write_env_file` reject any admin/proxy field value that contains CR, LF, or NUL (`rag_admin/env_file.validate_env_values`). The save redirects with an error flash (for example `EMBED_URL must not contain CR, LF, or NUL`) and leaves both env files and admin SQLite unchanged. Paste single-line URLs and paths only — multiline secrets or accidental newline injection cannot be written into `KEY=VALUE` env files.
+
 **Env-only (not in Settings UI):** `UPSTREAM_*`, model registry JSON, transcript capture (except `ENABLE_TRANSCRIPT_CAPTURE`), and most latency-budget knobs — set in env and restart. Chunk size changes require `python scripts/requeue_all_ingest.py` for existing files.
 
 **Port topology:** Settings **Primary embed URL** defaults to `http://127.0.0.1:8089` in schema (legacy nomic). Set it to your production `EMBED_URL` (e.g. llama-swap `embed-pool` on `:8081`) — mirrored to `rag-proxy.env`. Bulk ingest uses `EMBED_URL` unless **Ingest embed URLs** (`INGEST_EMBED_URLS`) is set (comma-separated round-robin; empty = `EMBED_URL`).
@@ -118,7 +120,7 @@ Admin-specific (from `.env.example` comments and `rag_admin/config.py`):
 | `INGEST_EMBED_URLS` | — | Comma-separated embed endpoints for ingest round-robin (generated pool file) |
 | `INGEST_MAX_ARTICLES` | `0` | ZIM article limit (`0` = unlimited) |
 | `INGEST_SPARSE_REINDEX` | `idle` | When to trigger sparse sidecar reindex |
-| `INGEST_TURBOVEC_REINDEX` | `idle` | When to rebuild TurboVec from Qdrant (`TURBOVEC_URL`; dual-write is primary) |
+| `INGEST_TURBOVEC_REINDEX` | `idle` | When to rebuild TurboVec from Qdrant (`off` / `each` / `idle`). Dual-write is primary; use `idle` at corpus scale — `each` full-scrolls after every file |
 | `INGEST_STALL_MINUTES` | `15` | Mark jobs stalled after no progress |
 | `INGEST_HIDE_INDEXED_MINUTES` | `60` | Hide Indexed rows on `/jobs` after this many minutes (`0` = show all; `?show_indexed=1` overrides) |
 | `RAG_PROXY_URL` | `http://127.0.0.1:8081` | Optional proxy URL for admin smoke hooks |
@@ -131,14 +133,19 @@ Full list: [Configuration — RAG admin and ingest](configuration.md#rag-admin-a
 2. **Read** — ZIM (`ingest/zim_reader.py`), PDF (`ingest/pdf_reader.py`), or plain text.
    - ZIM HTML is sanitized in `ingest/zim_sanitize.py` before chunking: drop `script`/`style`/`noscript` and site chrome (`nav`/`header`/`footer`), prefer the largest main-content root when it keeps enough text (DevDocs `._content`, NHS `#maincontent`, SE `#content`, MediaWiki `#mw-content-text`), and preserve paragraph breaks.
    - **MediaWiki-like** titles/paths only: skip non-article namespaces (`Category:`, `File:`, …) and drop wiki chrome plus trailing References / See also / External links sections.
+   - **PDFs:** many "searchable" scans use owner encryption with an empty user password. `ingest/pdf_reader.py` tries `decrypt("")` via pypdf; install `cryptography` (`requirements-admin.txt`) for AES. A real user password raises `ValueError` and fails the file.
    - Existing indexed ZIM points stay as-is until you re-queue (`python scripts/requeue_all_ingest.py` or re-ingest per file).
 3. **Chunk** — `ingest/chunking_strategy.py` picks a Chonkie strategy per document; `ingest/chunking.py` loads token size/overlap from env and runs the chunker with strategy-specific fallbacks. Default **512 tokens / 64 overlap** (~12.5%) using the nomic-embed tokenizer when available.
 4. **Embed** — `ingest/embedder.py` calls `EMBED_URL` (same OpenAI-compatible API as the proxy).
 5. **Write** — `ingest/qdrant_writer.py` upserts to `QDRANT_COLLECTION`.
 6. **Sparse reindex** — optional POST to `SPARSE_INDEX_URL` when `INGEST_SPARSE_REINDEX` triggers (hybrid cognitive mode).
-7. **TurboVec dual-write** — when `TURBOVEC_URL` is set, each upsert also `POST /add` to the dense sidecar; optional `INGEST_TURBOVEC_REINDEX` rebuilds from Qdrant.
+7. **TurboVec dual-write** — when `TURBOVEC_URL` is set, each upsert also `POST /add` to the dense sidecar; optional `INGEST_TURBOVEC_REINDEX` rebuilds from Qdrant. Mid-rebuild dual-writes are journaled and replayed before the staged index swaps in ([Configuration — TurboVec](configuration.md#turbovec-rollout-cut-qdrant-ram)).
 
-If you **clear or drop the Qdrant collection** (`clear_collection`, admin wipe, or recreate), TurboVec still holds the old vectors until you **`POST /reindex`** on the sidecar (same as a full Qdrant→TurboVec rebuild). With `DENSE_BACKEND=turbovec`, stale sidecar data causes wrong or missing retrieval until reindex completes. For bulk dual-write runs, set sidecar `TURBOVEC_AUTO_SAVE=false` and `POST /save` once when ingest finishes ([Configuration — TurboVec rollout](configuration.md#turbovec-rollout-cut-qdrant-ram)).
+### Migrate Qdrant → sidecars
+
+Settings **Dense ingest** tab → **Migrate Qdrant → sidecars** (`POST /settings/sidecars/migrate`) runs `scripts/migrate_qdrant_sidecars.py` as a background job (`JOB_SIDECAR_MIGRATE`). It compares TurboVec/BM25 `/health` counts to Qdrant `points_count`, `POST /reindex` only when out of sync, then `POST /save` for TurboVec. Already-synced or unconfigured sidecars are skipped. Does **not** flip `DENSE_BACKEND` — switch to `turbovec` yourself after TurboVec is full. Logs under `RAG_ADMIN_JOB_LOG_DIR`; Stop calls `POST /settings/sidecars/migrate/stop`. CLI equivalent: `python scripts/migrate_qdrant_sidecars.py --qdrant-url … --collection … --turbovec-url … --sparse-url …` (`MIGRATE_HTTP_TIMEOUT_SEC`, default 7200).
+
+If you **clear or drop the Qdrant collection** (`clear_collection`, admin wipe, or recreate), TurboVec still holds the old vectors until you **`POST /reindex`** on the sidecar (or run Migrate). With `DENSE_BACKEND=turbovec`, stale sidecar data causes wrong or missing retrieval until reindex completes. For bulk dual-write runs, set sidecar `TURBOVEC_AUTO_SAVE=false` and `POST /save` once when ingest finishes ([Configuration — TurboVec rollout](configuration.md#turbovec-rollout-cut-qdrant-ram)).
 
 With `SIDECAR_ON_DEMAND=true` (default), admin starts the rerank/sparse sidecars before ingest and **stops the sparse sidecar during bulk ingest** to free RAM, reindexing once the run settles. Override the units with `SPARSE_SIDECAR_UNIT` / `RERANK_SIDECAR_UNIT` ([Configuration](configuration.md#rag-admin-and-ingest-optional)).
 
