@@ -55,7 +55,7 @@ Enable individually; re-run the same test query after each change:
 |-------|------|----------|--------|
 | 1 | `ENABLE_INTENT_ROUTER=true` | optional `INTENT_MODEL` | trace shows `intent=` label |
 | 2 | `ENABLE_QUERY_REWRITE=true` | — | `rewrite` in `stage_trace` |
-| 3 | `ENABLE_HYBRID_RETRIEVAL=true` | `SPARSE_INDEX_URL` sidecar | hybrid hits in trace |
+| 3 | `ENABLE_HYBRID_RETRIEVAL=true` | `SPARSE_INDEX_URL` sidecar; leave `SPARSE_RESERVE_FRACTION=0` unless you want sparse-only slots | hybrid hits in trace |
 | 4 | `ENABLE_RERANKER=true` | `RERANKER_URL` sidecar | rerank stage, reordered scores |
 | 5 | Tier 3 flags (`ENABLE_GRAPH_LOOKUP`, `ENABLE_MEMGRAPHRAG`, `ENABLE_TOOLS`, `ENABLE_ROLLING_MEMORY`) | graph/tools/memory DB paths; MemGraphRAG index — [memgraphrag.md](memgraphrag.md) | see External services |
 
@@ -146,7 +146,7 @@ The `tier0` stage is always registered when the cognitive pipeline is on (`enabl
 | `ENABLE_INTENT_ROUTER` | false | Rules + optional `INTENT_MODEL` |
 | `ENABLE_QUERY_REWRITE` | false | Deterministic query normalization |
 | `ENABLE_QUERY_REWRITE_LLM` | false | LLM query rewrite (requires rewrite enabled) |
-| `ENABLE_HYBRID_RETRIEVAL` | false | Dense + sparse RRF |
+| `ENABLE_HYBRID_RETRIEVAL` | false | Dense + sparse RRF (`SPARSE_RESERVE_FRACTION` default `0` = pure RRF; opt-in sparse-only slots) |
 | `ENABLE_RERANKER` | false | HTTP rerank sidecar |
 | `ENABLE_SEMANTIC_DEDUPE` | false | Embedding-similarity dedupe before inject |
 | `ENABLE_EMBED_CACHE` | false | In-request embed cache (respects `X-No-Cache`) |
