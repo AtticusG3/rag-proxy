@@ -76,7 +76,7 @@ The admin UI writes overrides to env files on disk — it does **not** hot-reloa
 
 | Tab | Env file target | Hot-reload in admin |
 | --- | --- | --- |
-| Dense ingest & BM25 | `RAG_ADMIN_ENV_FILE` | Yes — ingest worker picks up batch size, pool URLs, pause |
+| Dense ingest & BM25 | `RAG_ADMIN_ENV_FILE` | Yes — ingest worker picks up batch size, pool URLs, `EMBED_MODEL`, pause |
 | Proxy RAG retrieval | `RAG_PROXY_ENV_FILE` | No — restart proxy |
 | Cognitive pipeline | `RAG_PROXY_ENV_FILE` | No — restart proxy |
 | MemGraphRAG runtime | `RAG_PROXY_ENV_FILE` | No — restart proxy |
@@ -174,6 +174,8 @@ On failure or empty output, each primary strategy walks its own fallback chain (
 | `token` | `recursive` |
 
 Tokenizer resolution tries `INGEST_CHUNK_TOKENIZER` (default `nomic-ai/nomic-embed-text-v1.5`), then `gpt2`, then `word`. On startup, rag-admin logs **`ingest chunking ready`** with the active tokenizer; a **`FALLBACK`** warning means chunk sizes may not match nomic-embed. Set `INGEST_CHUNK_SEMANTIC=false` to skip semantic selection even when `chonkie[semantic]` is installed.
+
+HuggingFace tokenizers can raise a pyo3 `PanicException` (`BaseException`). The file worker catches that per file (marks failed / continues), and the Jobs status poll calls `IngestWorker.ensure_workers()` so a dead thread is respawned without restarting rag-admin.
 
 The `token` strategy (scraped/unstructured text) strips cookie banners and nav fluff before chunking. Semantic chunks log a distribution summary; adjacent pieces below `INGEST_CHUNK_MIN_TOKENS` are merged before embed.
 
