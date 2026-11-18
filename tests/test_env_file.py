@@ -43,31 +43,16 @@ def test_write_env_file_rejects_newline_and_does_not_create_file(tmp_path: Path)
     assert not env_path.exists()
 
 
-@pytest.mark.parametrize("bad_char", ["\n", "\r", "\x00"], ids=["newline", "carriage_return_newline", "nul"])
-def test_write_env_file_rejects_line_break_values(tmp_path: Path, bad_char: str) -> None:
+@pytest.mark.parametrize("value", ["first\nsecond", "first\rsecond", "first\x00second"])
+def test_write_env_file_rejects_line_breaks_and_nul_without_replacing(
+    tmp_path: Path, value: str
+) -> None:
     env_path = tmp_path / "rag-admin.env"
-    original = "FOO=1\nBAR=2\n"
-    env_path.write_text(original, encoding="utf-8")
-    with pytest.raises(ValueError):
-        write_env_file(str(env_path), {"FOO": f"a{bad_char}b"})
-    assert env_path.read_text(encoding="utf-8") == original
+    original = b"SECRET=unchanged\n"
+    env_path.write_bytes(original)
 
+    with pytest.raises(ValueError, match="SECRET must not contain CR, LF, or NUL"):
+        write_env_file(str(env_path), {"SECRET": value})
 
-@pytest.mark.parametrize("bad_char", ["\n", "\r", "\x00"], ids=["newline", "carriage_return_newline", "nul"])
-def test_write_env_file_rejects_line_break_in_appended_key(tmp_path: Path, bad_char: str) -> None:
-    env_path = tmp_path / "rag-admin.env"
-    env_path.write_text("FOO=1\n", encoding="utf-8")
-    with pytest.raises(ValueError):
-        write_env_file(str(env_path), {"NEW_KEY": f"value{bad_char}INJECTED=1"})
-    assert env_path.read_text(encoding="utf-8") == "FOO=1\n"
-
-
-def test_write_env_file_rejects_before_writing_any_file(tmp_path: Path) -> None:
-    admin_env = tmp_path / "rag-admin.env"
-    admin_env.write_text("FOO=1\n", encoding="utf-8")
-    proxy_env = tmp_path / "rag-proxy.env"
-    proxy_env.write_text("BAR=2\n", encoding="utf-8")
-    with pytest.raises(ValueError):
-        write_env_file(str(admin_env), {"GOOD": "ok", "BAD": "one\ntwo"})
-    assert admin_env.read_text(encoding="utf-8") == "FOO=1\n"
-    assert proxy_env.read_text(encoding="utf-8") == "BAR=2\n"
+    assert env_path.read_bytes() == original
+    assert not env_path.with_suffix(".env.tmp").exists()

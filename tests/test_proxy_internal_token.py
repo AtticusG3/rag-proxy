@@ -167,3 +167,52 @@ def test_proxy_forwards_authorization_unchanged(monkeypatch):
     assert resp.status_code == 200
     assert _sent_headers(received)["authorization"] == "Bearer upstream-key-77"
 
+
+def test_proxy_never_forwards_internal_token_to_upstream(
+    monkeypatch, configured_token, header_name
+):
+    monkeypatch.setattr(settings, "proxy_internal_token", configured_token)
+    upstream = pooled_client_mock(buffered_upstream_response())
+    with patch("rag_proxy.upstream_client.httpx.AsyncClient", return_value=upstream):
+        with TestClient(app) as client:
+            response = client.get(
+                "/v1/models",
+                headers={
+                    header_name: "secret-token",
+                    "Authorization": "Bearer upstream-key",
+                    "X-Request-Id": "request-123",
+                },
+            )
+
+    assert response.status_code == 200
+    forwarded = upstream.build_request.call_args.kwargs["headers"]
+    assert "x-internal-token" not in {name.lower() for name in forwarded}
+    assert forwarded["authorization"] == "Bearer upstream-key"
+    assert forwarded["x-request-id"] == "request-123"
+    upstream.send.assert_awaited_once()
+
+
+@pytest.mark.parametrize("configured_token", ["", "secret-token"])
+@pytest.mark.parametrize("header_name", ["X-Internal-Token", "x-internal-token"])
+def test_proxy_never_forwards_internal_token_to_upstream(
+    monkeypatch, configured_token, header_name
+):
+    monkeypatch.setattr(settings, "proxy_internal_token", configured_token)
+    upstream = pooled_client_mock(buffered_upstream_response())
+    with patch("rag_proxy.upstream_client.httpx.AsyncClient", return_value=upstream):
+        with TestClient(app) as client:
+            response = client.get(
+                "/v1/models",
+                headers={
+                    header_name: "secret-token",
+                    "Authorization": "Bearer upstream-key",
+                    "X-Request-Id": "request-123",
+                },
+            )
+
+    assert response.status_code == 200
+    forwarded = upstream.build_request.call_args.kwargs["headers"]
+    assert "x-internal-token" not in {name.lower() for name in forwarded}
+    assert forwarded["authorization"] == "Bearer upstream-key"
+    assert forwarded["x-request-id"] == "request-123"
+    upstream.send.assert_awaited_once()

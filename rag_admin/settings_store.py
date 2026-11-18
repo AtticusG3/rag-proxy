@@ -10,14 +10,18 @@ from ingest.chunking import chunk_config_from_values
 from ingest.embed_urls import parse_ingest_embed_urls
 from ingest.worker import IngestConfig, IngestWorker
 from rag_admin.db import AdminDatabase
-from rag_admin.env_file import read_env_file, remove_env_file_keys, write_env_file
+from rag_admin.env_file import (
+    read_env_file,
+    remove_env_file_keys,
+    validate_env_values,
+    write_env_file,
+)
 from rag_admin.settings_schema import (
     INGEST_MIRROR_TO_PROXY,
     INGEST_PAUSED_KEY,
     SETTING_FIELDS,
     SettingField,
 )
-
 from rag_proxy.env_parse import parse_bool
 
 
@@ -198,6 +202,14 @@ class SettingsStore:
         fields = [field for field in SETTING_FIELDS if field.group == group]
         if not fields:
             raise ValueError(f"unknown settings group: {group}")
+
+        validate_env_values(
+            {
+                field.key: str(form[field.key])
+                for field in fields
+                if field.key in form and field.target in ("admin", "proxy")
+            }
+        )
 
         admin_updates: dict[str, str] = {}
         proxy_updates: dict[str, str] = {}
