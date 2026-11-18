@@ -1,6 +1,6 @@
 # Sidecars Codemap
 
-**Last Updated:** 2026-09-22
+**Last Updated:** 2026-11-16
 **Entry Points:** each `sidecars/*/app.py` (Docker `--profile cognitive` or systemd units; MCP standalone)
 
 ## Architecture
@@ -20,7 +20,7 @@ rag_proxy / ingest / MCP
 | --- | --- | --- | --- |
 | Rerank | `sidecars/rerank/` | Cross-encoder reorder | `8095` |
 | Sparse BM25 | `sidecars/sparse/` | Sparse index + search; NVMe mmap snapshot, Qdrant scroll rebuild; failed syncs use capped exponential backoff | `8096` |
-| TurboVec | `sidecars/turbovec/` | TurboQuant dense ANN (`/search`, `/add`, `/reindex`, `/save`) | `8097` |
+| TurboVec | `sidecars/turbovec/` | TurboQuant dense ANN (`/search`, `/add`, `/reindex`, `/save`); staged rebuild journals live writes then replays on commit | `8097` |
 | MCP RAG | `sidecars/mcp_rag/` | MCP tools: KB search modes + personal `memory_*` (SDK 2; 2026-07-28 and 2025 clients) | `9001` |
 
 Each HTTP sidecar follows `app.py` + `core.py` (+ `Dockerfile` / `requirements.txt`).
@@ -38,7 +38,8 @@ See [`sidecars/mcp_rag/README.md`](../../sidecars/mcp_rag/README.md).
 ## Data Flow
 
 - Proxy retrieve/rerank stages call sidecars over HTTP; failures fail-open.
-- Ingest dual-writes TurboVec when `TURBOVEC_URL` is set; sparse/TurboVec reindex modes are operator-controlled.
+- Ingest dual-writes TurboVec when `TURBOVEC_URL` is set; sparse/TurboVec reindex modes are operator-controlled (`each` is recovery-only at corpus scale).
+- Admin **Migrate Qdrant → sidecars** (or `scripts/migrate_qdrant_sidecars.py`) rebuilds TurboVec/BM25 from Qdrant when counts disagree; skips synced sidecars.
 - Admin can start/stop sidecars on demand (Linux + systemd) around ingest work.
 
 ## Related Areas

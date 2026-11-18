@@ -96,6 +96,22 @@ URLs:
 | `SPARSE_INDEX_URL` | compose | `http://sparse-index:8096` when cognitive profile on |
 | `TURBOVEC_URL` | compose | `http://turbovec-index:8097` when cognitive profile on |
 
+### Published host ports and resource knobs
+
+Container listen ports stay fixed; override the **host** publish ports and image tags in `docker/.env` when defaults collide or you pin local builds:
+
+| Env | Default | Effect |
+| --- | --- | --- |
+| `RAG_PROXY_HOST_PORT` | `8088` | Host port for rag-proxy |
+| `RERANKER_HOST_PORT` | `8095` | Host port for reranker (`cognitive`) |
+| `SPARSE_INDEX_HOST_PORT` | `8096` | Host port for sparse-index (`cognitive`) |
+| `TURBOVEC_HOST_PORT` | `8097` | Host port for turbovec-index (`cognitive`) |
+| `QDRANT_HOST_PORT` | `6333` | Host port for bundled Qdrant (`qdrant`) |
+| `QDRANT_MEM_LIMIT` / `QDRANT_CPUS` | `12g` / `4.0` | Compose limits for the bundled Qdrant service |
+| `RAG_PROXY_IMAGE` / `RERANKER_IMAGE` / `SPARSE_INDEX_IMAGE` / `TURBOVEC_IMAGE` | `*:local` | Image names when not rebuilding from the local Dockerfiles |
+
+Optional `llama-swap` profile also reads `LLAMA_SWAP_HOST_PORT` (default `8080`) and `LLAMA_SWAP_IMAGE`.
+
 ## Sidecar APIs
 
 Contract matches `rag_proxy/stages/tier2_rerank.py` and `rag_proxy/clients/qdrant.py`.

@@ -41,6 +41,7 @@ Default ports from `.env.example` (all overridable):
 | Qdrant | `6333` | `QDRANT_URL` — same host or remote |
 | Reranker (optional) | `8095` | Cognitive sidecar |
 | Sparse index (optional) | `8096` | BM25 sidecar |
+| TurboVec dense (optional) | `8097` | Cognitive sidecar (`TURBOVEC_URL`, `DENSE_BACKEND=turbovec`) |
 | RAG admin UI (optional) | `8087` | `ADMIN_PORT` — only if `rag_admin` runs on this host |
 
 **Port collision:** default `ADMIN_PORT` and the documented second proxy instance both use `8087`. On one host, set `ADMIN_PORT` or `PROXY_PORT` to different values before running both.
@@ -122,7 +123,7 @@ docker compose --profile qdrant --profile cognitive up -d --build
 # docker compose --profile llama-swap up -d --build
 ```
 
-Service map, env wiring, sidecar APIs: [docker/README.md](../docker/README.md).
+Service map, env wiring, host-port overrides (`RAG_PROXY_HOST_PORT`, sidecar `*_HOST_PORT`, `QDRANT_MEM_LIMIT`), and sidecar APIs: [docker/README.md](../docker/README.md).
 
 ## Cognitive rollout
 
@@ -156,7 +157,7 @@ Mitigations:
 | Network | Firewall or Tailscale ACLs so only trusted hosts reach `PROXY_PORT` |
 | Application | Set `PROXY_INTERNAL_TOKEN` and configure clients to send `X-Internal-Token: <value>` on every request (including `GET /metrics`) |
 
-`PROXY_INTERNAL_TOKEN` is opt-in. When unset, behavior is unchanged. When set, missing or wrong tokens receive HTTP 401 before any upstream relay. Header details: [Headers and clients — Internal token](headers-and-clients.md#internal-token-proxy_internal_token).
+`PROXY_INTERNAL_TOKEN` is opt-in. When unset, behavior is unchanged. When set, missing or wrong tokens receive HTTP 401 before any upstream relay. The `X-Internal-Token` request header is always stripped before upstream forwarding so the shared secret never reaches llama-swap or other backends. Header details: [Headers and clients — Internal token](headers-and-clients.md#internal-token-proxy_internal_token).
 
 ### Sidecars
 
