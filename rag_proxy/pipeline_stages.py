@@ -52,8 +52,8 @@ def _graph_should_run(ctx: RequestContext) -> bool:
 
 
 def _tools_should_run(ctx: RequestContext) -> bool:
-    """True when retrieval is active."""
-    return _retrieval_active(ctx)
+    """True when retrieval is active and a query is present."""
+    return _retrieval_active(ctx) and bool(ctx.effective_query())
 
 
 def _memory_should_run(ctx: RequestContext) -> bool:

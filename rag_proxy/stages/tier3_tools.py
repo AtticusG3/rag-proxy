@@ -11,6 +11,8 @@ from rag_proxy.context import ChunkHit, RequestContext
 
 log = logging.getLogger("rag-proxy")
 
+_TOOL_FILES = ("docker-compose.yml", "compose.yaml", ".env.example")
+
 
 def _path_allowed(path: Path, roots: list[str]) -> bool:
     try:
@@ -41,13 +43,18 @@ async def run_tools(ctx: RequestContext) -> None:
         ctx.errors.append("tools:no_roots")
         return
 
-    query = ctx.effective_query() or ""
+    # Only read files the query names.
+    # shortcut: case-insensitive substring match on the file name, upgrade if paths or globs are needed
+    query = (ctx.effective_query() or "").lower()
+    names = [n for n in _TOOL_FILES if n in query]
+    if not names:
+        return
     added = 0
     for root in roots:
         root_path = Path(root)
         if not root_path.is_dir():
             continue
-        for pattern in ("docker-compose.yml", "compose.yaml", ".env.example"):
+        for pattern in names:
             candidate = root_path / pattern
             if candidate.is_file() and _path_allowed(candidate, roots):
                 try:

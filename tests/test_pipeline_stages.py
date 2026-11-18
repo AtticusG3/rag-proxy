@@ -122,14 +122,16 @@ def test_graph_stage_requires_active_retrieval_infra_intent_and_query():
     assert not graph.should_run(ctx_header_off)
 
 
-def test_tools_stage_requires_active_retrieval():
-    """Tools stage runs only when retrieval is active."""
+def test_tools_stage_requires_active_retrieval_and_query():
+    """Tools stage runs only when retrieval is active and a query is present."""
     stages = build_pipeline_stages()
     tools = next(s for s in stages if s.name == "tools")
-    ctx_skip = RequestContext(retrieval=RetrievalDecision.SKIP)
-    ctx_full = RequestContext(retrieval=RetrievalDecision.FULL)
+    ctx_skip = RequestContext(query_text="edit docker-compose.yml", retrieval=RetrievalDecision.SKIP)
+    ctx_full = RequestContext(query_text="edit docker-compose.yml", retrieval=RetrievalDecision.FULL)
+    ctx_no_query = RequestContext(retrieval=RetrievalDecision.FULL)
     assert not tools.should_run(ctx_skip)
     assert tools.should_run(ctx_full)
+    assert not tools.should_run(ctx_no_query)
 
 
 def test_memory_stage_requires_conversation_id():

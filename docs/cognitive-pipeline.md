@@ -52,7 +52,7 @@ flowchart LR
 | rerank | `ENABLE_RERANKER` | Cross-encoder reorder |
 | graph | `ENABLE_GRAPH_LOOKUP` | Infra graph SQLite lookup |
 | memgraphrag | `ENABLE_MEMGRAPHRAG` | Fact scoring + PPR + passages |
-| tools | `ENABLE_TOOLS` | Whitelisted file reads |
+| tools | `ENABLE_TOOLS` | Reads `docker-compose.yml`, `compose.yaml` or `.env.example` from the first `TOOL_ALLOWED_ROOTS` entry that has any, and only when the query names the file |
 | memory | `ENABLE_ROLLING_MEMORY` | Session summaries (`X-Conversation-Id`) |
 | context | *(always when hits exist)* | Assemble and inject; round-robins across hit sources (dense/sparse/graph/MemGraph) so one score scale cannot starve the budget; `ENABLE_TOKENIZER_ESTIMATE`, `ENABLE_SEMANTIC_DEDUPE`, `ENABLE_EMBED_CACHE` affect assembly |
 
