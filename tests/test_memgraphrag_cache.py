@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from unittest.mock import patch
@@ -63,12 +64,34 @@ def test_get_memory_index_reload_on_mtime_change(tmp_path) -> None:
 
     mem.facts[0].head = "Carol"
     mem.save(db_path)
-    # Ensure mtime advances on filesystems with coarse resolution
-    time.sleep(0.02)
+    # Move the mtime explicitly so the stamp changes regardless of filesystem timestamp resolution
+    st = db_path.stat()
+    os.utime(db_path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
 
     second = get_memory_index(db_path)
     assert second is not first
     assert second.memory.facts[0].head == "Carol"
+
+
+def test_get_memory_index_reload_on_same_float_mtime(tmp_path) -> None:
+    """A rewrite that restores the old float mtime must still reload (size differs)."""
+    mem = _memory_with_embedding()
+    db_path = tmp_path / "mem.sqlite"
+    mem.save(db_path)
+    invalidate_memory_index()
+    old_ns = db_path.stat().st_mtime_ns
+
+    first = get_memory_index(db_path)
+    assert first.memory.facts[0].head == "Alice"
+
+    mem.facts[0].head = "C" * 4000
+    mem.save(db_path)
+    os.utime(db_path, ns=(old_ns, old_ns))
+    assert db_path.stat().st_mtime_ns == old_ns
+
+    second = get_memory_index(db_path)
+    assert second is not first
+    assert second.memory.facts[0].head == "C" * 4000
 
 
 def test_invalidate_memory_index_forces_reload(tmp_path) -> None:
