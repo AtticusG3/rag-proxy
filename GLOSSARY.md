@@ -32,8 +32,8 @@ _Avoid_: smart mode, RAG mode
 
 **Tier0**:
 The first cognitive stage: a cheap heuristic fast path that skips retrieval for
-greetings and acknowledgements, and always retrieves for infra/troubleshooting
-questions.
+short greetings and acknowledgements. It never skips a query containing `?` or
+an infra signal, but a later gating stage may still skip such a query.
 _Avoid_: pre-filter, cheap check
 
 **Gating**:
@@ -75,10 +75,11 @@ Qdrant (+ sparse reindex).
 _Avoid_: indexing (ambiguous with sparse rebuild)
 
 **Dual-write**:
-Ingest's write path that keeps the dense index consistent across backends: each
-chunk upsert is written to Qdrant and mirrored to the TurboVec sidecar, and a
-source delete removes the points from both. Dual-write is primary; a full
-sidecar reindex (from Qdrant) is only the repair path.
+Ingest's write path across Qdrant and the TurboVec sidecar: each chunk upsert
+goes to Qdrant and is also sent best-effort to TurboVec `/add`, and a source
+delete calls Qdrant delete and best-effort TurboVec `/remove`. Calls that fail
+on the sidecar are logged and dropped; the scheduled sidecar reindex from Qdrant
+catches up anything missed.
 _Avoid_: replication, mirroring
 
 **MemGraphRAG layers**:
