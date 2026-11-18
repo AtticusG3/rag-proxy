@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from rag_admin.catalog.item_context import SOURCE_META, describe_item
 from rag_admin.catalog.listing_parser import infer_subscribable, is_internal_href
-from rag_admin.catalog.providers import SOURCES, browse_source
+from rag_admin.catalog.providers import DEFAULT_SOURCE, SOURCES, browse_source
 from rag_admin.helpers import templates
 
 router = APIRouter()
@@ -82,7 +82,7 @@ def _path_title(source_id: str, path: str) -> str:
 @router.get("/explorer", response_class=HTMLResponse)
 async def explorer_page(
     request: Request,
-    source: str = "dotsrc",
+    source: str = DEFAULT_SOURCE,
     path: str = "",
 ) -> HTMLResponse:
     db = request.app.state.db
@@ -271,7 +271,7 @@ async def delete_subscription(
 
 
 @router.get("/api/catalog/browse")
-async def api_browse(source: str = "dotsrc", path: str = "") -> JSONResponse:
+async def api_browse(source: str = DEFAULT_SOURCE, path: str = "") -> JSONResponse:
     result = browse_source(source, path)
     items = [
         {

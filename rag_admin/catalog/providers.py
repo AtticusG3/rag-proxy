@@ -83,6 +83,9 @@ SOURCES: dict[str, CatalogSource] = {
     ),
 }
 
+# dotsrc's root lists only category folders with no ZIM links (#55); it stays enabled for subscriptions.
+DEFAULT_SOURCE = "kiwix"
+
 
 def get_source(source_id: str) -> CatalogSource:
     if source_id not in SOURCES:
