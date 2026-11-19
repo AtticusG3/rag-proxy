@@ -72,6 +72,10 @@ def _internal_token_ok(request: Request) -> bool:
     return hmac.compare_digest(provided, expected)
 
 
+def _upstream_error(status_code: int, message: str) -> JSONResponse:
+    return JSONResponse({"error": {"message": message}}, status_code=status_code)
+
+
 def _warm_memgraph_cache() -> None:
     try:
         from rag_proxy.memgraphrag.cache import get_memory_index
@@ -177,9 +181,10 @@ async def proxy(request: Request, path: str):
     try:
         # read=None: a quiet non-SSE stream must not be cut by the configured read
         # timeout. Buffered reads below keep their timeout via asyncio.wait_for.
+        upstream_url = f"{settings.llama_swap_url}/{path}"
         upstream_req = client.build_request(
             method=request.method,
-            url=f"{settings.llama_swap_url}/{path}",
+            url=upstream_url,
             headers=upstream_headers,
             content=body,
             params=request.query_params,
@@ -188,16 +193,21 @@ async def proxy(request: Request, path: str):
         # read=None keeps the streaming body open, but httpx's read timeout also
         # governs waiting for response headers, so bound the header wait here:
         # a backend that accepts the connection and never answers must not hang
-        # the proxy forever.
+        # the proxy forever. Upstream failures surface as JSON 502/504, never a
+        # bare 500.
         try:
             upstream = await asyncio.wait_for(
                 client.send(upstream_req, stream=True),
                 timeout=settings.upstream_timeout_sec,
             )
-        except asyncio.TimeoutError as exc:
-            raise httpx.ReadTimeout(
-                "upstream stalled waiting for headers", request=upstream_req
-            ) from exc
+        except (asyncio.TimeoutError, httpx.TimeoutException) as e:
+            log.warning("upstream timeout: %s (%s)", upstream_url, e)
+            return _upstream_error(504, "upstream timeout")
+        # After the timeout clause: TimeoutException is a TransportError too.
+        # Covers ConnectError, RemoteProtocolError (closed before headers), ReadError.
+        except httpx.TransportError as e:
+            log.warning("upstream unreachable: %s (%s)", upstream_url, e)
+            return _upstream_error(502, "upstream unreachable")
 
         resp_headers = dict(upstream.headers)
         # transfer-encoding/content-length are hop-by-hop; the ASGI server reframes

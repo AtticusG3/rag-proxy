@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import gzip
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -154,6 +155,56 @@ def test_proxy_closes_upstream_when_send_raises():
 
     assert resp.status_code == 500
     close_mock.assert_awaited_once_with(None)
+
+
+def _get_models_with_send_error(exc: Exception):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise exc
+
+    real_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    with patch(
+        "rag_proxy.upstream_client.httpx.AsyncClient",
+        side_effect=pooled_ctor_side_effect(real_client),
+    ):
+        with TestClient(app) as client:
+            return client.get("/v1/models")
+
+
+def test_proxy_connect_error_returns_502(caplog):
+    with caplog.at_level("WARNING", logger="rag-proxy"):
+        resp = _get_models_with_send_error(httpx.ConnectError("refused"))
+
+    assert resp.status_code == 502
+    # Client body is generic; the URL and error text stay in the server log.
+    assert resp.json() == {"error": {"message": "upstream unreachable"}}
+    assert f"{settings.llama_swap_url}/v1/models" in caplog.text
+    assert "refused" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        httpx.RemoteProtocolError("closed before headers"),
+        httpx.ReadError("reset"),
+    ],
+)
+def test_proxy_transport_error_before_headers_returns_502(exc, caplog):
+    with caplog.at_level("WARNING", logger="rag-proxy"):
+        resp = _get_models_with_send_error(exc)
+
+    assert resp.status_code == 502
+    assert resp.json() == {"error": {"message": "upstream unreachable"}}
+    assert str(exc) in caplog.text
+
+
+def test_proxy_timeout_returns_504(caplog):
+    with caplog.at_level("WARNING", logger="rag-proxy"):
+        resp = _get_models_with_send_error(httpx.ReadTimeout("slow"))
+
+    assert resp.status_code == 504
+    assert resp.json() == {"error": {"message": "upstream timeout"}}
+    assert f"{settings.llama_swap_url}/v1/models" in caplog.text
+    assert "slow" in caplog.text
 
 
 def test_proxy_strips_content_encoding_on_buffered_passthrough():
@@ -530,9 +581,11 @@ def test_proxy_bounds_header_wait_when_backend_never_answers():
             patch("rag_proxy.app.ensure_upstream_client", AsyncMock(return_value=mock_client)),
             patch.object(settings, "upstream_timeout_sec", 0.05),
         ):
-            with pytest.raises(httpx.ReadTimeout):
-                await asyncio.wait_for(proxy(request, "v1/models"), timeout=2)
+            resp = await asyncio.wait_for(proxy(request, "v1/models"), timeout=2)
         elapsed = asyncio.get_running_loop().time() - started
+        # A silent backend is a gateway timeout, not a bare 500.
+        assert resp.status_code == 504
+        assert json.loads(resp.body) == {"error": {"message": "upstream timeout"}}
         # The 2 s guard must not be what fired; the header bound must be.
         assert elapsed < 1.0, f"header wait was not bounded by upstream_timeout_sec ({elapsed:.2f}s)"
 
