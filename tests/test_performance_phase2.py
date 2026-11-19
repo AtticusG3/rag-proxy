@@ -65,7 +65,7 @@ def test_resolve_inject_budget_tokens_mode(monkeypatch):
         context_length=8192,
     )
     budget = resolve_inject_budget_chars(ctx, registry)
-    assert budget == int(8192 * 0.25) - 1024
+    assert budget == int(8192 * 0.25)
 
 
 def test_debug_requires_token_when_configured(monkeypatch):

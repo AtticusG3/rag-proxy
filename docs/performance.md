@@ -58,8 +58,8 @@ HTTP connection pools for embed, Qdrant, and sparse start at app lifespan — no
 
 | Setting | Default | Role |
 | --- | --- | --- |
-| `CONTEXT_BUDGET_RATIO` | `0.25` | Fraction of model context window for RAG chunks |
-| `CONTEXT_FALLBACK_CHARS` | `8000` | Budget when model context length unknown |
+| `CONTEXT_BUDGET_RATIO` | `0.25` | Share of model context window reserved for RAG chunks (capped by room left; see `docs/configuration.md`) |
+| `CONTEXT_FALLBACK_CHARS` | `8000` | RAG budget when model context length unknown |
 | `DEFAULT_COMPLETION_RESERVE` | `1024` | Tokens reserved for assistant reply |
 | `ENABLE_TOKENIZER_ESTIMATE` | `false` | Use tiktoken (`cl100k_base`) instead of chars/4 |
 

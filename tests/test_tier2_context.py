@@ -30,7 +30,23 @@ def test_resolve_inject_budget_unknown_model_uses_char_fallback(monkeypatch):
     ctx = RequestContext(messages=[], requested_model="unknown-model")
     registry = ModelRegistry()
     budget = resolve_inject_budget_chars(ctx, registry)
-    assert budget == settings.context_fallback_chars - (settings.default_completion_reserve * 4)
+    assert budget == settings.context_fallback_chars
+
+
+def test_resolve_inject_budget_unknown_model_long_chat_keeps_slice(monkeypatch):
+    monkeypatch.setattr(settings, "enable_tokenizer_estimate", False)
+    monkeypatch.setattr(settings, "context_fallback_chars", 8000)
+    ctx = RequestContext(
+        messages=[{"role": "user", "content": "x" * 20000}],
+        requested_model="unknown-model",
+    )
+    assert resolve_inject_budget_chars(ctx, ModelRegistry()) == 8000
+
+
+def _known_registry() -> ModelRegistry:
+    registry = ModelRegistry()
+    registry._cache["test-model"] = ModelCapabilities(model_id="test-model", context_length=8192)
+    return registry
 
 
 def test_resolve_inject_budget_uses_model_context_tokens(monkeypatch):
@@ -38,11 +54,52 @@ def test_resolve_inject_budget_uses_model_context_tokens(monkeypatch):
     monkeypatch.setattr(settings, "context_budget_ratio", 0.25)
     monkeypatch.setattr(settings, "default_completion_reserve", 1024)
     ctx = RequestContext(messages=[], requested_model="test-model")
-    registry = ModelRegistry()
-    registry._cache["test-model"] = ModelCapabilities(
-        model_id="test-model",
-        context_length=8192,
+    assert resolve_inject_budget_chars(ctx, _known_registry()) == int(8192 * 0.25) * 4
+
+
+def test_resolve_inject_budget_known_model_long_chat_keeps_slice(monkeypatch):
+    monkeypatch.setattr(settings, "enable_tokenizer_estimate", False)
+    monkeypatch.setattr(settings, "context_budget_ratio", 0.25)
+    monkeypatch.setattr(settings, "default_completion_reserve", 1024)
+    # 12000 chars is past the old "slice minus conversation" cutoff but well inside the window.
+    ctx = RequestContext(
+        messages=[{"role": "user", "content": "x" * 12000}], requested_model="test-model"
     )
-    char_budget = int(8192 * settings.context_budget_ratio) * 4
-    reserve = settings.default_completion_reserve * 4
-    assert resolve_inject_budget_chars(ctx, registry) == char_budget - reserve
+    assert resolve_inject_budget_chars(ctx, _known_registry()) == int(8192 * 0.25) * 4
+
+
+def test_resolve_inject_budget_known_model_full_window_is_zero(monkeypatch):
+    monkeypatch.setattr(settings, "enable_tokenizer_estimate", False)
+    monkeypatch.setattr(settings, "default_completion_reserve", 1024)
+    ctx = RequestContext(
+        messages=[{"role": "user", "content": "x" * (8192 * 4)}], requested_model="test-model"
+    )
+    assert resolve_inject_budget_chars(ctx, _known_registry()) == 0
+
+
+def test_resolve_inject_budget_known_model_capped_by_room_left(monkeypatch):
+    monkeypatch.setattr(settings, "enable_tokenizer_estimate", False)
+    monkeypatch.setattr(settings, "context_budget_ratio", 0.25)
+    monkeypatch.setattr(settings, "default_completion_reserve", 1024)
+    # Window 32768 chars, reserve 4096, conversation 27000 -> 1672 chars left.
+    ctx = RequestContext(
+        messages=[{"role": "user", "content": "x" * 27000}], requested_model="test-model"
+    )
+    assert resolve_inject_budget_chars(ctx, _known_registry()) == 8192 * 4 - 4096 - 27000
+
+
+def test_run_context_assembly_traces_zero_budget(monkeypatch):
+    import asyncio
+
+    from rag_proxy.context import ChunkHit
+    from rag_proxy.stages.tier2_context import run_context_assembly
+
+    monkeypatch.setattr(settings, "enable_tokenizer_estimate", False)
+    monkeypatch.setattr(settings, "default_completion_reserve", 1024)
+    ctx = RequestContext(
+        messages=[{"role": "user", "content": "x" * (8192 * 4)}], requested_model="test-model"
+    )
+    ctx.hits = [ChunkHit(id="a", text="some passage", score=0.9, source="dense")]
+    asyncio.run(run_context_assembly(ctx, _known_registry()))
+    assert ctx.hits == []
+    assert "inject:budget0" in ctx.stage_trace

@@ -164,19 +164,14 @@ def resolve_inject_budget_chars(ctx: RequestContext, registry: ModelRegistry) ->
     existing = estimate_message_tokens(ctx.messages) if uses_tokenizer() else estimate_message_chars(ctx.messages)
     reserve = settings.default_completion_reserve
 
-    if uses_tokenizer():
-        if context_tokens is not None:
-            token_budget = int(context_tokens * settings.context_budget_ratio)
-        else:
-            token_budget = settings.context_fallback_chars // 4
-        return max(0, token_budget - existing - reserve)
-
-    if context_tokens is not None:
-        char_budget = int(context_tokens * settings.context_budget_ratio) * 4
-    else:
-        char_budget = settings.context_fallback_chars
-    reserve_chars = reserve * 4
-    return max(0, char_budget - existing - reserve_chars)
+    # RAG gets its own slice of the window, capped by the room left after the
+    # conversation and the reply reserve. An unknown window has no cap to apply.
+    unit = 1 if uses_tokenizer() else 4
+    if context_tokens is None:
+        return settings.context_fallback_chars // 4 if unit == 1 else settings.context_fallback_chars
+    slice_units = int(context_tokens * settings.context_budget_ratio) * unit
+    left = context_tokens * unit - existing - reserve * unit
+    return max(0, min(slice_units, left))
 
 
 async def run_context_assembly(ctx: RequestContext, registry: ModelRegistry) -> None:
@@ -189,7 +184,9 @@ async def run_context_assembly(ctx: RequestContext, registry: ModelRegistry) -> 
     ctx.hits = hits
 
     texts = ctx.chunk_texts
-    if texts:
+    if not texts:
+        ctx.stage_trace.append("inject:budget0")
+    else:
         ctx.messages = inject_context(ctx.messages, texts)
         if uses_tokenizer():
             ctx.injected_tokens_est = sum(count_tokens(t) for t in texts)
