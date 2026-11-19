@@ -175,14 +175,29 @@ async def proxy(request: Request, path: str):
     # StreamingResponse owns the socket via relay_upstream; do not close it here.
     stream_owned = False
     try:
+        # read=None: a quiet non-SSE stream must not be cut by the configured read
+        # timeout. Buffered reads below keep their timeout via asyncio.wait_for.
         upstream_req = client.build_request(
             method=request.method,
             url=f"{settings.llama_swap_url}/{path}",
             headers=upstream_headers,
             content=body,
             params=request.query_params,
+            timeout=httpx.Timeout(settings.upstream_timeout_sec, read=None),
         )
-        upstream = await client.send(upstream_req, stream=True)
+        # read=None keeps the streaming body open, but httpx's read timeout also
+        # governs waiting for response headers, so bound the header wait here:
+        # a backend that accepts the connection and never answers must not hang
+        # the proxy forever.
+        try:
+            upstream = await asyncio.wait_for(
+                client.send(upstream_req, stream=True),
+                timeout=settings.upstream_timeout_sec,
+            )
+        except asyncio.TimeoutError as exc:
+            raise httpx.ReadTimeout(
+                "upstream stalled waiting for headers", request=upstream_req
+            ) from exc
 
         resp_headers = dict(upstream.headers)
         # transfer-encoding/content-length are hop-by-hop; the ASGI server reframes
@@ -196,8 +211,24 @@ async def proxy(request: Request, path: str):
 
         content_type = upstream.headers.get("content-type", "")
 
-        if "text/event-stream" in content_type:
-            if should_capture and capture_original_messages is not None and capture_ctx is not None:
+        capturing = (
+            should_capture and capture_original_messages is not None and capture_ctx is not None
+        )
+        is_sse = "text/event-stream" in content_type
+        # Relay unbounded bodies as they arrive (log tails, ndjson). A body with a
+        # Content-Length is bounded, so it stays buffered. A non-SSE chat completion
+        # that must be captured is buffered too, as capture needs the whole body.
+        stream_it = is_sse or (
+            not capturing
+            and (
+                "application/x-ndjson" in content_type
+                or upstream.headers.get("x-accel-buffering", "").lower() == "no"
+                or upstream.headers.get("content-length") is None
+            )
+        )
+
+        if stream_it:
+            if is_sse and capturing:
 
                 async def _capture_stream(response_body: bytes) -> None:
                     capture_chat_response(
@@ -210,25 +241,43 @@ async def proxy(request: Request, path: str):
 
                 stream_body = relay_upstream_capture(request, upstream, _capture_stream)
             else:
-                stream_body = relay_upstream(request, upstream)
+                stream_body = relay_upstream(request, upstream, reap_idle=is_sse)
 
             async def _timed_stream():
                 try:
                     async for chunk in stream_body:
                         yield chunk
                 finally:
+                    # Close the relay explicitly so its finally releases the upstream socket.
+                    await stream_body.aclose()
                     observe_proxy_request_duration(time.perf_counter() - request_t0)
 
             stream_response = StreamingResponse(
                 _timed_stream(),
                 status_code=upstream.status_code,
                 headers=resp_headers,
-                media_type="text/event-stream",
+                media_type=content_type or None,
             )
             stream_owned = True
             return stream_response
 
-        content = await upstream.aread()
+        # The request has read=None; apply the configured read timeout per chunk for
+        # bounded bodies so a large transfer is not killed by its total duration.
+        content = bytearray()
+        chunk_iter = upstream.aiter_bytes()
+        while True:
+            try:
+                chunk = await asyncio.wait_for(
+                    anext(chunk_iter), timeout=settings.upstream_timeout_sec
+                )
+            except StopAsyncIteration:
+                break
+            except asyncio.TimeoutError as exc:
+                raise httpx.ReadTimeout(
+                    "upstream stalled mid-body", request=upstream.request
+                ) from exc
+            content += chunk
+        content = bytes(content)
         status_code = upstream.status_code
         await close_upstream_response(upstream)
         upstream = None

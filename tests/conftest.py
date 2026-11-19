@@ -13,11 +13,16 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 
+async def _one_chunk(body: bytes):
+    yield body
+
+
 def buffered_upstream_response(body: bytes = b'{"ok":true}') -> AsyncMock:
     mock_response = AsyncMock()
     mock_response.status_code = 200
-    mock_response.headers = {"content-type": "application/json"}
+    mock_response.headers = {"content-type": "application/json", "content-length": str(len(body))}
     mock_response.aread = AsyncMock(return_value=body)
+    mock_response.aiter_bytes = MagicMock(side_effect=lambda: _one_chunk(body))
     mock_response.aclose = AsyncMock()
     return mock_response
 
@@ -88,11 +93,13 @@ def _reset_upstream_client():
     uc._upstream_client = None
     uc._janitor_task = None
     uc._stream_registry.clear()
+    uc._idle_exempt_keys.clear()
     uc._stream_registry_lock = None
     yield
     if uc._janitor_task is not None:
         uc._janitor_task.cancel()
     uc._stream_registry.clear()
+    uc._idle_exempt_keys.clear()
     uc._upstream_client = None
     uc._janitor_task = None
     uc._stream_registry_lock = None

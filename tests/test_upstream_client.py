@@ -166,6 +166,49 @@ def test_first_byte_after_abandon_limit_survives_janitor():
     asyncio.run(_run())
 
 
+def test_janitor_keeps_quiet_non_sse_stream_open_past_idle_limit():
+    """A quiet non-SSE tail (router /logs/stream, no heartbeat) outlives the idle limit.
+
+    The same silence on an SSE stream is still reaped, so the exemption is scoped.
+    """
+
+    async def _run() -> None:
+        clock = [1000.0]
+
+        async def one_line_then_quiet():
+            yield b"line\n"
+            await asyncio.sleep(3600)
+
+        async def open_relay(reap_idle: bool):
+            upstream = AsyncMock()
+            upstream.aiter_bytes = MagicMock(return_value=one_line_then_quiet())
+            request = AsyncMock()
+            request.is_disconnected = AsyncMock(return_value=False)
+            relay = uc.relay_upstream(request, upstream, reap_idle=reap_idle)
+            assert await relay.__anext__() == b"line\n"
+            return upstream, relay
+
+        with patch.object(uc.time, "monotonic", side_effect=lambda: clock[0]):
+            with patch.object(uc.settings, "upstream_stream_abandon_sec", 120):
+                plain, plain_relay = await open_relay(reap_idle=False)
+                sse, sse_relay = await open_relay(reap_idle=True)
+
+                clock[0] += 3 * 120  # well past the old limit, no bytes since
+                assert await uc.reap_abandoned_streams() == 1
+
+                sse.aclose.assert_awaited()
+                plain.aclose.assert_not_called()
+                assert id(plain) in uc._stream_registry
+
+                await plain_relay.aclose()
+                await sse_relay.aclose()
+                plain.aclose.assert_awaited()
+                assert id(plain) not in uc._stream_registry
+                assert not uc._idle_exempt_keys
+
+    asyncio.run(_run())
+
+
 def test_janitor_keeps_active_long_streams():
     """Long-lived SSE with recent activity must not be closed by idle reaper."""
 

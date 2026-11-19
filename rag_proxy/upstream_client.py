@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -23,6 +24,10 @@ _janitor_task: asyncio.Task[None] | None = None
 # response, last activity monotonic, True after at least one relayed byte
 _StreamEntry = tuple[httpx.Response, float, bool]
 _stream_registry: dict[int, _StreamEntry] = {}
+# Streams the janitor must not reap on idle: non-SSE tails such as the model-router
+# /logs/stream, which sends no heartbeat and stays silent while nothing is logged.
+# They end when the client disconnects or the upstream closes.
+_idle_exempt_keys: set[int] = set()
 _stream_registry_lock: asyncio.Lock | None = None
 
 
@@ -95,6 +100,7 @@ async def shutdown_upstream_client() -> None:
     async with _registry_lock():
         streams = list(_stream_registry.values())
         _stream_registry.clear()
+        _idle_exempt_keys.clear()
     for resp, _activity, _seen in streams:
         await close_upstream_response(resp)
     if _upstream_client is not None:
@@ -134,7 +140,8 @@ async def reap_abandoned_streams() -> int:
         stale_keys = [
             key
             for key, (_resp, last_activity, seen_bytes) in _stream_registry.items()
-            if now - last_activity >= _stream_idle_limit_sec(seen_bytes)
+            if key not in _idle_exempt_keys
+            and now - last_activity >= _stream_idle_limit_sec(seen_bytes)
         ]
         stale_entries = [
             _stream_registry.pop(key) for key in stale_keys if key in _stream_registry
@@ -161,11 +168,13 @@ async def _upstream_connection_janitor() -> None:
             log.warning("janitor sweep failed", exc_info=True)
 
 
-async def register_stream(response: httpx.Response) -> int:
+async def register_stream(response: httpx.Response, *, reap_idle: bool = True) -> int:
     key = id(response)
     now = time.monotonic()
     async with _registry_lock():
         _stream_registry[key] = (response, now, False)
+        if not reap_idle:
+            _idle_exempt_keys.add(key)
         _update_stream_gauge_locked()
     return key
 
@@ -189,15 +198,23 @@ async def touch_stream(key: int, *, seen_only: bool = False) -> None:
 async def unregister_stream(key: int) -> None:
     async with _registry_lock():
         _stream_registry.pop(key, None)
+        _idle_exempt_keys.discard(key)
         _update_stream_gauge_locked()
 
 
 async def relay_upstream(
     request: Request,
     upstream: httpx.Response,
+    *,
+    reap_idle: bool = True,
 ) -> AsyncGenerator[bytes, None]:
-    async for chunk in _relay_upstream_chunks(request, upstream):
-        yield chunk
+    # aclosing: closing this relay must close the inner generator now, not at GC,
+    # so its finally releases the upstream socket and registry slot.
+    async with contextlib.aclosing(
+        _relay_upstream_chunks(request, upstream, reap_idle=reap_idle)
+    ) as chunks:
+        async for chunk in chunks:
+            yield chunk
 
 
 async def relay_upstream_capture(
@@ -208,9 +225,10 @@ async def relay_upstream_capture(
     """Relay upstream bytes and report the complete stream body when finished."""
     captured = bytearray()
     try:
-        async for chunk in _relay_upstream_chunks(request, upstream):
-            captured.extend(chunk)
-            yield chunk
+        async with contextlib.aclosing(_relay_upstream_chunks(request, upstream)) as chunks:
+            async for chunk in chunks:
+                captured.extend(chunk)
+                yield chunk
     finally:
         try:
             result = on_complete(bytes(captured))
@@ -223,8 +241,10 @@ async def relay_upstream_capture(
 async def _relay_upstream_chunks(
     request: Request,
     upstream: httpx.Response,
+    *,
+    reap_idle: bool = True,
 ) -> AsyncGenerator[bytes, None]:
-    reg_key = await register_stream(upstream)
+    reg_key = await register_stream(upstream, reap_idle=reap_idle)
     last_touch = time.monotonic()
     seen_bytes = False
     try:
