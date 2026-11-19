@@ -141,9 +141,9 @@ Full rollout guidance: [Cognitive pipeline](cognitive-pipeline.md) and [COGNITIV
 | `CONTEXT_BUDGET_RATIO` | `0.25` | Share of the context window reserved for RAG chunks (see rule below) |
 | `CONTEXT_FALLBACK_CHARS` | `8000` | RAG budget in chars when the model's context size is unknown (tokenizer mode uses a quarter of this in tokens) |
 | `DEFAULT_COMPLETION_RESERVE` | `1024` | Reserved tokens for model reply |
-
-Inject budget rule: when the context size is known, RAG gets `CONTEXT_BUDGET_RATIO` of the window, capped by the room left after the conversation and `DEFAULT_COMPLETION_RESERVE` (`window - conversation - reserve`). A long chat only loses RAG once the prompt itself nearly fills the window. When the context size is unknown, RAG gets `CONTEXT_FALLBACK_CHARS` with no cap. If hits exist but none fit, the trace shows `inject:budget0`.
 | `TIER0_MAX_CHARS` | `80` | Max query length for tier0 heuristic bypass |
+
+Inject budget rule: RAG gets `CONTEXT_BUDGET_RATIO` of the window, capped by the room left after the conversation and `DEFAULT_COMPLETION_RESERVE` (`window - conversation - reserve`). A long chat only loses RAG once the prompt itself nearly fills the window. When the context size is unknown, the slice is `CONTEXT_FALLBACK_CHARS`, the window is assumed to be that slice divided by `CONTEXT_BUDGET_RATIO`, and the same cap applies. The trace shows `inject:budget0` only when the resolved budget is 0, and `inject:empty_text` when hits with blank text were dropped.
 
 `STAGE_BUDGET_*` is only an entrance gate. `STAGE_TIMEOUT_*` / `RERANK_STAGE_TIMEOUT_MS` / `TOOL_BUDGET_MS` are hard `asyncio.wait_for` caps. Rerank uses `RERANK_TIMEOUT_MS` as its entrance minimum.
 

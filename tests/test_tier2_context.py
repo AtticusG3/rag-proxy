@@ -33,14 +33,29 @@ def test_resolve_inject_budget_unknown_model_uses_char_fallback(monkeypatch):
     assert budget == settings.context_fallback_chars
 
 
-def test_resolve_inject_budget_unknown_model_long_chat_keeps_slice(monkeypatch):
+def test_resolve_inject_budget_unknown_model_long_chat_is_capped(monkeypatch):
     monkeypatch.setattr(settings, "enable_tokenizer_estimate", False)
     monkeypatch.setattr(settings, "context_fallback_chars", 8000)
+    monkeypatch.setattr(settings, "context_budget_ratio", 0.25)
+    monkeypatch.setattr(settings, "default_completion_reserve", 1024)
     ctx = RequestContext(
         messages=[{"role": "user", "content": "x" * 20000}],
         requested_model="unknown-model",
     )
-    assert resolve_inject_budget_chars(ctx, ModelRegistry()) == 8000
+    # Assumed window 8000 / 0.25 = 32000 chars, reserve 4096, conversation 20000.
+    assert resolve_inject_budget_chars(ctx, ModelRegistry()) == 32000 - 4096 - 20000
+
+
+def test_resolve_inject_budget_unknown_model_full_window_is_zero(monkeypatch):
+    monkeypatch.setattr(settings, "enable_tokenizer_estimate", False)
+    monkeypatch.setattr(settings, "context_fallback_chars", 8000)
+    monkeypatch.setattr(settings, "context_budget_ratio", 0.25)
+    monkeypatch.setattr(settings, "default_completion_reserve", 1024)
+    ctx = RequestContext(
+        messages=[{"role": "user", "content": "x" * 40000}],
+        requested_model="unknown-model",
+    )
+    assert resolve_inject_budget_chars(ctx, ModelRegistry()) == 0
 
 
 def _known_registry() -> ModelRegistry:
@@ -103,3 +118,19 @@ def test_run_context_assembly_traces_zero_budget(monkeypatch):
     asyncio.run(run_context_assembly(ctx, _known_registry()))
     assert ctx.hits == []
     assert "inject:budget0" in ctx.stage_trace
+    assert "inject:empty_text" not in ctx.stage_trace
+
+
+def test_run_context_assembly_traces_empty_text_not_budget0(monkeypatch):
+    import asyncio
+
+    from rag_proxy.context import ChunkHit
+    from rag_proxy.stages.tier2_context import run_context_assembly
+
+    monkeypatch.setattr(settings, "enable_tokenizer_estimate", False)
+    ctx = RequestContext(messages=[{"role": "user", "content": "hi"}], requested_model="test-model")
+    ctx.hits = [ChunkHit(id="a", text="   ", score=0.9, source="dense")]
+    asyncio.run(run_context_assembly(ctx, _known_registry()))
+    assert ctx.hits == []
+    assert "inject:empty_text" in ctx.stage_trace
+    assert "inject:budget0" not in ctx.stage_trace
